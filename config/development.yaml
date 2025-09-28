@@ -1,0 +1,37 @@
+# Development Environment Configuration
+# Following Vibecode best practices for clear, maintainable configuration
+
+app:
+  name: "nexus"
+  version: "0.1.0"
+  debug: true
+  environment: "development"
+
+logging:
+  level: "DEBUG"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - console
+    - file
+
+database:
+  # Example database configuration (not used in basic setup)
+  url: "sqlite:///nexus_dev.db"
+  echo: true
+  pool_size: 5
+
+api:
+  host: "localhost"
+  port: 8000
+  reload: true
+  workers: 1
+
+security:
+  secret_key: "dev-secret-key-change-in-production"
+  session_timeout: 3600
+
+features:
+  # Feature flags for development
+  enable_debug_toolbar: true
+  enable_profiling: true
+  mock_external_apis: true

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(mkdir -p src/nexus tests docs config scripts)",
+      "Bash(python -m pip install -e \".[dev]\")",
+      "Bash(pre-commit install)",
+      "Bash(pytest -v)",
+      "Bash(black --check src/ tests/ scripts/)",
+      "Bash(black src/ tests/ scripts/)",
+      "Bash(flake8 src/ tests/ scripts/)",
+      "Bash(pytest -v --cov=src/nexus --cov-report=term)",
+      "Bash(git add .)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
