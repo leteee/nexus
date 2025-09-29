@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nexus"
-version = "0.1.0"
-description = "A modern Python project following Vibecode best practices"
+version = "0.2.0"
+description = "Modern data processing framework inspired by data_replay"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -23,7 +23,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "pandas>=1.5.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "numpy>=1.20.0",
+    "pyarrow>=10.0.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -37,7 +43,7 @@ dev = [
 ]
 
 [project.scripts]
-nexus = "nexus.main:main"
+nexus = "nexus.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/nexus"

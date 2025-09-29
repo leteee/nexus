@@ -1,0 +1,45 @@
+{
+  "status": "FAILED",
+  "issues": [
+    "Insufficient rows: 100 < 500"
+  ],
+  "metrics": {
+    "row_count": 100,
+    "column_count": 6,
+    "null_percentage": 0.0,
+    "duplicate_rows": "0",
+    "memory_usage_mb": 0.008899688720703125
+  },
+  "column_details": {
+    "id": {
+      "dtype": "int64",
+      "null_count": 0,
+      "unique_count": 100
+    },
+    "category": {
+      "dtype": "object",
+      "null_count": 0,
+      "unique_count": 2
+    },
+    "value": {
+      "dtype": "float64",
+      "null_count": 0,
+      "unique_count": 100
+    },
+    "score": {
+      "dtype": "float64",
+      "null_count": 0,
+      "unique_count": 100
+    },
+    "timestamp": {
+      "dtype": "datetime64[ns]",
+      "null_count": 0,
+      "unique_count": 100
+    },
+    "is_active": {
+      "dtype": "bool",
+      "null_count": 0,
+      "unique_count": 2
+    }
+  }
+}

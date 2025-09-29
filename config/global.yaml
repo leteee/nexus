@@ -1,0 +1,63 @@
+# Global configuration for Nexus framework
+# This file provides framework-wide defaults that can be overridden
+# by case-specific configurations and CLI arguments
+
+framework:
+  # Default logging configuration
+  logging:
+    level: INFO
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Plugin discovery settings
+  plugin_discovery:
+    auto_load_builtin: true
+    search_paths:
+      - "src/nexus/plugins"
+      - "plugins"  # Project-specific plugins
+
+  # Data processing defaults
+  data:
+    default_cache_size: 100  # MB
+    lazy_loading: true
+
+# Global plugin configuration (can be overridden per case)
+plugins:
+  "Data Generator":
+    num_rows: 5000  # Global default (larger than plugin default)
+    random_seed: 42
+
+  "Data Cleaner":
+    remove_outliers: true
+    outlier_threshold: 2.5  # More conservative than default
+    missing_strategy: "median"  # More robust than mean
+
+  "Data Validator":
+    max_null_percentage: 0.05  # Stricter than default
+    min_rows: 100
+
+# Global data source templates
+data_source_templates:
+  csv_template:
+    handler: "csv"
+    must_exist: true
+
+  optional_csv:
+    handler: "csv"
+    must_exist: false
+
+# Environment-specific overrides
+environments:
+  development:
+    framework:
+      logging:
+        level: DEBUG
+    plugins:
+      "Data Generator":
+        num_rows: 1000  # Smaller datasets for dev
+
+  production:
+    framework:
+      logging:
+        level: WARNING
+      data:
+        default_cache_size: 500  # More memory in production

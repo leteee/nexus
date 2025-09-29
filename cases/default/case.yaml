@@ -1,0 +1,84 @@
+# Case configuration for default data processing pipeline
+case_info:
+  name: "Default Data Processing Pipeline"
+  description: "Demonstrates the complete Nexus framework capabilities"
+  version: "1.0.0"
+
+# Pipeline definition - executed in order
+pipeline:
+  - plugin: "Data Generator"
+    config:
+      num_rows: 1000
+      num_categories: 3
+      noise_level: 0.15
+    outputs:
+      - name: "generated_data"
+
+  - plugin: "Data Validator"
+    config:
+      required_columns: ["id", "category", "value", "score"]
+      min_rows: 500
+      max_null_percentage: 0.1
+    outputs:
+      - name: "validation_report"
+
+  - plugin: "Data Cleaner"
+    config:
+      remove_outliers: true
+      outlier_threshold: 2.5
+      fill_missing: true
+      missing_strategy: "median"
+    outputs:
+      - name: "cleaned_data"
+
+  - plugin: "Data Transformer"
+    config:
+      normalize_columns: ["value", "score"]
+      log_transform_columns: ["value"]
+      create_derived_features: true
+    outputs:
+      - name: "transformed_data"
+
+  - plugin: "Data Quality Checker"
+    config:
+      check_duplicates: true
+      check_data_types: true
+      check_outliers: true
+      outlier_threshold: 2.5
+    outputs:
+      - name: "quality_report"
+
+# Case-specific data sources
+data_sources:
+  generated_data:
+    handler: "csv"
+    path: "data/generated_data.csv"
+    must_exist: false
+
+  cleaned_data:
+    handler: "csv"
+    path: "data/cleaned_data.csv"
+    must_exist: false
+
+  transformed_data:
+    handler: "csv"
+    path: "data/transformed_data.csv"
+    must_exist: false
+
+  validation_report:
+    handler: "json"
+    path: "reports/validation_report.json"
+    must_exist: false
+
+  quality_report:
+    handler: "json"
+    path: "reports/quality_report.json"
+    must_exist: false
+
+# Case-specific plugin overrides
+plugins:
+  "Data Generator":
+    random_seed: 123  # Different seed for this case
+
+  "Data Cleaner":
+    missing_strategy: "median"  # Override global default
