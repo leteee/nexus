@@ -1,63 +1,209 @@
-# Global configuration for Nexus framework
-# This file provides framework-wide defaults that can be overridden
-# by case-specific configurations and CLI arguments
+# Nexus Framework - Global Configuration
+# =======================================================================
+# This file contains framework-wide defaults and plugin configurations.
+# It serves as the foundation for all cases and can be overridden by:
+# 1. Case-specific configurations (cases/*/case.yaml)
+# 2. CLI arguments (--config key=value)
+#
+# IMPORTANT: Plugin parameters are usually configured in:
+# - Template YAML files (recommended)
+# - Case-specific configurations
+# - CLI overrides
+# This file provides EXAMPLES and fallback defaults only.
+# =======================================================================
 
 framework:
-  # Default logging configuration
+  name: "nexus"
+  version: "1.0.0"
+  cases_root: "cases"  # Cases 根目录，支持相对路径和绝对路径
+
+  # Logging configuration
   logging:
-    level: INFO
+    level: INFO  # DEBUG, INFO, WARNING, ERROR
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-  # Plugin discovery settings
-  plugin_discovery:
-    auto_load_builtin: true
-    search_paths:
-      - "src/nexus/plugins"
-      - "plugins"  # Project-specific plugins
-
-  # Data processing defaults
-  data:
+  # Performance and caching
+  performance:
     default_cache_size: 100  # MB
     lazy_loading: true
+    max_concurrent_plugins: 4
 
-# Global plugin configuration (can be overridden per case)
+# Plugin Discovery Configuration
+# Nexus will scan these locations for plugins
 plugins:
+  # Module paths to scan (Python module names)
+  modules: []
+  # Example:
+  # modules:
+  #   - "my_custom_plugins"
+  #   - "company.data_plugins"
+
+  # Directory paths to scan (relative to project root or absolute)
+  paths: []
+  # Example:
+  # paths:
+  #   - "custom_plugins"           # Relative to project root
+  #   - "/opt/shared/nexus_plugins" # Absolute path
+  #   - "~/my_plugins"             # Home directory
+
+# Handler Discovery Configuration
+# Handlers manage different file formats (CSV, JSON, Parquet, etc.)
+handlers:
+  # Additional handler paths
+  paths: []
+  # Example:
+  # paths:
+  #   - "custom_handlers"
+  #   - "/opt/shared/handlers"
+
+# Global Plugin Defaults
+# These are EXAMPLES and fallback defaults. In practice, configure plugins in:
+# - Template files (templates/*.yaml) - RECOMMENDED
+# - Case configurations (cases/*/case.yaml)
+# - CLI overrides (--config plugins.PluginName.param=value)
+plugin_defaults:
+  # Data Generation Plugins
   "Data Generator":
-    num_rows: 5000  # Global default (larger than plugin default)
-    random_seed: 42
+    num_rows: 1000        # Number of rows to generate
+    random_seed: 42       # For reproducible results
+    num_categories: 3     # Number of categories in categorical columns
+    noise_level: 0.1      # Amount of noise to add (0.0 to 1.0)
+    # Note: Override in templates/CLI for specific use cases
 
+  "Sample Data Generator":
+    dataset_type: "customers"  # customers, sales, products, etc.
+    size: "medium"            # small, medium, large
+    # Note: Mainly used in templates, not global config
+
+  # Data Cleaning Plugins
   "Data Cleaner":
-    remove_outliers: true
-    outlier_threshold: 2.5  # More conservative than default
-    missing_strategy: "median"  # More robust than mean
+    remove_outliers: true        # Remove statistical outliers
+    outlier_threshold: 2.0       # Z-score threshold for outliers
+    fill_missing: true           # Fill missing values
+    missing_strategy: "median"   # mean, median, mode, forward_fill
+    # Note: Usually configured per case/template
 
+  # Data Validation Plugins
   "Data Validator":
-    max_null_percentage: 0.05  # Stricter than default
-    min_rows: 100
+    max_null_percentage: 0.05    # Maximum allowed null percentage (5%)
+    min_rows: 100               # Minimum required rows
+    # required_columns: []       # Set in templates/cases
+    # numeric_range_checks: {}   # Set in templates/cases
 
-# Global data source templates
+  "Data Quality Checker":
+    check_duplicates: true       # Check for duplicate rows
+    check_data_types: true       # Validate data types
+    check_outliers: false        # Check for outliers (separate from cleaner)
+    check_consistency: true      # Check data consistency
+    outlier_threshold: 3.0       # Different threshold than cleaner
+
+  # Data Transformation Plugins
+  "Data Transformer":
+    normalize_columns: []        # Columns to normalize (set in templates)
+    create_derived_features: false  # Create additional features
+    transformation_methods: ["standard"]  # standard, minmax, robust
+
+  "Data Aggregator":
+    group_by_column: "category"  # Default grouping column
+    aggregation_method: "mean"   # mean, sum, count, min, max
+    # Note: Usually overridden in specific use cases
+
+# Data Source Templates
+# Templates for common data source configurations
 data_source_templates:
-  csv_template:
+  # CSV file template
+  csv_input:
     handler: "csv"
     must_exist: true
+    path: "data/{name}.csv"  # {name} will be replaced
 
-  optional_csv:
+  csv_output:
     handler: "csv"
     must_exist: false
+    path: "data/{name}.csv"
 
-# Environment-specific overrides
+  # JSON file templates
+  json_input:
+    handler: "json"
+    must_exist: true
+    path: "data/{name}.json"
+
+  json_output:
+    handler: "json"
+    must_exist: false
+    path: "reports/{name}.json"
+
+  # Parquet file templates (for large datasets)
+  parquet_input:
+    handler: "parquet"
+    must_exist: true
+    path: "data/{name}.parquet"
+
+  parquet_output:
+    handler: "parquet"
+    must_exist: false
+    path: "data/{name}.parquet"
+
+# Environment-specific Overrides
+# Use these for development vs production differences
 environments:
   development:
     framework:
       logging:
         level: DEBUG
-    plugins:
+    plugin_defaults:
       "Data Generator":
-        num_rows: 1000  # Smaller datasets for dev
+        num_rows: 100      # Smaller datasets for faster dev cycles
+      "Data Quality Checker":
+        check_outliers: false  # Skip expensive checks in dev
+
+  testing:
+    framework:
+      logging:
+        level: ERROR       # Minimal logging during tests
+    plugin_defaults:
+      "Data Generator":
+        num_rows: 50       # Tiny datasets for unit tests
+        random_seed: 999   # Different seed for test isolation
 
   production:
     framework:
       logging:
         level: WARNING
-      data:
-        default_cache_size: 500  # More memory in production
+      performance:
+        default_cache_size: 500  # More memory available
+        max_concurrent_plugins: 8
+    plugin_defaults:
+      "Data Generator":
+        num_rows: 10000    # Larger datasets in production
+      "Data Quality Checker":
+        check_duplicates: true
+        check_data_types: true
+        check_outliers: true
+        check_consistency: true
+
+# Configuration Best Practices:
+# =======================================================================
+# 1. Plugin Configuration Hierarchy (highest to lowest priority):
+#    - CLI overrides (--config plugins.Name.param=value)
+#    - Case-specific config (cases/*/case.yaml)
+#    - Template config (templates/*.yaml) [RECOMMENDED]
+#    - Global defaults (this file)
+#    - Plugin built-in defaults
+#
+# 2. Recommended Plugin Configuration Locations:
+#    - Templates: For reusable pipeline patterns
+#    - Case configs: For case-specific customizations
+#    - CLI: For quick experimentation and overrides
+#    - Global config: Only for organization-wide defaults
+#
+# 3. Data Source Configuration:
+#    - Always define in templates or case configs
+#    - Use descriptive names that match plugin DataSource annotations
+#    - Consider using data_source_templates for consistency
+#
+# 4. Path Configuration:
+#    - Use relative paths when possible
+#    - Support both relative and absolute paths in plugin/handler discovery
+#    - Consider different environments (dev/test/prod)
+# =======================================================================

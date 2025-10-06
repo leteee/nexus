@@ -1,0 +1,19 @@
+# Quickstart Example
+# The simplest possible Nexus pipeline
+
+case_info:
+  name: "Quickstart"
+  description: "Minimal example - generate synthetic data with one plugin"
+  version: "1.0.0"
+
+# Single-step pipeline
+pipeline:
+  - plugin: "Data Generator"
+    config:
+      # Behavior configuration
+      num_rows: 1000
+      num_categories: 5
+      noise_level: 0.1
+
+      # Output configuration (direct path)
+      output_data: "data/synthetic_data.csv"

@@ -1,0 +1,88 @@
+# Data Quality Assessment Template
+# Focused on comprehensive data quality analysis and validation
+
+case_info:
+  name: "Data Quality Assessment"
+  description: "Comprehensive data quality analysis and validation pipeline"
+  template: "data-quality"
+  version: "1.0.0"
+
+pipeline:
+  # Data Generation for Testing
+  - plugin: "Sample Data Generator"
+    config:
+      dataset_type: "customers"
+      size: "medium"
+    outputs:
+      - name: "source_data"
+
+  # Comprehensive Validation
+  - plugin: "Data Validator"
+    config:
+      required_columns: ["customer_id", "first_name", "last_name", "age"]
+      min_rows: 500
+      max_null_percentage: 0.02
+      numeric_range_checks:
+        age:
+          min: 18
+          max: 100
+        lifetime_value:
+          min: 0
+          max: 100000
+    outputs:
+      - name: "validation_report"
+
+  # Quality Assessment
+  - plugin: "Data Quality Checker"
+    config:
+      check_duplicates: true
+      check_data_types: true
+      check_outliers: true
+      check_consistency: true
+      outlier_threshold: 2.0
+    outputs:
+      - name: "quality_assessment"
+
+  # Data Profiling
+  - plugin: "Data Transformer"
+    config:
+      normalize_columns: []
+      log_transform_columns: []
+      create_derived_features: false
+    outputs:
+      - name: "profiled_data"
+
+data_sources:
+  source_data:
+    handler: "csv"
+    path: "data/source_data.csv"
+    must_exist: false
+
+  profiled_data:
+    handler: "csv"
+    path: "data/profiled_data.csv"
+    must_exist: false
+
+  validation_report:
+    handler: "json"
+    path: "reports/validation_detailed.json"
+    must_exist: false
+
+  quality_assessment:
+    handler: "json"
+    path: "reports/quality_comprehensive.json"
+    must_exist: false
+
+plugins:
+  "Sample Data Generator":
+    dataset_type: "customers"
+    size: "medium"
+
+  "Data Validator":
+    max_null_percentage: 0.02
+
+  "Data Quality Checker":
+    check_duplicates: true
+    check_data_types: true
+    check_outliers: true
+    outlier_threshold: 2.0

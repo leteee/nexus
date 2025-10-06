@@ -1,261 +1,348 @@
 """
-Command-line interface for Nexus.
+Simplified CLI for Nexus framework.
 
-Provides CLI commands for running pipelines, executing plugins,
-and managing the data processing workflow.
+Clear, focused commands with simple logic:
+- nexus run --case <case> [--template <template>] [--config key=value]
+- nexus plugin <plugin_name> --case <case> [--config key=value]
+- nexus list [templates|cases|plugins]
+- nexus help [--plugin <plugin>]
 """
 
-import argparse
-import json
-import logging
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
+import click
+
+from .core.case_manager import CaseManager
+from .core.config import load_yaml
+from .core.discovery import get_plugin, list_plugins
 from .core.engine import PipelineEngine
-from .core.discovery import list_plugins
 
 
-def setup_logging(level: str = "INFO") -> logging.Logger:
-    """Set up logging configuration."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    return logging.getLogger("nexus")
-
-
-def find_project_root(start_path: Path) -> Optional[Path]:
+def find_project_root(start_path: Path) -> Path:
     """Find project root by looking for pyproject.toml."""
-    current = start_path.resolve()
+    current = start_path
     while current != current.parent:
         if (current / "pyproject.toml").exists():
             return current
         current = current.parent
-    return None
+    return start_path
 
 
-def parse_config_overrides(override_args: list[str]) -> Dict[str, Any]:
-    """Parse configuration overrides from CLI arguments."""
-    overrides = {}
-    for arg in override_args:
-        if "=" not in arg:
+def setup_logging(level: str = "INFO"):
+    """Setup logging configuration."""
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+
+def parse_config_overrides(config_list: tuple) -> Dict[str, Any]:
+    """Parse --config key=value pairs into nested dictionary."""
+    config = {}
+    for item in config_list:
+        if "=" not in item:
+            click.echo(f"Invalid config format: {item}. Use key=value format.")
             continue
-        key, value = arg.split("=", 1)
-        # Try to parse as JSON, fall back to string
-        try:
-            parsed_value = json.loads(value)
-        except json.JSONDecodeError:
-            parsed_value = value
 
-        # Support nested keys like plugins.generator.num_rows=500
+        key, value = item.split("=", 1)
+
+        # Handle nested keys like plugins.DataGenerator.num_rows
         keys = key.split(".")
-        current = overrides
+        current = config
         for k in keys[:-1]:
             if k not in current:
                 current[k] = {}
             current = current[k]
-        current[keys[-1]] = parsed_value
 
-    return overrides
+        # Try to parse value as int/float/bool, fall back to string
+        try:
+            if value.lower() in ("true", "false"):
+                current[keys[-1]] = value.lower() == "true"
+            elif value.isdigit():
+                current[keys[-1]] = int(value)
+            elif "." in value and value.replace(".", "").isdigit():
+                current[keys[-1]] = float(value)
+            else:
+                current[keys[-1]] = value
+        except (ValueError, AttributeError):
+            current[keys[-1]] = value
+
+    return config
 
 
-def run_pipeline_command(args) -> int:
-    """Execute a pipeline."""
+@click.group(invoke_without_command=True)
+@click.option("--version", is_flag=True, help="Show version information")
+@click.pass_context
+def cli(ctx, version):
+    """Nexus - A modern data processing framework."""
+    if version:
+        click.echo("Nexus 0.2.0")
+        return
+
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@cli.command()
+@click.option(
+    "--case",
+    "-c",
+    required=True,
+    help="Case directory (relative to cases_root or absolute path)",
+)
+@click.option("--template", "-t", help="Template name to use (copy-on-first-use)")
+@click.option(
+    "--config", "-C", multiple=True, help="Config overrides (key=value format)"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+def run(case: str, template: Optional[str], config: tuple, verbose: bool):
+    """
+    Run a pipeline in the specified case using case.yaml configuration.
+
+    Template Behavior:
+    - With template: Copy template to case.yaml if missing, otherwise reference template
+    - Without template: Use existing case.yaml (must exist)
+
+    Examples:
+      nexus run --case my-analysis                          # Use case.yaml
+      nexus run --case my-analysis --template etl-pipeline  # Copy/reference template
+      nexus run --case /abs/path --config plugins.DataGenerator.num_rows=5000
+    """
+    setup_logging("DEBUG" if verbose else "INFO")
+
     try:
+        # Find project root and load global config
         project_root = find_project_root(Path.cwd())
-        if not project_root:
-            print("Error: Could not find project root (looking for pyproject.toml)")
-            return 1
+        global_config = load_yaml(project_root / "config" / "global.yaml")
+        cases_root = global_config.get("framework", {}).get("cases_root", "cases")
 
-        case_path = Path(args.case) if args.case else project_root / "cases" / "default"
-        if not case_path.exists():
-            print(f"Error: Case path does not exist: {case_path}")
-            return 1
+        # Initialize case manager and get pipeline config
+        case_manager = CaseManager(project_root, cases_root)
+        config_path, pipeline_config = case_manager.get_pipeline_config(case, template)
 
-        logger = setup_logging(args.log_level)
+        # Parse config overrides
+        config_overrides = parse_config_overrides(config)
 
-        # Parse configuration overrides
-        config_overrides = parse_config_overrides(args.config or [])
+        # Get case directory for data path resolution
+        case_dir = case_manager.resolve_case_path(case)
 
         # Create and run pipeline
-        engine = PipelineEngine(
-            project_root=project_root,
-            case_path=case_path,
-            logger_instance=logger
-        )
-
-        pipeline_config = Path(args.pipeline) if args.pipeline else None
+        engine = PipelineEngine(project_root, case_dir)
         engine.run_pipeline(pipeline_config, config_overrides)
 
-        print("Pipeline completed successfully")
-        return 0
+        click.echo(f"✓ Pipeline completed successfully in case: {case}")
 
     except Exception as e:
-        print(f"Error: {e}")
-        if args.log_level == "DEBUG":
+        click.echo(f"✗ Error: {e}", err=True)
+        if verbose:
             import traceback
+
             traceback.print_exc()
-        return 1
+        sys.exit(1)
 
 
-def run_plugin_command(args) -> int:
-    """Execute a single plugin."""
+@cli.command()
+@click.argument("plugin_name")
+@click.option("--case", "-c", required=True, help="Case directory for data context")
+@click.option(
+    "--config", "-C", multiple=True, help="Config overrides (key=value format)"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
+    """
+    Run a single plugin in the specified case with automatic data discovery.
+
+    This command intelligently handles case configuration:
+    - If case.yaml exists: Uses defined data sources + auto-discovered files
+    - If no case.yaml: Automatically discovers CSV, JSON, Parquet, Excel, XML files
+    - Creates case directory if it doesn't exist
+
+    Examples:
+      nexus plugin "Data Generator" --case my-analysis --config num_rows=1000
+      nexus plugin "Data Validator" --case /path/to/data  # Auto-discovers files
+    """
+    setup_logging("DEBUG" if verbose else "INFO")
+
     try:
+        # Find project root and setup case context
         project_root = find_project_root(Path.cwd())
-        if not project_root:
-            print("Error: Could not find project root (looking for pyproject.toml)")
-            return 1
+        global_config = load_yaml(project_root / "config" / "global.yaml")
+        cases_root = global_config.get("framework", {}).get("cases_root", "cases")
 
-        case_path = Path(args.case) if args.case else project_root / "cases" / "default"
+        case_manager = CaseManager(project_root, cases_root)
+        case_dir = case_manager.resolve_case_path(case)
+        case_dir.mkdir(parents=True, exist_ok=True)
 
-        logger = setup_logging(args.log_level)
+        # Parse config overrides
+        config_overrides = parse_config_overrides(config)
 
-        # Parse configuration overrides
-        config_overrides = parse_config_overrides(args.config or [])
+        # Create engine and run single plugin
+        engine = PipelineEngine(project_root, case_dir)
+        result = engine.run_single_plugin(plugin_name, config_overrides)
 
-        # Create engine and run plugin
-        engine = PipelineEngine(
-            project_root=project_root,
-            case_path=case_path,
-            logger_instance=logger
-        )
-
-        result = engine.run_plugin(args.plugin, config_overrides)
-
-        if result is not None:
-            print(f"Plugin result: {result}")
-
-        print(f"Plugin '{args.plugin}' completed successfully")
-        return 0
+        click.echo(f"✓ Plugin '{plugin_name}' completed successfully")
+        click.echo(f"Result type: {type(result).__name__}")
 
     except Exception as e:
-        print(f"Error: {e}")
-        if args.log_level == "DEBUG":
+        click.echo(f"✗ Error: {e}", err=True)
+        if verbose:
             import traceback
+
             traceback.print_exc()
-        return 1
+        sys.exit(1)
 
 
-def list_plugins_command(args) -> int:
-    """List available plugins."""
+@cli.command()
+@click.argument(
+    "what", type=click.Choice(["templates", "cases", "plugins"]), default="plugins"
+)
+def list(what: str):
+    """
+    List available templates, cases, or plugins.
+
+    Arguments:
+      templates  Show available pipeline templates
+      cases      Show existing cases with case.yaml files
+      plugins    Show available plugins (default)
+
+    Examples:
+      nexus list                # List plugins (default)
+      nexus list templates      # List available templates
+      nexus list cases          # List existing cases
+    """
     try:
         project_root = find_project_root(Path.cwd())
-        if not project_root:
-            print("Error: Could not find project root (looking for pyproject.toml)")
-            return 1
 
-        case_path = Path(args.case) if args.case else project_root / "cases" / "default"
+        if what == "templates":
+            global_config = load_yaml(project_root / "config" / "global.yaml")
+            cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+            case_manager = CaseManager(project_root, cases_root)
 
-        logger = setup_logging("ERROR")  # Suppress logs for clean output
+            templates = case_manager.list_available_templates()
+            if templates:
+                click.echo("Available templates:")
+                for template in sorted(templates):
+                    click.echo(f"  {template}")
+            else:
+                click.echo("No templates found in templates/ directory")
 
-        # Initialize engine to trigger plugin discovery
-        engine = PipelineEngine(
-            project_root=project_root,
-            case_path=case_path,
-            logger_instance=logger
-        )
+        elif what == "cases":
+            global_config = load_yaml(project_root / "config" / "global.yaml")
+            cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+            case_manager = CaseManager(project_root, cases_root)
 
-        plugins = list_plugins()
+            cases = case_manager.list_existing_cases()
+            if cases:
+                click.echo("Existing cases:")
+                for case in sorted(cases):
+                    click.echo(f"  {case}")
+            else:
+                click.echo(f"No cases found in {cases_root}/ directory")
 
-        if not plugins:
-            print("No plugins found")
-            return 0
+        elif what == "plugins":
+            plugins = list_plugins()
+            if plugins:
+                click.echo("Available plugins:")
+                for plugin_name in sorted(plugins.keys()):
+                    plugin_spec = plugins[plugin_name]
+                    click.echo(f"  {plugin_name}")
+                    if plugin_spec.description:
+                        click.echo(f"    {plugin_spec.description}")
+            else:
+                click.echo("No plugins found")
 
-        print(f"Available plugins ({len(plugins)}):")
-        print()
+    except Exception as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
 
-        for plugin_spec in plugins.values():
-            print(f"  {plugin_spec.name}")
+
+@cli.command()
+@click.option("--plugin", help="Show help for specific plugin")
+def help(plugin: Optional[str]):
+    """Show detailed help information."""
+    if plugin:
+        try:
+            plugin_spec = get_plugin(plugin)
+            click.echo(f"Plugin: {plugin}")
             if plugin_spec.description:
-                print(f"    {plugin_spec.description}")
+                click.echo(f"Description: {plugin_spec.description}")
+
+            # Show configuration options if available
             if plugin_spec.config_model:
-                print(f"    Config: {plugin_spec.config_model.__name__}")
-            print()
+                click.echo("Configuration options:")
+                # This would show field info from pydantic model
+                for (
+                    field_name,
+                    field_info,
+                ) in plugin_spec.config_model.model_fields.items():
+                    default_val = (
+                        field_info.default
+                        if field_info.default is not None
+                        else "Required"
+                    )
+                    click.echo(f"  {field_name}: {default_val}")
 
-        return 0
+        except Exception as e:
+            click.echo(f"✗ Plugin '{plugin}' not found: {e}", err=True)
+            sys.exit(1)
+    else:
+        click.echo(
+            """
+Nexus - A modern data processing framework
 
-    except Exception as e:
-        print(f"Error: {e}")
-        return 1
+Basic Usage:
+  nexus run --case my-analysis                    # Run case with case.yaml
+  nexus run --case my-analysis --template etl     # Copy/reference template
+  nexus plugin "Data Generator" --case my-analysis # Run single plugin
+
+Commands:
+  run      Run a pipeline in specified case
+  plugin   Run a single plugin (with auto data discovery)
+  list     List available templates/cases/plugins
+  help     Show this help or plugin-specific help
+
+Key Features:
+  - Auto Data Discovery: Automatically finds CSV, JSON, Parquet files
+  - Smart Configuration: CLI > Case > Template > Global hierarchy
+  - Template System: Copy-on-first-use, reference thereafter
+  - Case Isolation: Each case has its own data and config context
+
+Examples:
+  # Pipeline execution
+  nexus run --case financial-analysis --template etl-pipeline
+  nexus run --case /path/to/analysis --config plugins.DataGenerator.num_rows=5000
+
+  # Single plugin with auto-discovery (no case.yaml needed)
+  nexus plugin "Data Validator" --case new-project
+  nexus plugin "Data Cleaner" --case financial-analysis --config outlier_threshold=3.0
+
+  # Discovery and help
+  nexus list templates
+  nexus list cases
+  nexus help --plugin "Data Generator"
+
+Path Support:
+  --case relative-path      # Relative to cases_root in config
+  --case /absolute/path     # Absolute path to case directory
+  --case my-project/sub     # Nested case organization
+
+Auto Data Discovery:
+  When no case.yaml exists, automatically discovers:
+  - CSV files -> csv handler
+  - JSON files -> json handler
+  - Parquet files -> parquet handler
+  - Excel files -> excel handler
+  - XML files -> xml handler
+        """
+        )
 
 
 def main():
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Nexus - Modern data processing framework",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="Set logging level"
-    )
-
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # Pipeline command
-    pipeline_parser = subparsers.add_parser(
-        "run",
-        help="Execute a pipeline"
-    )
-    pipeline_parser.add_argument(
-        "--case", "-c",
-        help="Path to case directory (default: cases/default)"
-    )
-    pipeline_parser.add_argument(
-        "--pipeline", "-p",
-        help="Path to pipeline configuration file (default: case/case.yaml)"
-    )
-    pipeline_parser.add_argument(
-        "--config",
-        nargs="*",
-        help="Configuration overrides (key=value format, supports nested keys)"
-    )
-    pipeline_parser.set_defaults(func=run_pipeline_command)
-
-    # Plugin command
-    plugin_parser = subparsers.add_parser(
-        "plugin",
-        help="Execute a single plugin"
-    )
-    plugin_parser.add_argument(
-        "plugin",
-        help="Name of the plugin to execute"
-    )
-    plugin_parser.add_argument(
-        "--case", "-c",
-        help="Path to case directory (default: cases/default)"
-    )
-    plugin_parser.add_argument(
-        "--config",
-        nargs="*",
-        help="Configuration overrides (key=value format)"
-    )
-    plugin_parser.set_defaults(func=run_plugin_command)
-
-    # List plugins command
-    list_parser = subparsers.add_parser(
-        "list",
-        help="List available plugins"
-    )
-    list_parser.add_argument(
-        "--case", "-c",
-        help="Path to case directory (default: cases/default)"
-    )
-    list_parser.set_defaults(func=list_plugins_command)
-
-    args = parser.parse_args()
-
-    if not hasattr(args, "func"):
-        parser.print_help()
-        return 1
-
-    return args.func(args)
+    """Entry point for CLI."""
+    cli()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -148,7 +148,7 @@ def my_plugin(config: MyConfig, logger) -> pd.DataFrame:
 
 ### 4. Data Management
 
-**Design**: Centralized DataHub with lazy loading and protocol-based handlers
+**Design**: Centralized DataHub with lazy loading, automatic discovery, and protocol-based handlers
 
 ```python
 class DataHub:
@@ -162,6 +162,30 @@ class DataHub:
         # Automatic format detection
         # Path management
 ```
+
+**Automatic Data Source Discovery**:
+The engine automatically discovers data files in case directories:
+
+```python
+class PipelineEngine:
+    def _auto_discover_data_sources(self) -> Dict[str, Any]:
+        # Scans case directory and data/ subdirectory
+        # Recognizes common formats: CSV, JSON, Parquet, Excel, XML
+        # Creates data source configurations automatically
+        # Handles filename conflicts with deduplication
+```
+
+**Supported File Types**:
+- `.csv` → CSV handler
+- `.json` → JSON handler
+- `.parquet` → Parquet handler
+- `.xlsx` → Excel handler
+- `.xml` → XML handler
+
+**Auto-Discovery Logic**:
+1. **Single Plugin Execution**: If no `case.yaml` exists, auto-discover data files
+2. **Case Configuration**: If `case.yaml` exists, use defined sources + auto-discovered as fallback
+3. **Intelligent Naming**: Handles duplicate filenames with automatic suffixing
 
 **Handler Protocol**:
 ```python

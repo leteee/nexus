@@ -1,26 +1,27 @@
 """
 Nexus - A modern data processing framework.
 
-Following data_replay's design principles with improvements:
-- Functional configuration management
-- Immutable contexts
-- Type-safe plugin system
-- Automatic dependency discovery
+Simplified architecture with clear concepts:
+- Case = Complete workspace (data + configuration)
+- Template = Reusable pipeline definition
+- Clean copy/reference semantics
 """
 
+from .core.case_manager import CaseManager
 from .core.context import NexusContext, PluginContext
 from .core.datahub import DataHub
-from .core.discovery import plugin, get_plugin, list_plugins
+from .core.discovery import get_plugin, list_plugins, plugin
 from .core.engine import PipelineEngine
-from .core.types import DataSource, DataSink, PluginConfig
+from .core.types import DataSink, DataSource, PluginConfig
 from .main import create_engine, run_pipeline, run_plugin
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "NexusContext",
     "PluginContext",
     "DataHub",
     "PipelineEngine",
+    "CaseManager",
     "plugin",
     "get_plugin",
     "list_plugins",

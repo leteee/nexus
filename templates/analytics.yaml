@@ -1,0 +1,89 @@
+# Analytics Pipeline Template
+# For data analysis and reporting workflows
+
+case_info:
+  name: "Data Analytics Pipeline"
+  description: "Comprehensive data analysis with aggregation and reporting"
+  template: "analytics"
+  version: "1.0.0"
+
+pipeline:
+  # Data Generation
+  - plugin: "Sample Data Generator"
+    config:
+      dataset_type: "sales"
+      size: "large"
+    outputs:
+      - name: "sales_data"
+
+  # Data Cleaning
+  - plugin: "Data Cleaner"
+    config:
+      remove_outliers: true
+      outlier_threshold: 2.5
+      fill_missing: true
+      missing_strategy: "median"
+    outputs:
+      - name: "clean_sales_data"
+
+  # Feature Engineering
+  - plugin: "Data Transformer"
+    config:
+      normalize_columns: ["unit_price", "quantity"]
+      create_derived_features: true
+    outputs:
+      - name: "featured_sales_data"
+
+  # Data Aggregation
+  - plugin: "Data Aggregator"
+    config:
+      group_by_column: "product"
+      aggregation_method: "mean"
+    outputs:
+      - name: "product_analytics"
+
+  # Final Quality Check
+  - plugin: "Data Quality Checker"
+    config:
+      check_duplicates: true
+      check_outliers: false
+    outputs:
+      - name: "analytics_quality_report"
+
+data_sources:
+  sales_data:
+    handler: "csv"
+    path: "data/raw_sales.csv"
+    must_exist: false
+
+  clean_sales_data:
+    handler: "csv"
+    path: "data/cleaned_sales.csv"
+    must_exist: false
+
+  featured_sales_data:
+    handler: "parquet"
+    path: "data/featured_sales.parquet"
+    must_exist: false
+
+  product_analytics:
+    handler: "csv"
+    path: "reports/product_summary.csv"
+    must_exist: false
+
+  analytics_quality_report:
+    handler: "json"
+    path: "reports/analytics_quality.json"
+    must_exist: false
+
+plugins:
+  "Sample Data Generator":
+    dataset_type: "sales"
+    size: "large"
+
+  "Data Aggregator":
+    group_by_column: "product"
+    aggregation_method: "mean"
+
+  "Data Transformer":
+    create_derived_features: true

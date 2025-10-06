@@ -1,0 +1,48 @@
+# Pipeline Data Flow Example
+# Demonstrates multi-step pipeline with data flowing between steps
+
+case_info:
+  name: "Pipeline Data Flow"
+  description: "Multi-step pipeline showing data transformation through stages"
+  version: "1.0.0"
+
+pipeline:
+  # Step 1: Generate raw data
+  - plugin: "Data Generator"
+    config:
+      num_rows: 5000
+      num_categories: 3
+      noise_level: 0.2
+      random_seed: 42
+
+      # Output as CSV
+      output_data: "data/01_raw_data.csv"
+
+  # Step 2: Generate sample data (different dataset)
+  - plugin: "Sample Data Generator"
+    config:
+      dataset_type: "products"
+      size: "large"
+
+      # Output as CSV
+      output_data: "data/02_products.csv"
+
+  # Future steps could process these files:
+  # Step 3: Clean data
+  # - plugin: "Data Cleaner"
+  #   config:
+  #     input_data: "data/01_raw_data.csv"
+  #     output_data: "data/03_cleaned.parquet"  # Change format to parquet
+  #     remove_nulls: true
+  #
+  # Step 4: Transform data
+  # - plugin: "Data Transformer"
+  #   config:
+  #     input_data: "data/03_cleaned.parquet"
+  #     output_data: "data/04_transformed.parquet"
+  #     normalize: true
+
+# Configuration overrides
+plugins:
+  "Data Generator":
+    random_seed: 42  # Ensure reproducibility

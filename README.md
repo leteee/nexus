@@ -1,17 +1,18 @@
 # Nexus
 
-A modern data processing framework inspired by data_replay, implementing functional programming patterns with immutable contexts, type-safe plugin systems, and hierarchical configuration management.
+A modern data processing framework with simplified architecture featuring case-based workspaces, functional configuration management, and type-safe plugin systems.
 
 ## Overview
 
 Nexus is a comprehensive data processing framework that provides:
 
-- **Functional Configuration Management**: Pure functions with intelligent caching
-- **Immutable Contexts**: Dataclass-based contexts preventing accidental mutations
+- **Case-Based Workspaces**: Complete isolated environments for different analysis contexts
+- **Simplified Architecture**: Clear separation between cases and templates with copy/reference semantics
 - **Type-Safe Plugin System**: Pydantic models with automatic validation
-- **Dependency Injection**: Clean plugin execution with auto-discovery
 - **Hierarchical Configuration**: CLI > Case > Global > Plugin defaults
+- **Functional Configuration Management**: Pure functions with intelligent caching
 - **Protocol-Based Data Handlers**: Extensible data I/O with type checking
+- **Unified Case Management**: Single case.yaml per case with template support
 
 ## Quick Start
 
@@ -34,16 +35,30 @@ pip install -e ".[dev]"
 
 ```bash
 # List available plugins
-nexus list
+nexus list plugins
 
-# Run a single plugin
-nexus plugin "Data Generator" --config num_rows=1000
+# List available templates and cases
+nexus list templates
+nexus list cases
 
-# Execute a complete pipeline
-nexus run
+# Run a single plugin with case context
+nexus plugin "Data Generator" --case my-analysis --config num_rows=1000
+
+# Single plugin execution with automatic data discovery
+# (automatically discovers CSV, JSON, Parquet files in case directory)
+nexus plugin "Data Validator" --case analysis-with-data
+
+# Execute case pipeline (uses case.yaml)
+nexus run --case my-analysis
+
+# Execute case with template (copy/reference template to case)
+nexus run --case my-analysis --template etl-pipeline
 
 # Run with configuration overrides
-nexus run --config plugins.Data\ Generator.num_rows=500
+nexus run --case my-analysis --config plugins.DataGenerator.num_rows=500
+
+# Get help for specific plugin
+nexus help --plugin "Data Generator"
 ```
 
 ### Programmatic API
@@ -51,17 +66,192 @@ nexus run --config plugins.Data\ Generator.num_rows=500
 ```python
 import nexus
 
-# Create engine
-engine = nexus.create_engine()
+# Create engine for specific case
+engine = nexus.create_engine(case_path="financial-analysis")
 
-# Run a plugin
-result = nexus.run_plugin("Data Generator", {"num_rows": 1000})
+# Run pipeline with template
+result = nexus.run_pipeline(
+    case_path="financial-analysis",
+    template_name="analytics"
+)
 
-# Execute pipeline
-nexus.run_pipeline()
+# Run a single plugin
+result = nexus.run_plugin(
+    plugin_name="Data Generator",
+    case_path="financial-analysis",
+    config_overrides={"num_rows": 1000}
+)
 ```
 
-## Features
+## Core Concepts
+
+### Cases and Templates
+
+Nexus uses a simplified architecture with two key concepts:
+
+#### **Cases** 📁
+Complete workspaces for different analysis contexts:
+
+- **Definition**: Each case = data + configuration in one directory
+- **Configuration**: One `case.yaml` file per case directory (optional for single plugin execution)
+- **Data Path Resolution**: All data paths resolved relative to case directory
+- **Isolation**: Each case maintains its own data and configuration context
+- **Auto-Discovery**: Automatically discovers data files (CSV, JSON, Parquet, Excel, XML) when no case.yaml exists
+
+#### **Templates** 📄
+Reusable pipeline configurations:
+
+- **Global Templates**: Stored in `templates/` directory
+- **Built-in Templates**: `default`, `etl-pipeline`, `analytics`, `data-quality`
+- **Copy/Reference Logic**: Templates copied to case on first use, referenced thereafter
+
+### Copy/Reference Semantics
+
+Nexus implements intelligent template handling:
+
+1. **Case Execution**: Use existing `case.yaml` in case directory
+2. **Template Copy**: Copy template to case directory as `case.yaml` if missing
+3. **Template Reference**: Use existing copied template if already present
+
+```bash
+# Example: Case with template
+nexus run --case financial-analysis --template analytics
+
+# Process:
+# 1. Check: cases/financial-analysis/case.yaml exists?
+# 2. If missing: Copy templates/analytics.yaml → cases/financial-analysis/case.yaml
+# 3. Execute with case.yaml configuration
+```
+
+## Available Commands
+
+Nexus provides 4 core commands for simplified workflow:
+
+### 1. `nexus run` - Execute Pipeline
+
+```bash
+# Run case pipeline (uses case.yaml)
+nexus run --case my-analysis
+
+# Run case with template (copy/reference semantics)
+nexus run --case my-analysis --template etl-pipeline
+
+# Run with configuration overrides
+nexus run --case my-analysis --config plugins.DataGenerator.num_rows=5000
+
+# Run with multiple config overrides
+nexus run --case my-analysis --template analytics \
+  --config plugins.DataGenerator.num_rows=10000 \
+  --config plugins.DataCleaner.outlier_threshold=3.0
+
+# Verbose logging for debugging
+nexus run --case my-analysis --verbose
+```
+
+### 2. `nexus plugin` - Execute Single Plugin
+
+```bash
+# Run single plugin with case context
+nexus plugin "Data Generator" --case my-analysis --config num_rows=1000
+
+# Run plugin with multiple config options
+nexus plugin "Data Cleaner" --case my-analysis \
+  --config outlier_threshold=2.5 \
+  --config missing_strategy=median
+
+# Run plugin with verbose output
+nexus plugin "Data Validator" --case my-analysis --verbose
+```
+
+### 3. `nexus list` - List Resources
+
+```bash
+# List available plugins (default)
+nexus list
+nexus list plugins
+
+# List available templates
+nexus list templates
+
+# List existing cases
+nexus list cases
+```
+
+### 4. `nexus help` - Get Help
+
+```bash
+# General help
+nexus help
+
+# Plugin-specific help with configuration options
+nexus help --plugin "Data Generator"
+nexus help --plugin "Data Cleaner"
+```
+
+### Available Templates
+
+| Template | Description | Use Case |
+|----------|-------------|----------|
+| `default` | Basic data processing pipeline | General data cleaning and validation |
+| `etl-pipeline` | Complete ETL workflow | Data extraction, transformation, and loading |
+| `analytics` | Data analysis with aggregation | Business analytics and reporting |
+| `data-quality` | Comprehensive quality assessment | Data quality validation and profiling |
+
+### Case Management
+
+```bash
+# Create new case directory (manual)
+mkdir -p cases/my-project/data
+
+# Run creates case directory automatically if missing
+nexus run --case my-project --template default
+
+# Cases can use relative or absolute paths
+nexus run --case financial-analysis          # Relative to cases_root
+nexus run --case /path/to/analysis           # Absolute path
+```
+
+### Directory Structure
+
+```
+nexus/
+├── templates/                    # Global pipeline templates
+│   ├── default.yaml             # Basic processing pipeline
+│   ├── etl-pipeline.yaml        # Complete ETL workflow
+│   ├── analytics.yaml           # Data analysis pipeline
+│   └── data-quality.yaml        # Quality assessment pipeline
+├── cases/                       # Case workspaces (complete environments)
+│   ├── default/                 # Default case workspace
+│   │   ├── data/               # Input/output data files
+│   │   └── case.yaml           # Pipeline configuration
+│   ├── financial-analysis/     # Financial analysis workspace
+│   │   ├── data/               # Financial data files
+│   │   └── case.yaml           # Analytics pipeline configuration
+│   └── data-quality-check/     # Data quality workspace
+│       ├── data/               # Data to validate
+│       └── case.yaml           # Quality assessment pipeline
+├── config/
+│   └── global.yaml             # Global configuration (includes cases_root)
+├── docs/                       # Documentation
+│   └── configuration-best-practices.md
+└── src/nexus/                  # Framework source code
+    ├── core/                   # Core framework components
+    │   ├── case_manager.py     # Case and template management
+    │   ├── config.py          # Configuration hierarchy management
+    │   ├── context.py         # Immutable contexts
+    │   ├── datahub.py         # Data management
+    │   ├── discovery.py       # Plugin discovery
+    │   ├── engine.py          # Simplified pipeline execution
+    │   ├── handlers.py        # Data I/O handlers
+    │   └── types.py           # Core type definitions
+    ├── plugins/               # Built-in plugins
+    │   ├── generators.py      # Data generation plugins
+    │   ├── processors.py      # Data processing plugins
+    │   └── validators.py      # Data validation plugins
+    ├── cli.py                 # Simplified CLI interface
+    ├── main.py                # Programmatic API
+    └── __init__.py           # Package exports
+```
 
 ### Built-in Plugins
 
@@ -75,7 +265,8 @@ nexus.run_pipeline()
 
 ### Core Architecture
 
-- **PipelineEngine**: Orchestrates complete pipeline lifecycle
+- **PipelineEngine**: Simplified orchestration with case-based data path resolution
+- **CaseManager**: Unified case and template management with copy/reference semantics
 - **DataHub**: Centralized data management with lazy loading
 - **Plugin Discovery**: Automatic registration and dependency resolution
 - **Configuration System**: Hierarchical merging with type validation
@@ -88,6 +279,7 @@ nexus.run_pipeline()
 ```yaml
 framework:
   name: "nexus"
+  cases_root: "cases"  # Cases root directory, supports relative and absolute paths
   logging:
     level: INFO
 
@@ -101,7 +293,7 @@ plugin_defaults:
     random_seed: 42
 ```
 
-### Case Configuration (`cases/default/case.yaml`)
+### Case Configuration (`cases/my-analysis/case.yaml`)
 
 ```yaml
 case_info:
@@ -221,15 +413,16 @@ class MyCustomHandler:
 ### Configuration Overrides
 
 ```bash
-# Override nested configuration
-nexus run --config plugins.Data\ Generator.num_rows=500 \
-                  plugins.Data\ Cleaner.outlier_threshold=2.0
+# Override nested configuration (no spaces needed in key names)
+nexus run --case my-analysis \
+  --config plugins.DataGenerator.num_rows=500 \
+  --config plugins.DataCleaner.outlier_threshold=2.0
 
-# Multiple overrides
-nexus plugin "Data Generator" \
+# Multiple overrides for single plugin
+nexus plugin "Data Generator" --case my-analysis \
   --config num_rows=1000 \
-           num_categories=3 \
-           random_seed=123
+  --config num_categories=3 \
+  --config random_seed=123
 ```
 
 ### Pipeline Composition
@@ -312,21 +505,23 @@ pre-commit run --all-files
 ```python
 import nexus
 
-# Create engine with custom case
-engine = nexus.create_engine(
-    case_path="cases/my_analysis"
-)
+# Create engine with specific case
+engine = nexus.create_engine(case_path="my_analysis")
 
 # Generate synthetic data
-data = nexus.run_plugin("Data Generator", {
-    "num_rows": 5000,
-    "num_categories": 3,
-    "noise_level": 0.2
-})
+data = nexus.run_plugin(
+    plugin_name="Data Generator",
+    case_path="my_analysis",
+    config_overrides={
+        "num_rows": 5000,
+        "num_categories": 3,
+        "noise_level": 0.2
+    }
+)
 
 # Run complete pipeline
 nexus.run_pipeline(
-    case_path="cases/my_analysis",
+    case_path="my_analysis",
     config_overrides={
         "plugins": {
             "Data Generator": {"num_rows": 5000},
@@ -342,28 +537,40 @@ nexus.run_pipeline(
 from pathlib import Path
 import nexus
 
-# Define custom case
-case_path = Path("cases/financial_analysis")
+# Define case path
+case_path = "financial_analysis"
 
 # Execute pipeline with specific configuration
 engine = nexus.create_engine(case_path=case_path)
 
 # Run individual steps
-raw_data = engine.run_plugin("Sample Data Generator", {
-    "dataset_type": "sales",
-    "size": "large"
-})
+raw_data = nexus.run_plugin(
+    plugin_name="Sample Data Generator",
+    case_path=case_path,
+    config_overrides={
+        "dataset_type": "sales",
+        "size": "large"
+    }
+)
 
-validation = engine.run_plugin("Data Validator", {
-    "required_columns": ["sale_id", "amount", "date"],
-    "min_rows": 1000
-})
+validation = nexus.run_plugin(
+    plugin_name="Data Validator",
+    case_path=case_path,
+    config_overrides={
+        "required_columns": ["sale_id", "amount", "date"],
+        "min_rows": 1000
+    }
+)
 
-quality_report = engine.run_plugin("Data Quality Checker", {
-    "check_duplicates": True,
-    "check_outliers": True,
-    "outlier_threshold": 3.0
-})
+quality_report = nexus.run_plugin(
+    plugin_name="Data Quality Checker",
+    case_path=case_path,
+    config_overrides={
+        "check_duplicates": True,
+        "check_outliers": True,
+        "outlier_threshold": 3.0
+    }
+)
 ```
 
 ## Design Principles

@@ -1,0 +1,61 @@
+# Default Pipeline Template
+# This template provides a basic data processing pipeline
+# suitable for most data analysis tasks
+
+case_info:
+  name: "Default Data Processing Pipeline"
+  description: "Basic ETL pipeline with generation, cleaning, and validation"
+  template: "default"
+  version: "1.0.0"
+
+# Pipeline definition
+pipeline:
+  - plugin: "Data Generator"
+    config:
+      num_rows: 1000
+      num_categories: 3
+      noise_level: 0.1
+    outputs:
+      - name: "generated_data"
+
+  - plugin: "Data Validator"
+    config:
+      required_columns: ["id", "category", "value", "score"]
+      min_rows: 100
+      max_null_percentage: 0.1
+    outputs:
+      - name: "validation_report"
+
+  - plugin: "Data Cleaner"
+    config:
+      remove_outliers: true
+      outlier_threshold: 2.5
+      fill_missing: true
+      missing_strategy: "median"
+    outputs:
+      - name: "cleaned_data"
+
+# Default data sources
+data_sources:
+  generated_data:
+    handler: "csv"
+    path: "data/generated_data.csv"
+    must_exist: false
+
+  cleaned_data:
+    handler: "csv"
+    path: "data/cleaned_data.csv"
+    must_exist: false
+
+  validation_report:
+    handler: "json"
+    path: "reports/validation_report.json"
+    must_exist: false
+
+# Default plugin overrides
+plugins:
+  "Data Generator":
+    random_seed: 42
+
+  "Data Cleaner":
+    missing_strategy: "median"
