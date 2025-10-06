@@ -1,7 +1,32 @@
 """
-Simplified Pipeline execution engine.
+Pipeline execution engine for Nexus framework.
 
-Clean, focused execution with case-based data path resolution.
+This module provides the PipelineEngine class for orchestrating data pipeline execution
+with intelligent configuration management, plugin discovery, and data flow handling.
+
+Core Concepts:
+    - **Case-Based Execution**: All data paths resolved relative to case directory
+    - **Configuration Hierarchy**: CLI overrides > Case config > Global config > Plugin defaults
+    - **Dependency Injection**: Automatic resolution and injection of plugin dependencies
+    - **Lazy Data Loading**: Data files loaded only when accessed by plugins
+    - **Auto-Discovery**: Automatic plugin and data source discovery
+
+Execution Modes:
+    1. **Full Pipeline**: Execute multi-step pipelines defined in case.yaml
+    2. **Single Plugin**: Execute individual plugins with auto-discovery
+
+Typical Usage:
+    >>> from pathlib import Path
+    >>> engine = PipelineEngine(
+    ...     project_root=Path("/project"),
+    ...     case_dir=Path("/project/cases/analysis")
+    ... )
+    >>>
+    >>> # Run full pipeline
+    >>> results = engine.run_pipeline(pipeline_config, cli_overrides)
+    >>>
+    >>> # Run single plugin
+    >>> result = engine.run_single_plugin("Data Generator", {"num_rows": 1000})
 """
 
 import logging
@@ -30,15 +55,92 @@ logger = logging.getLogger(__name__)
 
 class PipelineEngine:
     """
-    Simplified pipeline execution engine.
+    Pipeline execution engine with automatic dependency management.
 
-    Key concepts:
-    - All data paths resolved relative to case directory
-    - Clean configuration hierarchy: global → case → CLI overrides
-    - No complex template management at runtime
+    The PipelineEngine orchestrates the complete pipeline lifecycle:
+    1. **Plugin Discovery**: Automatically discovers plugins from multiple sources
+    2. **Configuration Resolution**: Merges configurations with proper precedence
+    3. **Data Management**: Sets up DataHub with auto-discovered data sources
+    4. **Plugin Execution**: Executes plugins with dependency injection
+    5. **Output Handling**: Saves results to specified data sinks
+
+    **Key Features**:
+        - Automatic plugin discovery from modules and directories
+        - Intelligent configuration merging (CLI > Case > Global > Defaults)
+        - Lazy loading of data sources for memory efficiency
+        - Type-safe plugin configuration with Pydantic validation
+        - Comprehensive logging throughout execution
+
+    **Architecture**:
+        - **Immutable Context**: Frozen dataclasses prevent state mutations
+        - **Dependency Injection**: Plugin dependencies auto-resolved from signatures
+        - **Path Resolution**: Smart resolution of relative, absolute, and glob paths
+        - **Error Isolation**: Plugin failures don't crash entire pipeline
+
+    Attributes:
+        project_root (Path): Root directory of the Nexus project
+        case_dir (Path): Directory of the current case being executed
+        logger (Logger): Logger instance for execution tracking
+        context (NexusContext): Immutable execution context
+
+    Example:
+        >>> from pathlib import Path
+        >>> engine = PipelineEngine(
+        ...     project_root=Path("/project"),
+        ...     case_dir=Path("/project/cases/financial-analysis")
+        ... )
+        >>>
+        >>> # Execute full pipeline from case.yaml
+        >>> pipeline_config = load_yaml(case_dir / "case.yaml")
+        >>> results = engine.run_pipeline(
+        ...     pipeline_config,
+        ...     config_overrides={"plugins": {"DataGenerator": {"num_rows": 5000}}}
+        ... )
+        >>>
+        >>> # Execute single plugin with auto-discovery
+        >>> result = engine.run_single_plugin(
+        ...     "Data Validator",
+        ...     config_overrides={"threshold": 0.95}
+        ... )
+
+    Note:
+        The engine automatically discovers plugins and handlers during initialization.
+        This may take a few seconds on first run, but subsequent executions benefit
+        from Python's import caching.
     """
 
     def __init__(self, project_root: Path, case_dir: Path):
+        """
+        Initialize PipelineEngine with project and case context.
+
+        Sets up the execution environment by:
+        1. Storing project and case directory references
+        2. Discovering all available plugins and handlers
+        3. Creating immutable execution context
+
+        Args:
+            project_root (Path): Absolute path to project root directory.
+                Must contain config/, src/nexus/plugins/, and templates/ subdirectories.
+
+            case_dir (Path): Absolute path to case directory.
+                This is where data files are stored and resolved from.
+                Will be created if it doesn't exist during execution.
+
+        Example:
+            >>> from pathlib import Path
+            >>> engine = PipelineEngine(
+            ...     project_root=Path("/home/user/myproject"),
+            ...     case_dir=Path("/home/user/myproject/cases/analysis")
+            ... )
+
+        Note:
+            Plugin discovery happens during initialization and may take a moment.
+            The discovery process scans:
+            - Built-in plugins (nexus.plugins.*)
+            - Project plugins (src/nexus/plugins/)
+            - Custom plugin paths from global.yaml
+            - Handler modules for data I/O
+        """
         self.project_root = project_root
         self.case_dir = case_dir
         self.logger = logger
@@ -54,7 +156,34 @@ class PipelineEngine:
         )
 
     def _discover_plugins(self):
-        """Discover plugins from various sources."""
+        """
+        Discover and register plugins from multiple sources.
+
+        Scans the following locations in order:
+        1. **Built-in Plugins**: nexus.plugins.generators, processors, validators
+        2. **Project Plugins**: {project_root}/src/nexus/plugins/
+        3. **Custom Paths**: Additional paths specified in global.yaml
+        4. **Data Handlers**: Handler classes for CSV, JSON, Parquet, etc.
+
+        The discovered plugins are registered in PLUGIN_REGISTRY for later lookup.
+
+        Discovery Process:
+            - Module discovery: Import and scan Python modules for @plugin decorators
+            - Directory discovery: Recursively scan directories for plugin files
+            - Path discovery: Scan specific paths from configuration
+            - Handler discovery: Find DataHandler implementations
+
+        Side Effects:
+            - Populates global PLUGIN_REGISTRY with discovered plugins
+            - Logs the total number of discovered plugins
+
+        Example Output:
+            INFO: Plugin registry contains 15 plugins
+
+        Note:
+            This method is called automatically during __init__. Discovery results
+            are cached at the module level, so repeated engine initialization is fast.
+        """
         # Discover from built-in plugins
         discover_plugins_from_module("nexus.plugins.generators")
         discover_plugins_from_module("nexus.plugins.processors")
@@ -83,14 +212,119 @@ class PipelineEngine:
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Execute complete pipeline.
+        Execute a complete multi-step pipeline.
+
+        This is the primary method for running full data pipelines defined in case.yaml
+        or template files. It orchestrates the entire execution lifecycle:
+
+        **Execution Flow**:
+            1. Load global configuration from config/global.yaml
+            2. Merge configurations: CLI overrides > Pipeline config > Global config
+            3. Initialize DataHub with case directory context
+            4. Register all globally-defined data sources
+            5. Execute each pipeline step sequentially
+            6. Collect and return all step results
+
+        **Pipeline Configuration Structure**:
+            The pipeline_config should contain:
+            - **case_info** (dict): Metadata about the case
+            - **data_sources** (dict): Global data source definitions
+            - **pipeline** (list): Sequential list of plugin execution steps
+
+        **Step Execution**:
+            Each step is executed in order, with outputs from earlier steps
+            available to later steps via DataHub. Steps can:
+            - Access data from any registered data source
+            - Save outputs to data sinks for downstream consumption
+            - Override plugin configuration at the step level
 
         Args:
-            pipeline_config: Pipeline configuration (from case.yaml or template)
-            config_overrides: CLI configuration overrides
+            pipeline_config (Dict[str, Any]): Complete pipeline configuration.
+                Typically loaded from case.yaml or template.yaml.
+                Must contain a 'pipeline' key with list of step definitions.
+                Each step must have a 'plugin' field specifying the plugin name.
+
+            config_overrides (Optional[Dict[str, Any]], optional): CLI configuration overrides.
+                Applied with highest precedence in the configuration hierarchy.
+                Format: {"plugins": {"PluginName": {"param": value}}}
+                Defaults to None.
 
         Returns:
-            Dictionary of all pipeline outputs
+            Dict[str, Any]: Dictionary mapping step identifiers to their results.
+                Keys: "step_1_result", "step_2_result", etc.
+                Values: Whatever each plugin returns (DataFrame, dict, list, etc.)
+
+        Raises:
+            ValueError: If pipeline configuration is missing or invalid:
+                - No 'pipeline' key in configuration
+                - Pipeline steps list is empty
+                - Step missing required 'plugin' field
+
+            FileNotFoundError: If global.yaml not found
+
+            PluginError: If plugin execution fails
+
+            ValidationError: If plugin configuration validation fails
+
+        Example:
+            >>> from pathlib import Path
+            >>> from nexus.core.config import load_yaml
+            >>>
+            >>> # Load pipeline configuration
+            >>> pipeline_config = load_yaml(Path("cases/analysis/case.yaml"))
+            >>>
+            >>> # Create engine
+            >>> engine = PipelineEngine(
+            ...     project_root=Path.cwd(),
+            ...     case_dir=Path("cases/analysis")
+            ... )
+            >>>
+            >>> # Execute pipeline
+            >>> results = engine.run_pipeline(pipeline_config)
+            >>> print(results.keys())  # dict_keys(['step_1_result', 'step_2_result', ...])
+            >>>
+            >>> # With CLI overrides
+            >>> results = engine.run_pipeline(
+            ...     pipeline_config,
+            ...     config_overrides={
+            ...         "plugins": {
+            ...             "Data Generator": {"num_rows": 10000},
+            ...             "Data Validator": {"threshold": 0.99}
+            ...         }
+            ...     }
+            ... )
+
+        Pipeline Configuration Example:
+            ```yaml
+            case_info:
+              name: "Financial Analysis"
+              description: "Quarterly financial data pipeline"
+
+            data_sources:
+              raw_transactions:
+                path: "data/transactions.csv"
+                handler: "csv"
+
+            pipeline:
+              - plugin: "Data Cleaner"
+                config:
+                  remove_nulls: true
+
+              - plugin: "Feature Engineer"
+                config:
+                  create_ratios: true
+
+              - plugin: "Report Generator"
+                config:
+                  format: "pdf"
+            ```
+
+        Note:
+            - Pipeline steps execute sequentially in the order defined
+            - Each step has access to all data sources registered in DataHub
+            - Step results are cached in DataHub for downstream access
+            - Configuration validation happens before execution
+            - Execution stops on first step failure (no error recovery)
         """
         config_overrides = config_overrides or {}
 
@@ -138,19 +372,142 @@ class PipelineEngine:
         self, plugin_name: str, config_overrides: Optional[Dict[str, Any]] = None
     ) -> Any:
         """
-        Execute a single plugin with intelligent case configuration loading.
+        Execute a single plugin with intelligent auto-discovery.
 
-        This method implements smart case context resolution:
-        1. Load existing case.yaml if present in case directory
-        2. Auto-discover data files in case directory as data sources
-        3. Create minimal configuration context for plugin execution
+        This method provides a lightweight way to run individual plugins without
+        defining a full pipeline. It's ideal for:
+        - Testing plugins in isolation
+        - Quick data exploration and prototyping
+        - Running ad-hoc data processing tasks
+        - Plugin development and debugging
+
+        **Smart Case Context Resolution**:
+            The method intelligently handles case configuration:
+            1. If case.yaml exists: Load and use existing configuration
+            2. If no case.yaml: Auto-discover data files in case directory
+            3. Create minimal configuration context for execution
+
+        **Auto-Discovery Behavior**:
+            When case.yaml doesn't exist, the engine automatically:
+            - Scans case directory for data files (CSV, JSON, Parquet, Excel, XML)
+            - Creates logical data source names from filenames
+            - Registers discovered sources in DataHub
+            - Makes them available to plugin via dependency injection
+
+        **Configuration Hierarchy**:
+            Even in single-plugin mode, full configuration hierarchy applies:
+            CLI overrides > Case config > Global config > Plugin defaults
 
         Args:
-            plugin_name: Name of plugin to execute
-            config_overrides: Configuration overrides
+            plugin_name (str): Name of the plugin to execute.
+                Must match the name specified in @plugin decorator.
+                Case-sensitive. Spaces allowed.
+                Example: "Data Generator", "CSV Validator", "Feature Engineer"
+
+            config_overrides (Optional[Dict[str, Any]], optional): Configuration overrides
+                for the plugin. Applied with highest precedence.
+                Can use either flat or nested format:
+                - Flat: {"num_rows": 1000, "seed": 42}
+                - Nested: {"plugins": {"Data Generator": {"num_rows": 1000}}}
+                Defaults to None.
 
         Returns:
-            Plugin execution result
+            Any: Plugin execution result. Type depends on plugin implementation.
+                Common return types:
+                - pandas.DataFrame: For data processing plugins
+                - Dict[str, Any]: For analysis/reporting plugins
+                - List: For data collection plugins
+                - None: For side-effect-only plugins (e.g., file writers)
+
+        Raises:
+            PluginNotFoundError: If plugin_name doesn't match any registered plugin.
+                Error message includes list of available plugins.
+
+            FileNotFoundError: If neither case.yaml nor data files exist in case directory.
+
+            ValidationError: If configuration doesn't match plugin's expected schema.
+
+            PluginExecutionError: If plugin raises an exception during execution.
+
+        Example:
+            >>> from pathlib import Path
+            >>> engine = PipelineEngine(
+            ...     project_root=Path.cwd(),
+            ...     case_dir=Path("cases/analysis")
+            ... )
+            >>>
+            >>> # Run plugin with default configuration
+            >>> result = engine.run_single_plugin("Data Generator")
+            >>>
+            >>> # Run with configuration overrides
+            >>> result = engine.run_single_plugin(
+            ...     "Data Generator",
+            ...     config_overrides={"num_rows": 5000, "seed": 42}
+            ... )
+            >>>
+            >>> # Run with nested overrides (alternative format)
+            >>> result = engine.run_single_plugin(
+            ...     "Data Generator",
+            ...     config_overrides={
+            ...         "plugins": {
+            ...             "Data Generator": {
+            ...                 "num_rows": 5000,
+            ...                 "seed": 42
+            ...             }
+            ...         }
+            ...     }
+            ... )
+
+        Auto-Discovery Example:
+            Consider a case directory with:
+            ```
+            cases/analysis/
+            ├── data/
+            │   ├── transactions.csv
+            │   └── customers.json
+            └── (no case.yaml)
+            ```
+
+            When you run:
+            ```python
+            result = engine.run_single_plugin("Data Validator")
+            ```
+
+            The engine automatically:
+            1. Discovers "transactions.csv" → creates source "transactions"
+            2. Discovers "customers.json" → creates source "customers"
+            3. Makes both available to Data Validator plugin
+            4. Plugin can access via: `ctx.datahub.get("transactions")`
+
+        Use Cases:
+            **Plugin Development**:
+                ```python
+                # Quick iteration during development
+                result = engine.run_single_plugin("My New Plugin", {"debug": True})
+                ```
+
+            **Data Exploration**:
+                ```python
+                # Explore data without defining pipeline
+                df = engine.run_single_plugin("Data Profiler")
+                print(df.describe())
+                ```
+
+            **Ad-hoc Processing**:
+                ```python
+                # One-off data transformation
+                cleaned = engine.run_single_plugin(
+                    "Data Cleaner",
+                    {"remove_outliers": True, "fill_na": "mean"}
+                )
+                ```
+
+        Note:
+            - Auto-discovery scans case directory recursively for data files
+            - Discovered sources use filename (without extension) as logical name
+            - If multiple files have same name, numeric suffixes are added
+            - Case directory is created if it doesn't exist
+            - No pipeline definition needed - just run the plugin
         """
         config_overrides = config_overrides or {}
 
