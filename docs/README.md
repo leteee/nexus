@@ -4,321 +4,270 @@ Welcome to Nexus - A modern, functional data processing framework.
 
 ---
 
-## 📚 Documentation Index
+## 📚 Documentation Guide
 
-### Getting Started
-
-- **[Main README](../README.md)** - Installation, quick start, basic usage
-- **[Feature Guide](features.md)** - Complete feature overview and capabilities
-- **[CLI Reference](cli-reference.md)** - All CLI commands and options
-- **[Example Cases](../cases/README.md)** - Ready-to-run examples
-
-### Architecture & Design
-
-- **[Architecture](architecture.md)** - Framework design, principles, and internals
-- **[Configuration Best Practices](configuration-best-practices.md)** - Advanced configuration patterns
+This guide helps you find the right documentation for your needs. Each document has a clear purpose and target audience.
 
 ---
 
-## 🚀 Quick Start
+## 🎯 By Role
 
-### 1. Installation
-```bash
-pip install -e .
-```
+### For New Users
+Start here if you're new to Nexus:
 
-### 2. Run Example
-```bash
-nexus run --case quickstart
-```
+1. **[Main README](../README.md)** - Installation, quick start, first examples
+2. **[Example Cases](../cases/README.md)** - Ready-to-run examples to learn from
+3. **[CLI Reference](cli-reference.md)** - Learn the basic commands
+4. **[Execution Flows](execution-flows.md)** - Understand how Nexus works with diagrams
 
-### 3. List Plugins
-```bash
-nexus list plugins
-```
+### For Pipeline Developers
+Building data pipelines with Nexus:
+
+1. **[Feature Guide](features.md)** - Complete feature overview and capabilities
+2. **[Execution Flows](execution-flows.md)** - Detailed execution flow diagrams
+3. **[Configuration Best Practices](configuration-best-practices.md)** - Advanced configuration patterns
+4. **[CLI Reference](cli-reference.md)** - All commands and options
+5. **[Example Cases](../cases/README.md)** - Real-world pipeline examples
+
+### For Framework Developers
+Extending or contributing to Nexus:
+
+1. **[Architecture](architecture.md)** - Framework design, principles, and internals
+2. **[Execution Flows](execution-flows.md)** - Detailed sequence diagrams
+3. **[Feature Guide](features.md)** - Plugin system and extensibility points
+4. **[Configuration Best Practices](configuration-best-practices.md)** - Configuration system deep dive
 
 ---
 
-## 📖 Documentation by Task
+## 📖 By Document
+
+### 📘 [Main README](../README.md)
+**Purpose**: Getting started guide
+**Audience**: New users
+**Content**:
+- Installation instructions
+- Quick start tutorial
+- Basic usage examples
+- Project overview
+
+**When to use**: You're installing Nexus for the first time or need a quick refresher.
+
+---
+
+### 📗 [Feature Guide](features.md)
+**Purpose**: Comprehensive feature documentation
+**Audience**: Pipeline developers
+**Content**:
+- Plugin system overview
+- Configuration management
+- Data handling features
+- Template system
+- Case management
+- All framework capabilities
+
+**When to use**: You need to understand what Nexus can do and how to use specific features.
+
+---
+
+### 📙 [CLI Reference](cli-reference.md)
+**Purpose**: Command-line interface documentation
+**Audience**: All users
+**Content**:
+- Complete command reference
+- All options and flags
+- Usage examples for each command
+- Command patterns and conventions
+
+**When to use**: You need syntax help for CLI commands or want to discover available options.
+
+---
+
+### 📕 [Execution Flows](execution-flows.md)
+**Purpose**: Visual execution flow documentation
+**Audience**: Pipeline developers, framework developers
+**Content**:
+- Sequence diagrams for single plugin execution
+- Sequence diagrams for full pipeline execution
+- Configuration resolution flow
+- Data flow diagrams
+- Error handling flows
+
+**When to use**: You need to understand how Nexus executes pipelines internally, or you're debugging execution issues.
+
+---
+
+### 📓 [Configuration Best Practices](configuration-best-practices.md)
+**Purpose**: Advanced configuration patterns and practices
+**Audience**: Experienced pipeline developers
+**Content**:
+- Configuration hierarchy in depth
+- Plugin configuration patterns
+- Environment-specific configurations
+- Security best practices
+- Performance optimization
+- Reusable configuration strategies
+
+**When to use**: You're building complex pipelines and need advanced configuration techniques.
+
+---
+
+### 📔 [Architecture](architecture.md)
+**Purpose**: Framework design and internals
+**Audience**: Framework developers, contributors
+**Content**:
+- Design philosophy and principles
+- Component architecture
+- Design patterns used
+- Type safety approach
+- Performance considerations
+- Security design
+- Testing strategy
+
+**When to use**: You want to understand Nexus internals, extend the framework, or contribute to development.
+
+---
+
+### 📒 [Example Cases](../cases/README.md)
+**Purpose**: Ready-to-run example pipelines
+**Audience**: All users
+**Content**:
+- Quickstart example
+- Pipeline flow example
+- Multi-output example
+- Hybrid paths example
+- Complete case configurations
+- Expected outputs
+
+**When to use**: You want to see working examples or need a starting point for your own pipeline.
+
+---
+
+## 🔍 By Topic
+
+### Installation & Setup
+- [Main README → Installation](../README.md#installation)
+- [Main README → Quick Start](../README.md#quick-start)
 
 ### Running Pipelines
+- [CLI Reference → nexus run](cli-reference.md#nexus-run)
+- [Execution Flows → Full Pipeline Execution](execution-flows.md#full-pipeline-execution)
+- [Example Cases](../cases/README.md)
 
-**Goal**: Execute data pipelines
-
-1. **[CLI Reference → nexus run](cli-reference.md#nexus-run)** - Command syntax
-2. **[Example Cases](../cases/README.md)** - Ready-to-run examples
-3. **[Feature Guide → Pipeline Execution](features.md#pipeline-execution)** - How pipelines work
-
-### Using Plugins
-
-**Goal**: Execute individual plugins
-
-1. **[CLI Reference → nexus plugin](cli-reference.md#nexus-plugin)** - Command syntax
-2. **[Feature Guide → Built-in Plugins](features.md#built-in-plugins)** - Available plugins
-3. **[Feature Guide → Smart Discovery](features.md#4-smart-data-discovery-)** - Auto data discovery
+### Running Individual Plugins
+- [CLI Reference → nexus plugin](cli-reference.md#nexus-plugin)
+- [Execution Flows → Single Plugin Execution](execution-flows.md#single-plugin-execution)
 
 ### Configuration
+- [Feature Guide → Configuration Management](features.md#configuration-management)
+- [Configuration Best Practices](configuration-best-practices.md)
+- [Execution Flows → Configuration Resolution](execution-flows.md#configuration-resolution)
 
-**Goal**: Configure pipelines and plugins
+### Plugin Development
+- [Feature Guide → Plugin System](features.md#plugin-system)
+- [Architecture → Plugin System](architecture.md#3-plugin-system)
+- [Configuration Best Practices → Plugin Configuration](configuration-best-practices.md#plugin-configuration-patterns)
 
-1. **[Feature Guide → Configuration System](features.md#configuration-system)** - Overview
-2. **[Configuration Best Practices](configuration-best-practices.md)** - Patterns and tips
-3. **[Feature Guide → Path Resolution](features.md#path-resolution)** - Path strategies
+### Data Handling
+- [Feature Guide → Data Management](features.md#data-management)
+- [Architecture → Data Management](architecture.md#4-data-management)
+- [Execution Flows → Data Flow](execution-flows.md#data-flow)
 
-### Development
+### Templates & Cases
+- [Feature Guide → Templates](features.md#templates)
+- [CLI Reference → nexus init](cli-reference.md#nexus-init)
+- [Example Cases](../cases/README.md)
 
-**Goal**: Create custom plugins
-
-1. **[Feature Guide → Custom Plugins](features.md#custom-plugins)** - Plugin development
-2. **[Architecture](architecture.md)** - Framework internals
-3. **[Feature Guide → Custom Handlers](features.md#custom-data-handlers)** - Extend I/O
-
----
-
-## 🎯 Core Concepts
-
-### Hybrid Path Resolution ⭐
-
-Three ways to reference data:
-
-```yaml
-"@customer_master"    # Explicit logical name (recommended)
-"customer_master"     # Implicit logical name (auto-detected)
-"data/file.csv"       # Direct path
-```
-
-**Learn more**: [Feature Guide → Path Resolution](features.md#path-resolution)
+### Troubleshooting
+- [Execution Flows → Error Handling Flow](execution-flows.md#error-handling-flow)
+- [Configuration Best Practices → Debugging](configuration-best-practices.md#debugging-configuration-issues)
 
 ---
 
-### Automatic I/O Handling 🔄
+## 🚀 Quick Start Paths
 
-Framework automatically loads inputs and saves outputs:
+### "I want to run my first pipeline"
+1. [Main README → Installation](../README.md#installation)
+2. [Main README → Quick Start](../README.md#quick-start)
+3. [Example Cases → Quickstart](../cases/README.md#quickstart)
 
-```python
-class MyConfig(PluginConfig):
-    input_data: Annotated[str, DataSource(...)] = "input.csv"
-    output_data: Annotated[str, DataSink(...)] = "output.parquet"
+### "I want to build a custom pipeline"
+1. [Feature Guide](features.md)
+2. [CLI Reference → nexus init](cli-reference.md#nexus-init)
+3. [Configuration Best Practices](configuration-best-practices.md)
+4. [Example Cases](../cases/README.md)
 
-@plugin(name="My Plugin", config=MyConfig)
-def my_plugin(ctx):
-    df = ctx.datahub.get("input_data")  # Auto-loaded
-    return df.processed()                # Auto-saved
-```
+### "I want to develop a plugin"
+1. [Feature Guide → Plugin System](features.md#plugin-system)
+2. [Architecture → Plugin System](architecture.md#3-plugin-system)
+3. [Configuration Best Practices → Plugin Configuration](configuration-best-practices.md#plugin-configuration-patterns)
 
-**Learn more**: [Feature Guide → Automatic I/O](features.md#2-automatic-io-handling-)
+### "I want to understand how it works"
+1. [Architecture](architecture.md)
+2. [Execution Flows](execution-flows.md)
+3. [Feature Guide](features.md)
 
----
-
-### Configuration Hierarchy 📊
-
-Precedence: **CLI > Case > Global > Plugin Defaults**
-
-```bash
-nexus run -c my-case -C num_rows=5000
-#                    ↑ Overrides everything
-```
-
-**Learn more**: [Feature Guide → Configuration](features.md#hierarchical-configuration)
+### "I want to contribute to Nexus"
+1. [Architecture](architecture.md)
+2. [Execution Flows](execution-flows.md)
+3. [Main README → Development](../README.md#development)
 
 ---
 
-## 📋 CLI Command Reference
+## 📋 Documentation Principles
 
-### nexus run
-Execute complete pipeline from `case.yaml`
+Our documentation follows these principles:
 
-```bash
-nexus run --case CASE [--config key=value]
-```
+### 1. **Clear Separation of Concerns**
+Each document has a single, well-defined purpose. No overlap or duplication.
 
-### nexus plugin
-Execute single plugin with auto-discovery
+### 2. **Progressive Disclosure**
+Start simple, provide paths to deeper knowledge. Beginners aren't overwhelmed, experts can dive deep.
 
-```bash
-nexus plugin "PLUGIN_NAME" --case CASE [--config key=value]
-```
+### 3. **Task-Oriented**
+Organized by what you want to accomplish, not by implementation details.
 
-### nexus list
-List resources (plugins, cases, templates)
+### 4. **Visual When Helpful**
+Sequence diagrams, flowcharts, and examples make complex concepts clear.
 
-```bash
-nexus list [plugins|cases|templates]
-```
+### 5. **Practical Examples**
+Every concept includes working code examples you can run.
 
-**Full Reference**: [CLI Reference](cli-reference.md)
+### 6. **Consistent Structure**
+Similar documents follow similar patterns for easy navigation.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🆘 Need Help?
 
-### Core Components
+### Can't find what you need?
+1. Check the [topic index](#by-topic) above
+2. Use your browser's search function (Ctrl+F / Cmd+F)
+3. Browse the [example cases](../cases/README.md)
 
-| Component | Purpose |
-|-----------|---------|
-| **PipelineEngine** | Orchestrates pipeline execution |
-| **DataHub** | Manages data with lazy loading & caching |
-| **Plugin System** | Decorator-based plugin registration |
-| **Config System** | Hierarchical configuration merging |
-
-**Learn more**: [Architecture](architecture.md)
-
----
-
-### Design Principles
-
-- ✅ **Immutability** - Frozen contexts prevent side effects
-- ✅ **Functional** - Pure functions with caching
-- ✅ **Type Safety** - Comprehensive type hints + runtime validation
-- ✅ **Declarative** - YAML configuration + Python annotations
-
-**Learn more**: [Architecture → Design Philosophy](architecture.md#design-philosophy)
+### Found an issue?
+- Documentation bugs: Open an issue
+- Suggestions: Submit a pull request
+- Questions: Check existing issues or create a new one
 
 ---
 
-## 📦 Built-in Features
+## 📈 Documentation Map
 
-### Data Management
-- ✅ Multiple format support (CSV, JSON, Parquet, Excel, XML)
-- ✅ Lazy loading with automatic caching
-- ✅ Type validation
-- ✅ Custom handler extensibility
-
-### Plugin System
-- ✅ Auto-discovery and registration
-- ✅ Type-safe configuration (Pydantic)
-- ✅ Single and multi-output support
-- ✅ Immutable execution context
-
-### Path Resolution
-- ✅ Explicit logical names (`@name`)
-- ✅ Implicit logical names (`name`)
-- ✅ Direct paths (`path/file`)
-- ✅ Global data source registry
-
-**Full Feature List**: [Feature Guide](features.md)
-
----
-
-## 🎓 Learning Path
-
-### Beginner (30 minutes)
-
-1. Read [Main README](../README.md) - Installation & basics
-2. Run `nexus run --case quickstart` - First pipeline
-3. Explore [Example Cases](../cases/README.md) - Learn by example
-4. Try `nexus plugin "Data Generator" -c test` - Single plugin
-
-### Intermediate (1 hour)
-
-1. Study [Feature Guide](features.md) - All capabilities
-2. Read [CLI Reference](cli-reference.md) - All commands
-3. Practice with `hybrid-paths` case - Path strategies
-4. Practice with `pipeline-flow` case - Multi-step pipelines
-
-### Advanced (2 hours)
-
-1. Read [Architecture](architecture.md) - Framework internals
-2. Study [Configuration Best Practices](configuration-best-practices.md) - Advanced patterns
-3. Create custom plugin - [Feature Guide → Custom Plugins](features.md#custom-plugins)
-4. Extend with custom handler - [Feature Guide → Custom Handlers](features.md#custom-data-handlers)
-
----
-
-## 💡 Quick Tips
-
-### Run Pipeline
-```bash
-nexus run --case quickstart
 ```
-
-### Generate Test Data
-```bash
-nexus plugin "Data Generator" -c test -C num_rows=1000
-```
-
-### Override Configuration
-```bash
-nexus run -c my-case -C num_rows=5000 -C output_data=data/custom.csv
-```
-
-### List Everything
-```bash
-nexus list plugins
-nexus list cases
-nexus list templates
-```
-
-### Verbose Logging
-```bash
-nexus run -c my-case -v
+nexus/
+├── README.md                          # Installation & Quick Start
+├── docs/
+│   ├── README.md                      # This file - Documentation guide
+│   ├── features.md                    # Complete feature reference
+│   ├── cli-reference.md               # CLI command reference
+│   ├── execution-flows.md             # Execution flow diagrams (NEW!)
+│   ├── configuration-best-practices.md # Advanced configuration
+│   └── architecture.md                # Framework internals
+└── cases/
+    └── README.md                      # Example pipelines
 ```
 
 ---
 
-## 🔗 External Resources
-
-- **GitHub**: [Project Repository](https://github.com/your-org/nexus)
-- **Issues**: [Report Bugs](https://github.com/your-org/nexus/issues)
-- **Discussions**: [Community Forum](https://github.com/your-org/nexus/discussions)
-
----
-
-## 📄 Document Reference
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [Main README](../README.md) | Installation & quick start | Everyone |
-| [Feature Guide](features.md) | Complete feature overview | Users |
-| [CLI Reference](cli-reference.md) | CLI command reference | Users |
-| [Example Cases](../cases/README.md) | Working examples | Users |
-| [Configuration Best Practices](configuration-best-practices.md) | Advanced config patterns | Advanced Users |
-| [Architecture](architecture.md) | Framework internals | Developers |
-
----
-
-## 🆘 Getting Help
-
-### Common Questions
-
-**Q: How do I run my first pipeline?**
-```bash
-nexus run --case quickstart
-```
-
-**Q: How do I create a plugin?**
-See [Feature Guide → Custom Plugins](features.md#custom-plugins)
-
-**Q: How does path resolution work?**
-See [Feature Guide → Path Resolution](features.md#path-resolution)
-
-**Q: How do I override configuration?**
-See [CLI Reference → Configuration Overrides](cli-reference.md#configuration-overrides)
-
-### Need Help?
-
-1. Check [CLI Reference](cli-reference.md) for command syntax
-2. Browse [Example Cases](../cases/README.md) for patterns
-3. Read [Feature Guide](features.md) for capabilities
-4. Open an [Issue](https://github.com/your-org/nexus/issues) if stuck
-
----
-
-## 📝 Contributing
-
-To contribute documentation:
-
-1. **Keep it current** - Test all examples
-2. **Be clear** - Use simple language
-3. **Show examples** - Code speaks louder
-4. **Cross-reference** - Link related concepts
-5. **Update index** - Add new docs here
-
----
-
-## Version
-
-**Documentation Version**: 0.2.0
-**Last Updated**: 2025-01-05
-
-*This documentation reflects the latest framework capabilities including the hybrid path resolution system.*
+**Last Updated**: 2025-01-XX
+**Version**: 1.0.0

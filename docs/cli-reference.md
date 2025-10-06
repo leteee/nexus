@@ -12,6 +12,9 @@ Complete reference for all Nexus CLI commands.
   - [nexus run](#nexus-run)
   - [nexus plugin](#nexus-plugin)
   - [nexus list](#nexus-list)
+  - [nexus init](#nexus-init)
+  - [nexus validate](#nexus-validate)
+  - [nexus doc](#nexus-doc)
   - [nexus help](#nexus-help)
 - [Configuration Overrides](#configuration-overrides)
 - [Examples](#examples)
@@ -232,6 +235,104 @@ Available Cases:
   hybrid-paths       → D:\Projects\nexus\cases\hybrid-paths
   pipeline-flow      → D:\Projects\nexus\cases\pipeline-flow
   multi-output       → D:\Projects\nexus\cases\multi-output
+```
+
+---
+
+### `nexus doc`
+
+**Purpose**: Generate comprehensive documentation for plugins.
+
+#### Synopsis
+```bash
+nexus doc [OPTIONS]
+```
+
+#### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--plugin` | TEXT | Generate documentation for specific plugin |
+| `--output` | PATH | Output file path (default: stdout) |
+| `--format` | CHOICE | Output format: `markdown`, `rst`, or `json` (default: `markdown`) |
+| `--all` | FLAG | Generate documentation for all discovered plugins |
+
+#### Features
+
+- **Auto-Discovery**: Automatically discovers and documents all registered plugins
+- **Multiple Formats**: Export as Markdown, reStructuredText, or JSON
+- **Comprehensive**: Includes configuration, signatures, data sources/sinks
+- **Examples**: Auto-generates usage examples for CLI and Python API
+
+#### Examples
+
+```bash
+# Document a specific plugin (output to stdout)
+nexus doc --plugin "Data Generator"
+
+# Save documentation to file
+nexus doc --plugin "Data Generator" --output docs/plugins/generator.md
+
+# Generate documentation for all plugins (separate files)
+nexus doc --all --output docs/plugins/
+
+# Generate JSON documentation for API consumption
+nexus doc --plugin "My Plugin" --format json --output plugin-spec.json
+
+# Generate reStructuredText for Sphinx
+nexus doc --plugin "Data Processor" --format rst --output plugin.rst
+```
+
+#### Output Structure (Markdown)
+
+Generated documentation includes:
+- **Plugin Name and Description**
+- **Overview** (from docstring)
+- **Configuration Table** (parameters, types, defaults, descriptions)
+- **Function Signature**
+- **Data Sources** (required inputs)
+- **Data Sinks** (expected outputs)
+- **Usage Examples** (CLI and Python API)
+
+Example output:
+```markdown
+# Data Generator
+
+**Description**: Generate synthetic datasets for testing
+
+## Overview
+
+Generates random data based on configuration parameters...
+
+## Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `num_rows` | `int` | 100 | Number of rows to generate |
+| `seed` | `int` | *(required)* | Random seed for reproducibility |
+
+## Function Signature
+
+\`\`\`python
+def generate_synthetic_data(config: DataGeneratorConfig, logger) -> pd.DataFrame:
+    ...
+\`\`\`
+
+## Usage Example
+
+### CLI
+\`\`\`bash
+nexus plugin "Data Generator" --case mycase
+nexus plugin "Data Generator" --case mycase --config num_rows=1000
+\`\`\`
+
+### Python API
+\`\`\`python
+from nexus import create_engine
+
+engine = create_engine("mycase")
+result = engine.run_single_plugin("Data Generator")
+\`\`\`
 ```
 
 ---

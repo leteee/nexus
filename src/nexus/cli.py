@@ -8,6 +8,7 @@ Clear, focused commands with simple logic:
 - nexus help [--plugin <plugin>]
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -256,6 +257,286 @@ def list(what: str):
     except Exception as e:
         click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
+
+
+@cli.command()
+@click.option("--plugin", help="Generate docs for specific plugin")
+@click.option(
+    "--output",
+    type=click.Path(),
+    help="Output file path (default: stdout or docs/plugins/<name>.md)",
+)
+@click.option(
+    "--format",
+    type=click.Choice(["markdown", "rst", "json"]),
+    default="markdown",
+    help="Output format",
+)
+@click.option("--all", is_flag=True, help="Generate docs for all plugins")
+def doc(plugin: Optional[str], output: Optional[str], format: str, all: bool):
+    """Generate documentation for plugins.
+
+    Examples:
+        nexus doc --plugin "Data Generator"
+        nexus doc --plugin "Data Generator" --output docs/generator.md
+        nexus doc --all --output docs/plugins/
+        nexus doc --plugin "My Plugin" --format json
+    """
+    from pathlib import Path
+
+    try:
+        plugins_to_document = []
+
+        if all:
+            # Get all plugins
+            all_plugins = list_plugins()
+            plugins_to_document = list(all_plugins.keys())
+        elif plugin:
+            # Get specific plugin
+            plugins_to_document = [plugin]
+        else:
+            click.echo("Error: Must specify --plugin <name> or --all", err=True)
+            sys.exit(1)
+
+        for plugin_name in plugins_to_document:
+            try:
+                plugin_spec = get_plugin(plugin_name)
+
+                # Generate documentation based on format
+                if format == "markdown":
+                    doc_content = _generate_markdown_doc(plugin_name, plugin_spec)
+                elif format == "rst":
+                    doc_content = _generate_rst_doc(plugin_name, plugin_spec)
+                elif format == "json":
+                    doc_content = _generate_json_doc(plugin_name, plugin_spec)
+                else:
+                    doc_content = _generate_markdown_doc(plugin_name, plugin_spec)
+
+                # Determine output destination
+                if output:
+                    output_path = Path(output)
+                    if all and output_path.is_dir():
+                        # Generate separate file for each plugin
+                        safe_name = (
+                            plugin_name.replace(" ", "_").replace("/", "_").lower()
+                        )
+                        ext = (
+                            "md"
+                            if format == "markdown"
+                            else "rst" if format == "rst" else "json"
+                        )
+                        file_path = output_path / f"{safe_name}.{ext}"
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        file_path.write_text(doc_content, encoding="utf-8")
+                        click.echo(f"✓ Generated documentation: {file_path}")
+                    else:
+                        # Single output file
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        if all:
+                            # Append to file
+                            with output_path.open("a", encoding="utf-8") as f:
+                                f.write(doc_content)
+                                f.write("\n\n---\n\n")
+                        else:
+                            output_path.write_text(doc_content, encoding="utf-8")
+                        click.echo(f"✓ Generated documentation: {output_path}")
+                else:
+                    # Output to stdout
+                    click.echo(doc_content)
+                    if all and plugin_name != plugins_to_document[-1]:
+                        click.echo("\n\n---\n\n")
+
+            except Exception as e:
+                click.echo(f"✗ Error documenting plugin '{plugin_name}': {e}", err=True)
+                if not all:
+                    sys.exit(1)
+
+        if all:
+            click.echo(
+                f"\n✓ Generated documentation for {len(plugins_to_document)} plugins"
+            )
+
+    except Exception as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+
+
+def _generate_markdown_doc(plugin_name: str, plugin_spec) -> str:
+    """Generate markdown documentation for a plugin."""
+    import inspect
+
+    lines = []
+    lines.append(f"# {plugin_name}")
+    lines.append("")
+
+    # Description
+    if plugin_spec.description:
+        lines.append(f"**Description**: {plugin_spec.description}")
+        lines.append("")
+
+    # Function docstring
+    if plugin_spec.func.__doc__:
+        lines.append("## Overview")
+        lines.append("")
+        lines.append(plugin_spec.func.__doc__.strip())
+        lines.append("")
+
+    # Configuration
+    if plugin_spec.config_model:
+        lines.append("## Configuration")
+        lines.append("")
+        lines.append("| Parameter | Type | Default | Description |")
+        lines.append("|-----------|------|---------|-------------|")
+
+        for field_name, field_info in plugin_spec.config_model.model_fields.items():
+            field_type = (
+                field_info.annotation.__name__
+                if hasattr(field_info.annotation, "__name__")
+                else str(field_info.annotation)
+            )
+            default = (
+                field_info.default if field_info.default is not None else "*(required)*"
+            )
+            description = field_info.description or ""
+            lines.append(
+                f"| `{field_name}` | `{field_type}` | {default} | {description} |"
+            )
+
+        lines.append("")
+
+    # Function signature
+    lines.append("## Function Signature")
+    lines.append("")
+    try:
+        sig = inspect.signature(plugin_spec.func)
+        lines.append("```python")
+        lines.append(f"def {plugin_spec.func.__name__}{sig}:")
+        lines.append("    ...")
+        lines.append("```")
+        lines.append("")
+    except Exception:
+        pass
+
+    # Data sources (if any)
+    if hasattr(plugin_spec.func, "__data_sources__"):
+        lines.append("## Data Sources")
+        lines.append("")
+        for source in plugin_spec.func.__data_sources__:
+            lines.append(f"- `{source}`")
+        lines.append("")
+
+    # Data sinks (if any)
+    if hasattr(plugin_spec.func, "__data_sinks__"):
+        lines.append("## Data Sinks")
+        lines.append("")
+        for sink in plugin_spec.func.__data_sinks__:
+            lines.append(f"- `{sink}`")
+        lines.append("")
+
+    # Usage example
+    lines.append("## Usage Example")
+    lines.append("")
+    lines.append("### CLI")
+    lines.append("```bash")
+    lines.append(f'nexus plugin "{plugin_name}" --case mycase')
+    if plugin_spec.config_model:
+        # Show example config
+        first_field = next(iter(plugin_spec.config_model.model_fields.keys()), None)
+        if first_field:
+            lines.append(
+                f'nexus plugin "{plugin_name}" --case mycase --config {first_field}=value'
+            )
+    lines.append("```")
+    lines.append("")
+
+    lines.append("### Python API")
+    lines.append("```python")
+    lines.append("from nexus import create_engine")
+    lines.append("")
+    lines.append('engine = create_engine("mycase")')
+    lines.append(f'result = engine.run_single_plugin("{plugin_name}")')
+    lines.append("```")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _generate_rst_doc(plugin_name: str, plugin_spec) -> str:
+    """Generate reStructuredText documentation for a plugin."""
+    lines = []
+    lines.append(plugin_name)
+    lines.append("=" * len(plugin_name))
+    lines.append("")
+
+    if plugin_spec.description:
+        lines.append(plugin_spec.description)
+        lines.append("")
+
+    if plugin_spec.func.__doc__:
+        lines.append(plugin_spec.func.__doc__.strip())
+        lines.append("")
+
+    if plugin_spec.config_model:
+        lines.append("Configuration")
+        lines.append("-" * 13)
+        lines.append("")
+        for field_name, field_info in plugin_spec.config_model.model_fields.items():
+            field_type = (
+                field_info.annotation.__name__
+                if hasattr(field_info.annotation, "__name__")
+                else str(field_info.annotation)
+            )
+            default = (
+                field_info.default if field_info.default is not None else "*(required)*"
+            )
+            description = field_info.description or ""
+            lines.append(
+                f":{field_name}: ({field_type}) {description}. Default: {default}"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _generate_json_doc(plugin_name: str, plugin_spec) -> str:
+    """Generate JSON documentation for a plugin."""
+    import inspect
+    import json as json_module
+
+    doc_data = {
+        "name": plugin_name,
+        "description": plugin_spec.description or "",
+        "docstring": (
+            plugin_spec.func.__doc__.strip() if plugin_spec.func.__doc__ else ""
+        ),
+        "configuration": {},
+        "data_sources": getattr(plugin_spec.func, "__data_sources__", []),
+        "data_sinks": getattr(plugin_spec.func, "__data_sinks__", []),
+    }
+
+    if plugin_spec.config_model:
+        for field_name, field_info in plugin_spec.config_model.model_fields.items():
+            field_type = (
+                field_info.annotation.__name__
+                if hasattr(field_info.annotation, "__name__")
+                else str(field_info.annotation)
+            )
+            doc_data["configuration"][field_name] = {
+                "type": field_type,
+                "default": (
+                    str(field_info.default) if field_info.default is not None else None
+                ),
+                "required": field_info.is_required(),
+                "description": field_info.description or "",
+            }
+
+    try:
+        sig = inspect.signature(plugin_spec.func)
+        doc_data["signature"] = str(sig)
+    except Exception:
+        pass
+
+    return json_module.dumps(doc_data, indent=2)
 
 
 @cli.command()
