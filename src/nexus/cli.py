@@ -388,10 +388,8 @@ def ensure_plugins_discovered(project_root: Path) -> None:
 @cli.command()
 @click.option("--output", type=click.Path(), default="docs/api", help="Output directory (default: docs/api)")
 @click.option("--format", type=click.Choice(["markdown", "rst", "json"]), default="markdown", help="Output format")
-@click.option("--plugins-only", is_flag=True, help="Only generate plugin documentation")
-@click.option("--handlers-only", is_flag=True, help="Only generate handler documentation")
 @click.option("--force", "-f", is_flag=True, help="Force overwrite without confirmation")
-def doc(output: str, format: str, plugins_only: bool, handlers_only: bool, force: bool):
+def doc(output: str, format: str, force: bool):
     """
     Generate API documentation for all plugins and handlers.
 
@@ -417,12 +415,6 @@ def doc(output: str, format: str, plugins_only: bool, handlers_only: bool, force
         # Force overwrite without confirmation
         nexus doc --force
 
-        # Only plugins
-        nexus doc --plugins-only
-
-        # Only handlers
-        nexus doc --handlers-only
-
         # Custom output directory
         nexus doc --output docs/reference
 
@@ -443,30 +435,27 @@ def doc(output: str, format: str, plugins_only: bool, handlers_only: bool, force
         all_plugins = list_plugins()
         all_handlers = HANDLER_REGISTRY.copy()
 
-        # Determine what to generate
-        generate_plugins = not handlers_only
-        generate_handlers = not plugins_only
-
         # Calculate files that will be created/overwritten
         files_to_create = []
 
-        if generate_plugins:
-            plugins_dir = output_path / "plugins"
-            for plugin_name in all_plugins.keys():
-                safe_name = plugin_name.replace(" ", "_").replace("/", "_").lower()
-                ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
-                file_path = plugins_dir / f"{safe_name}.{ext}"
-                files_to_create.append(file_path)
-            files_to_create.append(plugins_dir / "README.md")
+        # Plugin files
+        plugins_dir = output_path / "plugins"
+        for plugin_name in all_plugins.keys():
+            safe_name = plugin_name.replace(" ", "_").replace("/", "_").lower()
+            ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+            file_path = plugins_dir / f"{safe_name}.{ext}"
+            files_to_create.append(file_path)
+        files_to_create.append(plugins_dir / "README.md")
 
-        if generate_handlers:
-            handlers_dir = output_path / "handlers"
-            for handler_name in all_handlers.keys():
-                ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
-                file_path = handlers_dir / f"{handler_name}.{ext}"
-                files_to_create.append(file_path)
-            files_to_create.append(handlers_dir / "README.md")
+        # Handler files
+        handlers_dir = output_path / "handlers"
+        for handler_name in all_handlers.keys():
+            ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+            file_path = handlers_dir / f"{handler_name}.{ext}"
+            files_to_create.append(file_path)
+        files_to_create.append(handlers_dir / "README.md")
 
+        # Main index
         files_to_create.append(output_path / "README.md")
 
         # Check for existing files
@@ -485,22 +474,19 @@ def doc(output: str, format: str, plugins_only: bool, handlers_only: bool, force
                 return
 
         # Generate plugin documentation
-        if generate_plugins:
-            click.echo(f"Generating documentation for {len(all_plugins)} plugins...")
-            _generate_all_plugin_docs(all_plugins, output_path / "plugins", format)
+        click.echo(f"Generating documentation for {len(all_plugins)} plugins...")
+        _generate_all_plugin_docs(all_plugins, output_path / "plugins", format)
 
         # Generate handler documentation
-        if generate_handlers:
-            click.echo(f"Generating documentation for {len(all_handlers)} handlers...")
-            _generate_all_handler_docs(all_handlers, output_path / "handlers", format)
+        click.echo(f"Generating documentation for {len(all_handlers)} handlers...")
+        _generate_all_handler_docs(all_handlers, output_path / "handlers", format)
 
         # Generate index
-        _generate_api_index(output_path, all_plugins if generate_plugins else {},
-                           all_handlers if generate_handlers else {})
+        _generate_api_index(output_path, all_plugins, all_handlers)
 
         click.echo(f"\nSUCCESS: API documentation generated in {output_path}/")
-        click.echo(f"  Plugins: {len(all_plugins) if generate_plugins else 0}")
-        click.echo(f"  Handlers: {len(all_handlers) if generate_handlers else 0}")
+        click.echo(f"  Plugins: {len(all_plugins)}")
+        click.echo(f"  Handlers: {len(all_handlers)}")
 
     except Exception as e:
         click.echo(f"ERROR: {e}", err=True)
