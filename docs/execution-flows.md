@@ -99,18 +99,19 @@ sequenceDiagram
 2. **Configuration Loading**
    - Check if case.yaml exists
    - If yes: Load case configuration
-   - If no: Auto-discover data files in case directory
-   - Create minimal configuration for single execution
+   - If no: Auto-discover data files in case directory, create minimal config
+   - Load global.yaml for default plugin configurations
 
 3. **Configuration Resolution**
-   - Load global.yaml
-   - Load case.yaml (if exists)
+   - Load global.yaml (provides plugin behavior defaults)
+   - Load case.yaml (if exists, or use auto-discovered config)
    - Apply CLI overrides
-   - Merge with hierarchy: CLI > Case > Global > Plugin Defaults
+   - Merge with hierarchy: CLI > Case > Template > Global > Plugin Defaults
 
 4. **DataHub Setup**
    - Create DataHub instance
-   - Register all data sources from configuration
+   - Register global data sources (if any defined in configuration)
+   - Plugin I/O paths registered automatically from DataSource/DataSink annotations
    - Set up lazy loading for data files
 
 5. **Plugin Configuration**
@@ -134,8 +135,8 @@ sequenceDiagram
    - Plugin returns result
 
 8. **Output Handling**
-   - Check if plugin has data_sinks annotation
-   - If yes: Save results to specified sinks via DataHub
+   - Check plugin config for DataSink annotated fields
+   - If yes: Save results to specified paths via DataHub
    - Log execution summary
 
 ---
@@ -320,12 +321,17 @@ sequenceDiagram
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
-│      3. Global Configuration        │
+│      3. Template Configuration      │
+│      templates/*.yaml               │
+└─────────────────────────────────────┘
+              ↓ Overrides
+┌─────────────────────────────────────┐
+│      4. Global Configuration        │
 │      config/global.yaml             │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
-│      4. Plugin Defaults             │  Lowest Priority
+│      5. Plugin Defaults             │  Lowest Priority
 │      From PluginConfig class        │
 └─────────────────────────────────────┘
 ```

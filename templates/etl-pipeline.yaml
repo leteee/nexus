@@ -1,5 +1,8 @@
 # ETL Pipeline Template
 # Complete Extract-Transform-Load pipeline for data processing
+#
+# Usage:
+#   nexus run --case my-case --template etl-pipeline
 
 case_info:
   name: "ETL Data Pipeline"
@@ -8,84 +11,70 @@ case_info:
   version: "1.0.0"
 
 pipeline:
-  # Extract Phase
+  # Extract Phase - Generate synthetic data
   - plugin: "Data Generator"
     config:
+      # I/O configuration
+      output_data: "data/01_raw/extract_data.csv"
+
+      # Behavior configuration
       num_rows: 5000
       num_categories: 5
       noise_level: 0.15
-    outputs:
-      - name: "raw_data"
+      random_seed: 123
 
   # Initial Validation
   - plugin: "Data Validator"
     config:
+      # I/O configuration
+      input_data: "data/01_raw/extract_data.csv"
+      output_report: "reports/01_extraction_validation.json"
+
+      # Behavior configuration
       required_columns: ["id", "category", "value", "score"]
       min_rows: 1000
       max_null_percentage: 0.05
-    outputs:
-      - name: "extraction_validation"
 
-  # Transform Phase
+  # Transform Phase - Clean data
   - plugin: "Data Cleaner"
     config:
+      # I/O configuration
+      input_data: "data/01_raw/extract_data.csv"
+      output_data: "data/02_intermediate/cleaned_data.csv"
+
+      # Behavior configuration
       remove_outliers: true
       outlier_threshold: 3.0
       fill_missing: true
       missing_strategy: "mean"
-    outputs:
-      - name: "cleaned_data"
 
+  # Transform Phase - Feature engineering
   - plugin: "Data Transformer"
     config:
+      # I/O configuration
+      input_data: "data/02_intermediate/cleaned_data.csv"
+      output_data: "data/03_processed/transformed_data.parquet"
+
+      # Behavior configuration
       normalize_columns: ["value", "score"]
       log_transform_columns: ["value"]
       create_derived_features: true
-    outputs:
-      - name: "transformed_data"
 
-  # Load Phase Validation
+  # Load Phase Validation - Quality check
   - plugin: "Data Quality Checker"
     config:
+      # I/O configuration
+      input_data: "data/03_processed/transformed_data.parquet"
+      output_report: "reports/02_quality_assessment.json"
+
+      # Behavior configuration
       check_duplicates: true
       check_data_types: true
       check_outliers: true
       outlier_threshold: 2.5
-    outputs:
-      - name: "quality_report"
 
-data_sources:
-  raw_data:
-    handler: "csv"
-    path: "data/01_raw/extract_data.csv"
-    must_exist: false
-
-  cleaned_data:
-    handler: "csv"
-    path: "data/02_intermediate/cleaned_data.csv"
-    must_exist: false
-
-  transformed_data:
-    handler: "parquet"
-    path: "data/03_processed/transformed_data.parquet"
-    must_exist: false
-    handler_args:
-      compression: "snappy"
-
-  extraction_validation:
-    handler: "json"
-    path: "reports/01_extraction_validation.json"
-    must_exist: false
-
-  quality_report:
-    handler: "json"
-    path: "reports/02_quality_assessment.json"
-    must_exist: false
-
-plugins:
-  "Data Generator":
-    random_seed: 123
-
-  "Data Transformer":
-    normalize_columns: ["value", "score"]
-    create_derived_features: true
+# Optional: Override plugin defaults at template level
+# (Can be further overridden in case.yaml or via CLI)
+# plugins:
+#   "Data Generator":
+#     random_seed: 42  # Fixed seed for this template

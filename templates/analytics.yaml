@@ -1,5 +1,8 @@
 # Analytics Pipeline Template
 # For data analysis and reporting workflows
+#
+# Usage:
+#   nexus run --case my-case --template analytics
 
 case_info:
   name: "Data Analytics Pipeline"
@@ -11,79 +14,55 @@ pipeline:
   # Data Generation
   - plugin: "Sample Data Generator"
     config:
+      # I/O configuration
+      output_data: "data/raw_sales.csv"
+
+      # Behavior configuration
       dataset_type: "sales"
       size: "large"
-    outputs:
-      - name: "sales_data"
 
   # Data Cleaning
   - plugin: "Data Cleaner"
     config:
+      # I/O configuration
+      input_data: "data/raw_sales.csv"
+      output_data: "data/cleaned_sales.csv"
+
+      # Behavior configuration
       remove_outliers: true
       outlier_threshold: 2.5
       fill_missing: true
       missing_strategy: "median"
-    outputs:
-      - name: "clean_sales_data"
 
   # Feature Engineering
   - plugin: "Data Transformer"
     config:
+      # I/O configuration
+      input_data: "data/cleaned_sales.csv"
+      output_data: "data/featured_sales.parquet"
+
+      # Behavior configuration
       normalize_columns: ["unit_price", "quantity"]
       create_derived_features: true
-    outputs:
-      - name: "featured_sales_data"
 
   # Data Aggregation
   - plugin: "Data Aggregator"
     config:
+      # I/O configuration
+      input_data: "data/featured_sales.parquet"
+      output_data: "reports/product_summary.csv"
+
+      # Behavior configuration
       group_by_column: "product"
       aggregation_method: "mean"
-    outputs:
-      - name: "product_analytics"
 
   # Final Quality Check
   - plugin: "Data Quality Checker"
     config:
+      # I/O configuration
+      input_data: "reports/product_summary.csv"
+      output_report: "reports/analytics_quality.json"
+
+      # Behavior configuration
       check_duplicates: true
       check_outliers: false
-    outputs:
-      - name: "analytics_quality_report"
-
-data_sources:
-  sales_data:
-    handler: "csv"
-    path: "data/raw_sales.csv"
-    must_exist: false
-
-  clean_sales_data:
-    handler: "csv"
-    path: "data/cleaned_sales.csv"
-    must_exist: false
-
-  featured_sales_data:
-    handler: "parquet"
-    path: "data/featured_sales.parquet"
-    must_exist: false
-
-  product_analytics:
-    handler: "csv"
-    path: "reports/product_summary.csv"
-    must_exist: false
-
-  analytics_quality_report:
-    handler: "json"
-    path: "reports/analytics_quality.json"
-    must_exist: false
-
-plugins:
-  "Sample Data Generator":
-    dataset_type: "sales"
-    size: "large"
-
-  "Data Aggregator":
-    group_by_column: "product"
-    aggregation_method: "mean"
-
-  "Data Transformer":
-    create_derived_features: true

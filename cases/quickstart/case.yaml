@@ -1,5 +1,8 @@
 # Quickstart Example
 # The simplest possible Nexus pipeline
+#
+# Usage:
+#   nexus run --case quickstart
 
 case_info:
   name: "Quickstart"
@@ -10,10 +13,10 @@ case_info:
 pipeline:
   - plugin: "Data Generator"
     config:
+      # I/O configuration - where to save the data
+      output_data: "data/synthetic_data.csv"
+
       # Behavior configuration
       num_rows: 1000
       num_categories: 5
       noise_level: 0.1
-
-      # Output configuration (direct path)
-      output_data: "data/synthetic_data.csv"

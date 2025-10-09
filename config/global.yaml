@@ -5,17 +5,14 @@
 # 1. Case-specific configurations (cases/*/case.yaml)
 # 2. CLI arguments (--config key=value)
 #
-# IMPORTANT: Plugin parameters are usually configured in:
-# - Template YAML files (recommended)
-# - Case-specific configurations
-# - CLI overrides
-# This file provides EXAMPLES and fallback defaults only.
+# Configuration Hierarchy (highest to lowest precedence):
+#   CLI overrides > Case config > Global config > Plugin defaults
 # =======================================================================
 
 framework:
   name: "nexus"
   version: "1.0.0"
-  cases_root: "cases"  # Cases 根目录，支持相对路径和绝对路径
+  cases_root: "cases"  # Cases root directory (relative or absolute path)
 
   # Logging configuration
   logging:
@@ -57,10 +54,8 @@ handlers:
   #   - "/opt/shared/handlers"
 
 # Global Plugin Defaults
-# These are EXAMPLES and fallback defaults. In practice, configure plugins in:
-# - Template files (templates/*.yaml) - RECOMMENDED
-# - Case configurations (cases/*/case.yaml)
-# - CLI overrides (--config plugins.PluginName.param=value)
+# These provide fallback defaults when not specified elsewhere
+# IMPORTANT: Configure plugin behavior in templates/cases for actual use
 plugin_defaults:
   # Data Generation Plugins
   "Data Generator":
@@ -68,12 +63,10 @@ plugin_defaults:
     random_seed: 42       # For reproducible results
     num_categories: 3     # Number of categories in categorical columns
     noise_level: 0.1      # Amount of noise to add (0.0 to 1.0)
-    # Note: Override in templates/CLI for specific use cases
 
   "Sample Data Generator":
     dataset_type: "customers"  # customers, sales, products, etc.
     size: "medium"            # small, medium, large
-    # Note: Mainly used in templates, not global config
 
   # Data Cleaning Plugins
   "Data Cleaner":
@@ -81,14 +74,11 @@ plugin_defaults:
     outlier_threshold: 2.0       # Z-score threshold for outliers
     fill_missing: true           # Fill missing values
     missing_strategy: "median"   # mean, median, mode, forward_fill
-    # Note: Usually configured per case/template
 
   # Data Validation Plugins
   "Data Validator":
     max_null_percentage: 0.05    # Maximum allowed null percentage (5%)
     min_rows: 100               # Minimum required rows
-    # required_columns: []       # Set in templates/cases
-    # numeric_range_checks: {}   # Set in templates/cases
 
   "Data Quality Checker":
     check_duplicates: true       # Check for duplicate rows
@@ -106,43 +96,6 @@ plugin_defaults:
   "Data Aggregator":
     group_by_column: "category"  # Default grouping column
     aggregation_method: "mean"   # mean, sum, count, min, max
-    # Note: Usually overridden in specific use cases
-
-# Data Source Templates
-# Templates for common data source configurations
-data_source_templates:
-  # CSV file template
-  csv_input:
-    handler: "csv"
-    must_exist: true
-    path: "data/{name}.csv"  # {name} will be replaced
-
-  csv_output:
-    handler: "csv"
-    must_exist: false
-    path: "data/{name}.csv"
-
-  # JSON file templates
-  json_input:
-    handler: "json"
-    must_exist: true
-    path: "data/{name}.json"
-
-  json_output:
-    handler: "json"
-    must_exist: false
-    path: "reports/{name}.json"
-
-  # Parquet file templates (for large datasets)
-  parquet_input:
-    handler: "parquet"
-    must_exist: true
-    path: "data/{name}.parquet"
-
-  parquet_output:
-    handler: "parquet"
-    must_exist: false
-    path: "data/{name}.parquet"
 
 # Environment-specific Overrides
 # Use these for development vs production differences
@@ -182,28 +135,53 @@ environments:
         check_outliers: true
         check_consistency: true
 
-# Configuration Best Practices:
-# =======================================================================
-# 1. Plugin Configuration Hierarchy (highest to lowest priority):
-#    - CLI overrides (--config plugins.Name.param=value)
-#    - Case-specific config (cases/*/case.yaml)
-#    - Template config (templates/*.yaml) [RECOMMENDED]
-#    - Global defaults (this file)
-#    - Plugin built-in defaults
+# ========================================================================
+# Configuration Best Practices
+# ========================================================================
 #
-# 2. Recommended Plugin Configuration Locations:
-#    - Templates: For reusable pipeline patterns
-#    - Case configs: For case-specific customizations
-#    - CLI: For quick experimentation and overrides
-#    - Global config: Only for organization-wide defaults
+# 1. Plugin I/O Configuration:
+#    - All I/O paths are declared in plugin config classes with DataSource/DataSink annotations
+#    - Users override I/O paths in YAML config alongside behavior parameters
+#    - No separate data_sources or outputs sections needed in most cases
 #
-# 3. Data Source Configuration:
-#    - Always define in templates or case configs
-#    - Use descriptive names that match plugin DataSource annotations
-#    - Consider using data_source_templates for consistency
+#    Example plugin config:
+#      class MyPluginConfig(PluginConfig):
+#          input_data: Annotated[str, DataSource(handler="csv")] = "data/input.csv"
+#          output_data: Annotated[str, DataSink(handler="csv")] = "data/output.csv"
+#          threshold: float = 0.5
 #
-# 4. Path Configuration:
-#    - Use relative paths when possible
-#    - Support both relative and absolute paths in plugin/handler discovery
-#    - Consider different environments (dev/test/prod)
-# =======================================================================
+#    Example YAML usage:
+#      pipeline:
+#        - plugin: "My Plugin"
+#          config:
+#            input_data: "custom/path/input.csv"   # Override I/O path
+#            output_data: "custom/path/output.csv" # Override I/O path
+#            threshold: 0.8                        # Override behavior param
+#
+# 2. Global data_sources (Optional):
+#    - Only use for shared external data sources accessed by multiple plugins
+#    - Reference with special syntax: "source:name"
+#    - Most pipelines don't need this
+#
+#    Example (advanced use case):
+#      data_sources:
+#        customer_master:
+#          handler: csv
+#          path: "/shared/customers.csv"
+#          read_only: true
+#
+#      pipeline:
+#        - plugin: "Enricher"
+#          config:
+#            customer_data: "source:customer_master"  # Reference global source
+#            output_data: "data/enriched.csv"
+#
+# 3. Configuration Hierarchy:
+#    CLI overrides > Case config > Template config > Global config > Plugin defaults
+#
+# 4. Where to configure plugins:
+#    - Global config: Organization-wide defaults only
+#    - Templates: Reusable pipeline patterns (RECOMMENDED)
+#    - Case configs: Case-specific customizations
+#    - CLI: Quick experimentation and overrides
+# ========================================================================

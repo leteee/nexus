@@ -1,6 +1,9 @@
 # Default Pipeline Template
 # This template provides a basic data processing pipeline
 # suitable for most data analysis tasks
+#
+# Usage:
+#   nexus run --case my-case --template default
 
 case_info:
   name: "Default Data Processing Pipeline"
@@ -12,50 +15,34 @@ case_info:
 pipeline:
   - plugin: "Data Generator"
     config:
+      # I/O configuration
+      output_data: "data/generated_data.csv"
+
+      # Behavior configuration
       num_rows: 1000
       num_categories: 3
       noise_level: 0.1
-    outputs:
-      - name: "generated_data"
+      random_seed: 42
 
   - plugin: "Data Validator"
     config:
+      # I/O configuration
+      input_data: "data/generated_data.csv"
+      output_report: "reports/validation_report.json"
+
+      # Behavior configuration
       required_columns: ["id", "category", "value", "score"]
       min_rows: 100
       max_null_percentage: 0.1
-    outputs:
-      - name: "validation_report"
 
   - plugin: "Data Cleaner"
     config:
+      # I/O configuration
+      input_data: "data/generated_data.csv"
+      output_data: "data/cleaned_data.csv"
+
+      # Behavior configuration
       remove_outliers: true
       outlier_threshold: 2.5
       fill_missing: true
       missing_strategy: "median"
-    outputs:
-      - name: "cleaned_data"
-
-# Default data sources
-data_sources:
-  generated_data:
-    handler: "csv"
-    path: "data/generated_data.csv"
-    must_exist: false
-
-  cleaned_data:
-    handler: "csv"
-    path: "data/cleaned_data.csv"
-    must_exist: false
-
-  validation_report:
-    handler: "json"
-    path: "reports/validation_report.json"
-    must_exist: false
-
-# Default plugin overrides
-plugins:
-  "Data Generator":
-    random_seed: 42
-
-  "Data Cleaner":
-    missing_strategy: "median"

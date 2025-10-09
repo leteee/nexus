@@ -117,10 +117,11 @@ def create_configuration_context(
 ```
 
 **Hierarchy** (highest to lowest precedence):
-1. CLI arguments (`--config`)
+1. CLI arguments (`--config key=value`)
 2. Case configuration (`case.yaml`)
-3. Global configuration (`global.yaml`)
-4. Plugin defaults (from code)
+3. Template configuration (if specified)
+4. Global configuration (`global.yaml`)
+5. Plugin defaults (from PluginConfig class)
 
 **Benefits**:
 - Predictable configuration resolution
@@ -148,7 +149,7 @@ def my_plugin(config: MyConfig, logger) -> pd.DataFrame:
 
 ### 4. Data Management
 
-**Design**: Centralized DataHub with lazy loading, automatic discovery, and protocol-based handlers
+**Design**: Centralized DataHub with lazy loading and protocol-based handlers
 
 ```python
 class DataHub:
@@ -163,29 +164,39 @@ class DataHub:
         # Path management
 ```
 
-**Automatic Data Source Discovery**:
-The engine automatically discovers data files in case directories:
+**Config-Driven I/O**:
+All plugin I/O is declared in plugin config classes using type annotations:
 
 ```python
-class PipelineEngine:
-    def _auto_discover_data_sources(self) -> Dict[str, Any]:
-        # Scans case directory and data/ subdirectory
-        # Recognizes common formats: CSV, JSON, Parquet, Excel, XML
-        # Creates data source configurations automatically
-        # Handles filename conflicts with deduplication
+class MyPluginConfig(PluginConfig):
+    # I/O Configuration via annotations
+    input_data: Annotated[str, DataSource(handler="csv")] = "data/input.csv"
+    output_data: Annotated[str, DataSink(handler="csv")] = "data/output.csv"
+
+    # Behavior Configuration
+    threshold: float = 0.5
+    normalize: bool = True
 ```
 
-**Supported File Types**:
-- `.csv` → CSV handler
-- `.json` → JSON handler
-- `.parquet` → Parquet handler
-- `.xlsx` → Excel handler
-- `.xml` → XML handler
+**YAML Usage** (all config in one place):
+```yaml
+pipeline:
+  - plugin: "My Plugin"
+    config:
+      # Override I/O paths
+      input_data: "custom/input.csv"
+      output_data: "custom/output.csv"
 
-**Auto-Discovery Logic**:
-1. **Single Plugin Execution**: If no `case.yaml` exists, auto-discover data files
-2. **Case Configuration**: If `case.yaml` exists, use defined sources + auto-discovered as fallback
-3. **Intelligent Naming**: Handles duplicate filenames with automatic suffixing
+      # Override behavior parameters
+      threshold: 0.8
+      normalize: false
+```
+
+**Key Principles**:
+- No separate `data_sources` or `outputs` sections in YAML
+- All I/O paths declared via `DataSource`/`DataSink` annotations
+- DataHub resolves paths and manages handlers automatically
+- Users override I/O paths alongside behavior parameters
 
 **Handler Protocol**:
 ```python
@@ -196,6 +207,13 @@ class DataHandler(Protocol):
     @property
     def produced_type(self) -> type: ...
 ```
+
+**Supported File Types**:
+- `.csv` → CSV handler
+- `.json` → JSON handler
+- `.parquet` → Parquet handler
+- `.xlsx` → Excel handler
+- `.xml` → XML handler
 
 ### 5. Pipeline Engine
 
