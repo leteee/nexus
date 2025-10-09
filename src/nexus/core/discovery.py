@@ -396,51 +396,6 @@ def discover_plugins_from_directory(directory: Path, recursive: bool = True) -> 
     return discovered_count
 
 
-def auto_discover_data_sources(active_plugins: List[str]) -> Dict[str, Dict]:
-    """
-    Auto-discover data sources from active plugins.
-
-    Args:
-        active_plugins: List of plugin names to analyze
-
-    Returns:
-        Dictionary of discovered data source configurations
-    """
-    discovered_sources = {}
-
-    for plugin_name in active_plugins:
-        if plugin_name not in PLUGIN_REGISTRY:
-            logger.warning(f"Plugin '{plugin_name}' not found in registry")
-            continue
-
-        plugin_spec = PLUGIN_REGISTRY[plugin_name]
-        sources, sinks = discover_io_declarations(plugin_spec)
-
-        # Add discovered sources to the registry
-        for source_name, source_annotation in sources.items():
-            if source_name not in discovered_sources:
-                # Create a basic configuration for the discovered source
-                discovered_sources[source_name] = {
-                    "path": f"{source_name}.csv",  # Default path
-                    "handler": "csv",  # Default handler
-                    "must_exist": True,
-                    **source_annotation.handler_args,
-                }
-
-        # Add discovered sinks as optional data sources
-        for sink_name, sink_annotation in sinks.items():
-            if sink_name not in discovered_sources:
-                discovered_sources[sink_name] = {
-                    "path": f"{sink_name}.csv",  # Default path
-                    "handler": "csv",  # Default handler
-                    "must_exist": False,  # Sinks are outputs, don't need to exist
-                    **sink_annotation.handler_args,
-                }
-
-    logger.info(f"Auto-discovered {len(discovered_sources)} data sources")
-    return discovered_sources
-
-
 def get_plugin(name: str) -> PluginSpec:
     """
     Get a plugin by name.

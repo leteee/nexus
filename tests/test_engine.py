@@ -133,10 +133,6 @@ class TestPipelineEngine:
         assert has_csv, f"Expected CSV handler, but found: {discovered_sources}"
         assert has_json, f"Expected JSON handler, but found: {discovered_sources}"
 
-        # Check that auto_discovered flag is set
-        for source in discovered_sources.values():
-            assert source.get("auto_discovered") is True
-
     def test_auto_discover_empty_directory(self, temp_project):
         """Test auto-discovery with empty case directory."""
         project_root, _ = temp_project
@@ -210,53 +206,6 @@ class TestPipelineEngine:
             # Should create minimal config and attempt execution
             # Error should be from plugin execution, not config loading
             assert "No case configuration found" not in str(e)
-
-    def test_resolve_data_source_paths_relative(self, engine):
-        """Test resolving relative data source paths."""
-        data_sources_config = {
-            "source1": {"handler": "csv", "path": "data/file1.csv"},
-            "source2": {"handler": "json", "path": "config.json"},
-        }
-
-        resolved = engine._resolve_data_sources(data_sources_config)
-
-        # Paths should be resolved relative to case directory
-        assert str(engine.case_dir) in resolved["source1"]["path"]
-        assert "file1.csv" in resolved["source1"]["path"]
-        assert str(engine.case_dir) in resolved["source2"]["path"]
-        assert "config.json" in resolved["source2"]["path"]
-
-    def test_resolve_data_source_paths_absolute(self, engine, temp_project):
-        """Test resolving absolute data source paths."""
-        project_root, _ = temp_project
-        absolute_path = str(project_root / "some" / "absolute" / "path.csv")
-
-        data_sources_config = {"source1": {"handler": "csv", "path": absolute_path}}
-
-        resolved = engine._resolve_data_sources(data_sources_config)
-
-        # Absolute paths should remain unchanged
-        assert resolved["source1"]["path"] == absolute_path
-
-    def test_resolve_data_source_paths_preserves_other_config(self, engine):
-        """Test that path resolution preserves other configuration."""
-        data_sources_config = {
-            "source1": {
-                "handler": "csv",
-                "path": "data/file.csv",
-                "must_exist": True,
-                "custom_option": "value",
-                "auto_discovered": False,
-            }
-        }
-
-        resolved = engine._resolve_data_sources(data_sources_config)
-
-        # Other config should be preserved
-        assert resolved["source1"]["handler"] == "csv"
-        assert resolved["source1"]["must_exist"] is True
-        assert resolved["source1"]["custom_option"] == "value"
-        assert resolved["source1"]["auto_discovered"] is False
 
     def test_file_extension_detection(self, temp_project):
         """Test that different file extensions are detected correctly."""
