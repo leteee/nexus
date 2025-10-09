@@ -11,7 +11,12 @@
       "Bash(git commit:*)",
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Read(//d/**)"
+      "Read(//d/**)",
+      "Bash(find tests/ -name \"test_*.py\" -type f -exec wc -l {} +)",
+      "Bash(for f in tests/test_*.py)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)",
+      "Bash(cd /d D:projectsnexus)"
     ],
     "deny": [],
     "ask": []

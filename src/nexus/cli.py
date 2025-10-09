@@ -184,10 +184,10 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
         engine = PipelineEngine(project_root, case_dir)
         engine.run_pipeline(pipeline_config, config_overrides)
 
-        click.echo(f"✓ Pipeline completed successfully in case: {case}")
+        click.echo(f"SUCCESS: Pipeline completed successfully in case: {case}")
 
     except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(f"ERROR: {e}", err=True)
         if verbose:
             import traceback
 
@@ -234,11 +234,11 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
         engine = PipelineEngine(project_root, case_dir)
         result = engine.run_single_plugin(plugin_name, config_overrides)
 
-        click.echo(f"✓ Plugin '{plugin_name}' completed successfully")
+        click.echo(f"SUCCESS: Plugin '{plugin_name}' completed successfully")
         click.echo(f"Result type: {type(result).__name__}")
 
     except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(f"ERROR: {e}", err=True)
         if verbose:
             import traceback
 
@@ -248,21 +248,23 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
 
 @cli.command()
 @click.argument(
-    "what", type=click.Choice(["templates", "cases", "plugins"]), default="plugins"
+    "what", type=click.Choice(["templates", "cases", "plugins", "handlers"]), default="plugins"
 )
 def list(what: str):
     """
-    List available templates, cases, or plugins.
+    List available templates, cases, plugins, or handlers.
 
     Arguments:
       templates  Show available pipeline templates
       cases      Show existing cases with case.yaml files
       plugins    Show available plugins (default)
+      handlers   Show available data format handlers
 
     Examples:
       nexus list                # List plugins (default)
       nexus list templates      # List available templates
       nexus list cases          # List existing cases
+      nexus list handlers       # List available handlers
     """
     try:
         project_root = find_project_root(Path.cwd())
@@ -294,6 +296,7 @@ def list(what: str):
                 click.echo(f"No cases found in {cases_root}/ directory")
 
         elif what == "plugins":
+            ensure_plugins_discovered(project_root)
             plugins = list_plugins()
             if plugins:
                 click.echo("Available plugins:")
@@ -305,111 +308,428 @@ def list(what: str):
             else:
                 click.echo("No plugins found")
 
+        elif what == "handlers":
+            ensure_plugins_discovered(project_root)
+            from .core.handlers import HANDLER_REGISTRY
+
+            if HANDLER_REGISTRY:
+                click.echo("Available handlers:")
+                for handler_name in sorted(HANDLER_REGISTRY.keys()):
+                    handler_class = HANDLER_REGISTRY[handler_name]
+                    click.echo(f"  {handler_name}")
+                    if hasattr(handler_class, "__doc__") and handler_class.__doc__:
+                        first_line = handler_class.__doc__.strip().split("\n")[0]
+                        click.echo(f"    {first_line}")
+            else:
+                click.echo("No handlers found")
+
     except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(f"ERROR: {e}", err=True)
         sys.exit(1)
+
+
+def ensure_plugins_discovered(project_root: Path) -> None:
+    """
+    Ensure plugins and handlers are discovered before generating docs.
+
+    This function triggers plugin and handler discovery if not already done.
+    """
+    from .core.discovery import (
+        discover_plugins_from_module,
+        discover_plugins_from_directory,
+        discover_plugins_from_paths,
+        discover_handlers_from_paths,
+        PLUGIN_REGISTRY
+    )
+
+    # Skip if already discovered
+    if len(PLUGIN_REGISTRY) > 0:
+        return
+
+    # Discover built-in plugins
+    discover_plugins_from_module("nexus.plugins.generators")
+
+    # Discover from project directories
+    plugins_dir = project_root / "src" / "nexus" / "plugins"
+    if plugins_dir.exists():
+        discover_plugins_from_directory(plugins_dir)
+
+    # Discover from global config
+    try:
+        global_config = load_yaml(project_root / "config" / "global.yaml")
+        discovery_config = global_config.get("framework", {}).get("discovery", {})
+
+        # Plugin discovery
+        plugin_config = discovery_config.get("plugins", {})
+        plugin_modules = plugin_config.get("modules", [])
+        plugin_paths = plugin_config.get("paths", [])
+
+        for module_name in plugin_modules:
+            discover_plugins_from_module(module_name)
+
+        if plugin_paths:
+            discover_plugins_from_paths([project_root / p for p in plugin_paths])
+
+        # Handler discovery
+        handler_config = discovery_config.get("handlers", {})
+        handler_paths = handler_config.get("paths", [])
+
+        handlers_dir = project_root / "src" / "nexus" / "core"
+        handler_scan_paths = [handlers_dir]
+        if handler_paths:
+            handler_scan_paths.extend([project_root / p for p in handler_paths])
+
+        discover_handlers_from_paths(handler_scan_paths, project_root)
+    except Exception as e:
+        # If config loading fails, just use built-in discoveries
+        pass
 
 
 @cli.command()
-@click.option("--plugin", help="Generate docs for specific plugin")
-@click.option(
-    "--output",
-    type=click.Path(),
-    help="Output file path (default: stdout or docs/plugins/<name>.md)",
-)
-@click.option(
-    "--format",
-    type=click.Choice(["markdown", "rst", "json"]),
-    default="markdown",
-    help="Output format",
-)
-@click.option("--all", is_flag=True, help="Generate docs for all plugins")
-def doc(plugin: Optional[str], output: Optional[str], format: str, all: bool):
-    """Generate documentation for plugins.
+@click.option("--output", type=click.Path(), default="docs/api", help="Output directory (default: docs/api)")
+@click.option("--format", type=click.Choice(["markdown", "rst", "json"]), default="markdown", help="Output format")
+@click.option("--plugins-only", is_flag=True, help="Only generate plugin documentation")
+@click.option("--handlers-only", is_flag=True, help="Only generate handler documentation")
+@click.option("--force", "-f", is_flag=True, help="Force overwrite without confirmation")
+def doc(output: str, format: str, plugins_only: bool, handlers_only: bool, force: bool):
+    """
+    Generate API documentation for all plugins and handlers.
+
+    This command automatically scans and documents all available plugins and handlers,
+    creating structured API documentation in the specified output directory.
+
+    Default Output Structure:
+        docs/api/
+        ├── plugins/
+        │   ├── data_generator.md
+        │   ├── sample_data_generator.md
+        │   └── README.md          # Plugin index
+        ├── handlers/
+        │   ├── csv.md
+        │   ├── json.md
+        │   └── README.md          # Handler index
+        └── README.md              # API documentation index
 
     Examples:
-        nexus doc --plugin "Data Generator"
-        nexus doc --plugin "Data Generator" --output docs/generator.md
-        nexus doc --all --output docs/plugins/
-        nexus doc --plugin "My Plugin" --format json
+        # Generate all documentation (with confirmation)
+        nexus doc
+
+        # Force overwrite without confirmation
+        nexus doc --force
+
+        # Only plugins
+        nexus doc --plugins-only
+
+        # Only handlers
+        nexus doc --handlers-only
+
+        # Custom output directory
+        nexus doc --output docs/reference
+
+        # Different format
+        nexus doc --format rst
     """
     from pathlib import Path
+    from .core.handlers import HANDLER_REGISTRY
 
     try:
-        plugins_to_document = []
+        project_root = find_project_root(Path.cwd())
+        output_path = Path(output)
 
-        if all:
-            # Get all plugins
-            all_plugins = list_plugins()
-            plugins_to_document = list(all_plugins.keys())
-        elif plugin:
-            # Get specific plugin
-            plugins_to_document = [plugin]
-        else:
-            click.echo("Error: Must specify --plugin <name> or --all", err=True)
-            sys.exit(1)
+        # Ensure plugins and handlers are discovered
+        ensure_plugins_discovered(project_root)
 
-        for plugin_name in plugins_to_document:
-            try:
-                plugin_spec = get_plugin(plugin_name)
+        # Get all plugins and handlers
+        all_plugins = list_plugins()
+        all_handlers = HANDLER_REGISTRY.copy()
 
-                # Generate documentation based on format
-                if format == "markdown":
-                    doc_content = _generate_markdown_doc(plugin_name, plugin_spec)
-                elif format == "rst":
-                    doc_content = _generate_rst_doc(plugin_name, plugin_spec)
-                elif format == "json":
-                    doc_content = _generate_json_doc(plugin_name, plugin_spec)
-                else:
-                    doc_content = _generate_markdown_doc(plugin_name, plugin_spec)
+        # Determine what to generate
+        generate_plugins = not handlers_only
+        generate_handlers = not plugins_only
 
-                # Determine output destination
-                if output:
-                    output_path = Path(output)
-                    if all and output_path.is_dir():
-                        # Generate separate file for each plugin
-                        safe_name = (
-                            plugin_name.replace(" ", "_").replace("/", "_").lower()
-                        )
-                        ext = (
-                            "md"
-                            if format == "markdown"
-                            else "rst" if format == "rst" else "json"
-                        )
-                        file_path = output_path / f"{safe_name}.{ext}"
-                        file_path.parent.mkdir(parents=True, exist_ok=True)
-                        file_path.write_text(doc_content, encoding="utf-8")
-                        click.echo(f"✓ Generated documentation: {file_path}")
-                    else:
-                        # Single output file
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        if all:
-                            # Append to file
-                            with output_path.open("a", encoding="utf-8") as f:
-                                f.write(doc_content)
-                                f.write("\n\n---\n\n")
-                        else:
-                            output_path.write_text(doc_content, encoding="utf-8")
-                        click.echo(f"✓ Generated documentation: {output_path}")
-                else:
-                    # Output to stdout
-                    click.echo(doc_content)
-                    if all and plugin_name != plugins_to_document[-1]:
-                        click.echo("\n\n---\n\n")
+        # Calculate files that will be created/overwritten
+        files_to_create = []
 
-            except Exception as e:
-                click.echo(f"✗ Error documenting plugin '{plugin_name}': {e}", err=True)
-                if not all:
-                    sys.exit(1)
+        if generate_plugins:
+            plugins_dir = output_path / "plugins"
+            for plugin_name in all_plugins.keys():
+                safe_name = plugin_name.replace(" ", "_").replace("/", "_").lower()
+                ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+                file_path = plugins_dir / f"{safe_name}.{ext}"
+                files_to_create.append(file_path)
+            files_to_create.append(plugins_dir / "README.md")
 
-        if all:
-            click.echo(
-                f"\n✓ Generated documentation for {len(plugins_to_document)} plugins"
-            )
+        if generate_handlers:
+            handlers_dir = output_path / "handlers"
+            for handler_name in all_handlers.keys():
+                ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+                file_path = handlers_dir / f"{handler_name}.{ext}"
+                files_to_create.append(file_path)
+            files_to_create.append(handlers_dir / "README.md")
+
+        files_to_create.append(output_path / "README.md")
+
+        # Check for existing files
+        existing_files = [f for f in files_to_create if f.exists()]
+
+        # Confirm overwrite if needed
+        if existing_files and not force:
+            click.echo(f"WARNING: {len(existing_files)} files will be overwritten:")
+            for f in existing_files[:5]:  # Show first 5
+                click.echo(f"   {f}")
+            if len(existing_files) > 5:
+                click.echo(f"   ... and {len(existing_files) - 5} more")
+
+            if not click.confirm("\nContinue?", default=False):
+                click.echo("Cancelled.")
+                return
+
+        # Generate plugin documentation
+        if generate_plugins:
+            click.echo(f"Generating documentation for {len(all_plugins)} plugins...")
+            _generate_all_plugin_docs(all_plugins, output_path / "plugins", format)
+
+        # Generate handler documentation
+        if generate_handlers:
+            click.echo(f"Generating documentation for {len(all_handlers)} handlers...")
+            _generate_all_handler_docs(all_handlers, output_path / "handlers", format)
+
+        # Generate index
+        _generate_api_index(output_path, all_plugins if generate_plugins else {},
+                           all_handlers if generate_handlers else {})
+
+        click.echo(f"\nSUCCESS: API documentation generated in {output_path}/")
+        click.echo(f"  Plugins: {len(all_plugins) if generate_plugins else 0}")
+        click.echo(f"  Handlers: {len(all_handlers) if generate_handlers else 0}")
 
     except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(f"ERROR: {e}", err=True)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
+
+
+def _generate_all_plugin_docs(plugins: dict, output_dir: Path, format: str) -> None:
+    """Generate documentation for all plugins."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    plugin_list = []
+    for plugin_name, plugin_spec in sorted(plugins.items()):
+        safe_name = plugin_name.replace(" ", "_").replace("/", "_").lower()
+        ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+        file_path = output_dir / f"{safe_name}.{ext}"
+
+        # Generate doc content
+        if format == "markdown":
+            doc_content = _generate_markdown_doc(plugin_name, plugin_spec)
+        elif format == "rst":
+            doc_content = _generate_rst_doc(plugin_name, plugin_spec)
+        else:
+            doc_content = _generate_json_doc(plugin_name, plugin_spec)
+
+        # Write file
+        file_path.write_text(doc_content, encoding="utf-8")
+        plugin_list.append((plugin_name, safe_name, plugin_spec.description or ""))
+
+    # Generate plugin index
+    _generate_plugin_index(output_dir, plugin_list, format)
+
+
+def _generate_all_handler_docs(handlers: dict, output_dir: Path, format: str) -> None:
+    """Generate documentation for all handlers."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    handler_list = []
+    for handler_name, handler_class in sorted(handlers.items()):
+        ext = "md" if format == "markdown" else "rst" if format == "rst" else "json"
+        file_path = output_dir / f"{handler_name}.{ext}"
+
+        # Generate doc content
+        if format == "markdown":
+            doc_content = _generate_handler_markdown_doc(handler_name, handler_class)
+        elif format == "rst":
+            doc_content = _generate_handler_rst_doc(handler_name, handler_class)
+        else:
+            doc_content = _generate_handler_json_doc(handler_name, handler_class)
+
+        # Write file
+        file_path.write_text(doc_content, encoding="utf-8")
+        handler_list.append((handler_name, handler_class))
+
+    # Generate handler index
+    _generate_handler_index(output_dir, handler_list, format)
+
+
+def _generate_plugin_index(output_dir: Path, plugin_list: list, format: str) -> None:
+    """Generate index file for plugins."""
+    if format != "markdown":
+        return
+
+    lines = []
+    lines.append("# Plugins API Reference")
+    lines.append("")
+    lines.append("This directory contains auto-generated documentation for all available plugins.")
+    lines.append("")
+    lines.append(f"**Total Plugins**: {len(plugin_list)}")
+    lines.append("")
+    lines.append("## Available Plugins")
+    lines.append("")
+
+    for plugin_name, safe_name, description in sorted(plugin_list):
+        lines.append(f"### [{plugin_name}]({safe_name}.md)")
+        if description:
+            lines.append(f"{description}")
+        lines.append("")
+
+    (output_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _generate_handler_index(output_dir: Path, handler_list: list, format: str) -> None:
+    """Generate index file for handlers."""
+    if format != "markdown":
+        return
+
+    lines = []
+    lines.append("# Handlers API Reference")
+    lines.append("")
+    lines.append("This directory contains auto-generated documentation for all available data handlers.")
+    lines.append("")
+    lines.append(f"**Total Handlers**: {len(handler_list)}")
+    lines.append("")
+    lines.append("## Available Handlers")
+    lines.append("")
+
+    for handler_name, handler_class in sorted(handler_list):
+        lines.append(f"### [{handler_name.upper()}]({handler_name}.md)")
+        if hasattr(handler_class, "__doc__") and handler_class.__doc__:
+            lines.append(f"{handler_class.__doc__.strip().split(chr(10))[0]}")
+        lines.append("")
+
+    (output_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _generate_api_index(output_dir: Path, plugins: dict, handlers: dict) -> None:
+    """Generate main API index."""
+    lines = []
+    lines.append("# Nexus API Reference")
+    lines.append("")
+    lines.append("Auto-generated API documentation for Nexus framework.")
+    lines.append("")
+    lines.append("## Contents")
+    lines.append("")
+
+    if plugins:
+        lines.append(f"- **[Plugins](plugins/README.md)** - {len(plugins)} available plugins")
+    if handlers:
+        lines.append(f"- **[Handlers](handlers/README.md)** - {len(handlers)} data format handlers")
+
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("*This documentation is automatically generated by `nexus doc` command.*")
+    lines.append("")
+
+    (output_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _generate_handler_markdown_doc(handler_name: str, handler_class) -> str:
+    """Generate markdown documentation for a handler."""
+    lines = []
+    lines.append(f"# {handler_name.upper()} Handler")
+    lines.append("")
+
+    # Description
+    if hasattr(handler_class, "__doc__") and handler_class.__doc__:
+        lines.append("## Overview")
+        lines.append("")
+        lines.append(handler_class.__doc__.strip())
+        lines.append("")
+
+    # Produced type
+    try:
+        handler_instance = handler_class()
+        produced_type = handler_instance.produced_type
+        lines.append("## Produced Type")
+        lines.append("")
+        lines.append(f"**Type**: `{produced_type.__name__ if hasattr(produced_type, '__name__') else str(produced_type)}`")
+        lines.append("")
+    except Exception:
+        pass
+
+    # Methods
+    lines.append("## Methods")
+    lines.append("")
+    lines.append("### `load(path: Path) -> Any`")
+    lines.append("Load data from the specified file path.")
+    lines.append("")
+    lines.append("### `save(data: Any, path: Path) -> None`")
+    lines.append("Save data to the specified file path.")
+    lines.append("")
+
+    # Usage example
+    lines.append("## Usage Example")
+    lines.append("")
+    lines.append("### In Plugin Configuration")
+    lines.append("```python")
+    lines.append("from typing import Annotated")
+    lines.append("from nexus import PluginConfig, DataSource, DataSink")
+    lines.append("")
+    lines.append("class MyConfig(PluginConfig):")
+    lines.append(f'    input_data: Annotated[str, DataSource(handler="{handler_name}")] = "data/input.{handler_name}"')
+    lines.append(f'    output_data: Annotated[str, DataSink(handler="{handler_name}")] = "data/output.{handler_name}"')
+    lines.append("```")
+    lines.append("")
+
+    lines.append("### In YAML Configuration")
+    lines.append("```yaml")
+    lines.append("pipeline:")
+    lines.append('  - plugin: "My Plugin"')
+    lines.append("    config:")
+    lines.append(f'      input_data: "data/input.{handler_name}"')
+    lines.append(f'      output_data: "data/output.{handler_name}"')
+    lines.append("```")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _generate_handler_rst_doc(handler_name: str, handler_class) -> str:
+    """Generate RST documentation for a handler."""
+    lines = []
+    title = f"{handler_name.upper()} Handler"
+    lines.append(title)
+    lines.append("=" * len(title))
+    lines.append("")
+
+    if hasattr(handler_class, "__doc__") and handler_class.__doc__:
+        lines.append(handler_class.__doc__.strip())
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _generate_handler_json_doc(handler_name: str, handler_class) -> str:
+    """Generate JSON documentation for a handler."""
+    import json as json_module
+
+    doc_data = {
+        "name": handler_name,
+        "type": "handler",
+        "description": handler_class.__doc__.strip() if hasattr(handler_class, "__doc__") and handler_class.__doc__ else "",
+        "methods": {
+            "load": "Load data from file",
+            "save": "Save data to file"
+        }
+    }
+
+    try:
+        handler_instance = handler_class()
+        produced_type = handler_instance.produced_type
+        doc_data["produced_type"] = produced_type.__name__ if hasattr(produced_type, '__name__') else str(produced_type)
+    except Exception:
+        pass
+
+    return json_module.dumps(doc_data, indent=2)
 
 
 def _generate_markdown_doc(plugin_name: str, plugin_spec) -> str:
@@ -467,22 +787,6 @@ def _generate_markdown_doc(plugin_name: str, plugin_spec) -> str:
         lines.append("")
     except Exception:
         pass
-
-    # Data sources (if any)
-    if hasattr(plugin_spec.func, "__data_sources__"):
-        lines.append("## Data Sources")
-        lines.append("")
-        for source in plugin_spec.func.__data_sources__:
-            lines.append(f"- `{source}`")
-        lines.append("")
-
-    # Data sinks (if any)
-    if hasattr(plugin_spec.func, "__data_sinks__"):
-        lines.append("## Data Sinks")
-        lines.append("")
-        for sink in plugin_spec.func.__data_sinks__:
-            lines.append(f"- `{sink}`")
-        lines.append("")
 
     # Usage example
     lines.append("## Usage Example")
