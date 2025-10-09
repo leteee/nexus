@@ -5,7 +5,7 @@ This module provides functional, cache-optimized configuration handling with
 a clear hierarchy and immutable configuration contexts.
 
 Core Concepts:
-    - **Configuration Hierarchy**: CLI > Case > Global > Plugin Defaults
+    - **Configuration Hierarchy**: CLI > Case/Template > Global > Plugin Defaults
     - **Functional Approach**: Pure functions with no side effects
     - **Intelligent Caching**: LRU cache for expensive YAML parsing
     - **Deep Merging**: Recursive dictionary merging for nested configs
@@ -13,7 +13,7 @@ Core Concepts:
 
 Configuration Sources (in precedence order):
     1. **CLI Overrides**: Highest precedence - command-line --config arguments
-    2. **Case Configuration**: case.yaml in the case directory
+    2. **Case/Template Configuration**: case.yaml or template.yaml (mutual exclusion)
     3. **Global Configuration**: config/global.yaml in project root
     4. **Plugin Defaults**: Extracted from Pydantic model field defaults
 
@@ -27,7 +27,7 @@ Typical Usage:
     >>> # Load configurations
     >>> global_cfg = load_yaml(Path("config/global.yaml"))
     >>> case_cfg = load_yaml(Path("cases/analysis/case.yaml"))
-    >>> cli_overrides = {"plugins": {"DataGen": {"rows": 1000}}}
+    >>> cli_overrides = {"plugins": {"DataGen": {"num_rows": 1000}}}
     >>>
     >>> # Create merged context
     >>> context = create_configuration_context(
@@ -271,18 +271,13 @@ def create_configuration_context(
 
     This is the primary function for building the complete configuration context
     used throughout pipeline execution. It merges all configuration sources
-    according to the precedence rules and enriches the context with plugin defaults.
+    according to the precedence rules.
 
     **Configuration Hierarchy** (highest to lowest precedence):
         1. **CLI Overrides**: Command-line arguments (--config key=value)
-        2. **Case Config**: case.yaml in the case directory
+        2. **Case/Template Config**: case.yaml or template.yaml (mutual exclusion)
         3. **Global Config**: config/global.yaml in project root
-        4. **Plugin Defaults**: Extracted from Pydantic model defaults
-
-    **Context Enrichment**:
-        The function automatically extracts plugin defaults from the plugin
-        registry if not already present, ensuring all plugins have fallback
-        configurations even without explicit config.
+        4. **Plugin Defaults**: Extracted from Pydantic model defaults (on-demand)
 
     **Immutability**:
         The returned context is a new dictionary. Input dictionaries are not
@@ -291,9 +286,9 @@ def create_configuration_context(
     Args:
         global_config (Dict[str, Any]): Global configuration from config/global.yaml.
             Contains project-wide settings, shared plugin configs, and framework settings.
-            Example: {"framework": {"log_level": "INFO"}, "plugins": {...}}
+            Example: {"framework": {"logging": {"level": "INFO"}}, "plugins": {...}}
 
-        case_config (Dict[str, Any]): Case-specific configuration from case.yaml.
+        case_config (Dict[str, Any]): Case-specific configuration from case.yaml/template.yaml.
             Contains case metadata, data sources, pipeline definition, and case-specific
             plugin overrides.
             Example: {"case_info": {...}, "data_sources": {...}, "pipeline": [...]}
@@ -301,22 +296,21 @@ def create_configuration_context(
         cli_overrides (Dict[str, Any]): Command-line configuration overrides.
             Typically from `--config key=value` CLI arguments.
             Highest precedence - overrides all other sources.
-            Example: {"plugins": {"DataGenerator": {"num_rows": 1000}}}
+            Example: {"plugins": {"Data Generator": {"num_rows": 1000}}}
 
         plugin_registry (Dict[str, Any]): Registry of discovered plugins.
             Maps plugin names to PluginSpec objects containing metadata.
-            Used to extract default configurations from plugin config models.
+            Used for plugin lookup (not for config extraction in this function).
 
     Returns:
         Dict[str, Any]: Unified configuration context.
-            Contains merged configurations from all sources plus extracted defaults.
+            Contains merged configurations from all sources.
             Structure:
-                - All keys from global, case, and CLI configs
-                - "plugin_defaults": Dict mapping plugin names to default configs
-                - Nested values properly merged (not replaced)
-
-    Raises:
-        ValidationError: If merged configuration violates plugin schema constraints.
+                - framework.*: Framework settings
+                - data_sources.*: Global data sources
+                - plugins.*: Plugin configurations
+                - pipeline: Pipeline definition (from case/template)
+                - case_info: Case metadata (from case/template)
 
     Example:
         >>> from nexus.core.discovery import PLUGIN_REGISTRY
@@ -325,7 +319,7 @@ def create_configuration_context(
         >>> # Load configuration sources
         >>> global_cfg = load_yaml(Path("config/global.yaml"))
         >>> case_cfg = load_yaml(Path("cases/analysis/case.yaml"))
-        >>> cli_overrides = {"plugins": {"DataGen": {"rows": 5000}}}
+        >>> cli_overrides = {"plugins": {"Data Generator": {"num_rows": 5000}}}
         >>>
         >>> # Create unified context
         >>> context = create_configuration_context(
@@ -336,23 +330,25 @@ def create_configuration_context(
         ... )
         >>>
         >>> # Access merged configuration
-        >>> print(context["plugins"]["DataGen"]["rows"])  # 5000 (from CLI)
-        >>> print(context["framework"]["log_level"])  # From global
+        >>> print(context["plugins"]["Data Generator"]["num_rows"])  # 5000 (from CLI)
+        >>> print(context["framework"]["logging"]["level"])  # From global
         >>> print(context["case_info"]["name"])  # From case
 
     Configuration Flow:
         ```
-        Global Config          Case Config           CLI Overrides
-        ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-        │framework:   │       │case_info:   │       │plugins:     │
-        │  log: INFO  │  +    │  name: Test │  +    │  Gen:       │
-        │plugins:     │       │plugins:     │       │    rows:1000│
-        │  Gen:       │       │  Gen:       │       └─────────────┘
-        │    rows:100 │       │    seed:42  │              ↓
-        └─────────────┘       └─────────────┘         Highest
-             ↓                      ↓                Precedence
-          Lowest                 Middle
-        Precedence            Precedence
+        Global Config          Case/Template Config      CLI Overrides
+        ┌─────────────┐       ┌─────────────┐           ┌─────────────┐
+        │framework:   │       │case_info:   │           │plugins:     │
+        │  logging:   │  +    │  name: Test │      +    │  DataGen:   │
+        │    level:   │       │plugins:     │           │    rows:1000│
+        │    INFO     │       │  DataGen:   │           └─────────────┘
+        │plugins:     │       │    seed:42  │                  ↓
+        │  DataGen:   │       └─────────────┘              Highest
+        │    rows:100 │              ↓                   Precedence
+        └─────────────┘           Middle
+             ↓                 Precedence
+          Lowest
+        Precedence
              ↓                      ↓
              └──────────┬───────────┘
                         ↓
@@ -361,52 +357,27 @@ def create_configuration_context(
         ┌────────────────────────────────┐
         │ Unified Configuration Context  │
         │                                │
-        │ framework: {log: INFO}         │
+        │ framework: {logging: {INFO}}   │
         │ case_info: {name: Test}        │
-        │ plugins: {Gen: {rows: 1000,    │
-        │                 seed: 42}}     │
-        │ plugin_defaults: {...}         │
+        │ plugins: {DataGen: {rows: 1000,│
+        │                     seed: 42}} │
         └────────────────────────────────┘
         ```
-
-    Use Cases:
-        **Pipeline Execution**:
-            ```python
-            context = create_configuration_context(...)
-            plugin_cfg = get_plugin_configuration("MyPlugin", context, {}, MyConfig)
-            ```
-
-        **Configuration Validation**:
-            ```python
-            context = create_configuration_context(...)
-            # Pydantic validation happens when getting plugin config
-            ```
-
-        **Dynamic Configuration**:
-            ```python
-            # User can override at runtime
-            cli_overrides = parse_user_input()
-            context = create_configuration_context(..., cli_overrides)
-            ```
 
     Note:
         - This function is called once per pipeline execution
         - The context is immutable and thread-safe
-        - Plugin defaults are extracted lazily if not present
-        - Failed default extraction results in empty dict (graceful degradation)
+        - Plugin defaults are extracted on-demand in get_plugin_configuration()
+        - No plugin_defaults namespace in returned context
     """
     # Start with global config
     context = global_config.copy()
 
-    # Merge case config
+    # Merge case/template config
     context = deep_merge(context, case_config)
 
-    # Apply CLI overrides
+    # Apply CLI overrides (highest precedence)
     context = deep_merge(context, cli_overrides)
-
-    # Extract plugin defaults if not already present
-    if "plugin_defaults" not in context:
-        context["plugin_defaults"] = extract_plugin_defaults(plugin_registry)
 
     return context
 
@@ -558,7 +529,7 @@ def get_plugin_configuration(
     then validates the result against the plugin's Pydantic model.
 
     **Configuration Sources** (lowest to highest precedence):
-        1. **Plugin Defaults**: From Pydantic model field defaults
+        1. **Plugin Defaults**: From Pydantic model field defaults (extracted on-demand)
         2. **Global Plugin Config**: From global.yaml plugins section
         3. **Step Config**: From pipeline step config in case.yaml
 
@@ -576,7 +547,7 @@ def get_plugin_configuration(
         config_context (Dict[str, Any]): Unified configuration context.
             Created by create_configuration_context().
             Contains merged global, case, and CLI configurations.
-            Should have "plugin_defaults" and "plugins" keys.
+            Should have "plugins" key.
 
         step_config (Dict[str, Any]): Step-specific configuration overrides.
             From the pipeline step definition in case.yaml.
@@ -585,6 +556,7 @@ def get_plugin_configuration(
 
         config_model (Optional[type], optional): Pydantic model class for validation.
             If provided, validates merged config and returns model instance.
+            Also used to extract plugin defaults on-demand.
             If None, returns raw dictionary without validation.
             Defaults to None.
 
@@ -611,31 +583,31 @@ def get_plugin_configuration(
         >>> context = create_configuration_context(
         ...     global_config=load_yaml(Path("config/global.yaml")),
         ...     case_config=load_yaml(Path("cases/test/case.yaml")),
-        ...     cli_overrides={"plugins": {"DataGen": {"num_rows": 1000}}},
+        ...     cli_overrides={"plugins": {"Data Generator": {"num_rows": 1000}}},
         ...     plugin_registry=PLUGIN_REGISTRY
         ... )
         >>>
         >>> # Get validated plugin config
         >>> plugin_cfg = get_plugin_configuration(
-        ...     plugin_name="DataGen",
+        ...     plugin_name="Data Generator",
         ...     config_context=context,
         ...     step_config={"seed": 123},
         ...     config_model=DataGenConfig
         ... )
         >>>
         >>> print(type(plugin_cfg))  # <class 'DataGenConfig'>
-        >>> print(plugin_cfg.num_rows)  # 1000 (from CLI)
+        >>> print(plugin_cfg.num_rows)  # 1000 (from CLI in context)
         >>> print(plugin_cfg.seed)  # 123 (from step config)
 
     Configuration Merge Example:
         ```python
-        # Defaults from model
+        # Defaults from model (extracted on-demand)
         defaults = {"num_rows": 100, "seed": 42, "format": "csv"}
 
-        # Global config
+        # Global config (from config_context)
         global_cfg = {"num_rows": 500, "output_dir": "/data"}
 
-        # Step config
+        # Step config (from step_config parameter)
         step_cfg = {"seed": 999}
 
         # Final merged config
@@ -647,77 +619,29 @@ def get_plugin_configuration(
         # }
         ```
 
-    Pipeline Step Usage:
-        ```yaml
-        # case.yaml
-        pipeline:
-          - plugin: "Data Generator"
-            config:  # This becomes step_config
-              num_rows: 5000
-              seed: 42
-        ```
-
-        ```python
-        step_cfg = get_plugin_configuration(
-            plugin_name="Data Generator",
-            config_context=context,
-            step_config={"num_rows": 5000, "seed": 42},
-            config_model=DataGenConfig
-        )
-        ```
-
-    Validation Behavior:
-        **Valid Configuration**:
-            ```python
-            config = get_plugin_configuration(
-                "DataGen",
-                context,
-                {"num_rows": 1000},
-                DataGenConfig
-            )
-            # Returns: DataGenConfig(num_rows=1000, seed=42)
-            ```
-
-        **Invalid Configuration**:
-            ```python
-            try:
-                config = get_plugin_configuration(
-                    "DataGen",
-                    context,
-                    {"num_rows": "invalid"},  # Should be int
-                    DataGenConfig
-                )
-            except ValidationError as e:
-                print(e)
-                # Validation error details
-            ```
-
-        **No Validation**:
-            ```python
-            config = get_plugin_configuration(
-                "DataGen",
-                context,
-                {"num_rows": 1000},
-                None  # No model
-            )
-            # Returns: {"num_rows": 1000, ...}  # Plain dict
-            ```
-
     Note:
         - Called for each plugin during pipeline execution
         - Validation happens immediately (fail-fast)
+        - Plugin defaults extracted on-demand if config_model provided
         - Type coercion applied by Pydantic (e.g., "100" -> 100)
-        - Extra fields behavior depends on config_model settings
         - Step config has precedence over global for plugin-level overrides
     """
-    # Start with plugin defaults from global config
-    plugin_defaults = config_context.get("plugin_defaults", {}).get(plugin_name, {})
+    # Extract plugin defaults from Pydantic model (on-demand)
+    plugin_defaults = {}
+    if config_model:
+        try:
+            # Instantiate model with no arguments to get defaults
+            model_instance = config_model()
+            plugin_defaults = model_instance.model_dump()
+        except Exception:
+            # If we can't extract defaults, use empty dict
+            plugin_defaults = {}
 
-    # Merge with global plugin config
+    # Get global plugin config from context
     global_plugin_config = config_context.get("plugins", {}).get(plugin_name, {})
-    merged_config = deep_merge(plugin_defaults, global_plugin_config)
 
-    # Merge with step-specific config
+    # Merge: Defaults < Global < Step
+    merged_config = deep_merge(plugin_defaults, global_plugin_config)
     merged_config = deep_merge(merged_config, step_config)
 
     # Create model instance if available

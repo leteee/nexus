@@ -40,8 +40,31 @@ def setup_logging(level: str = "INFO"):
 
 
 def parse_config_overrides(config_list: tuple) -> Dict[str, Any]:
-    """Parse --config key=value pairs into nested dictionary."""
+    """
+    Parse --config key=value pairs into nested dictionary.
+
+    Supports:
+    - Nested keys with dot notation: framework.logging.level=DEBUG
+    - Automatic type inference: true/false → bool, 123 → int, 0.5 → float
+    - JSON values: key='{"a": 1}' or key='[1, 2, 3]'
+    - String values: key=value or key="quoted value"
+
+    Valid namespaces:
+    - framework.*: Framework settings (logging, performance, discovery)
+    - data_sources.*: Global/shared data sources
+    - plugins.*: Plugin configuration defaults
+
+    Examples:
+        framework.logging.level=DEBUG
+        data_sources.my_source.path=data.csv
+        plugins.DataGenerator.num_rows=5000
+        plugins.MyPlugin.config='{"key": "value"}'
+    """
+    import json
+
     config = {}
+    valid_namespaces = {"framework", "data_sources", "plugins"}
+
     for item in config_list:
         if "=" not in item:
             click.echo(f"Invalid config format: {item}. Use key=value format.")
@@ -49,26 +72,52 @@ def parse_config_overrides(config_list: tuple) -> Dict[str, Any]:
 
         key, value = item.split("=", 1)
 
-        # Handle nested keys like plugins.DataGenerator.num_rows
+        # Validate namespace (first part of key)
         keys = key.split(".")
+        if len(keys) > 1 and keys[0] not in valid_namespaces:
+            click.echo(
+                f"Warning: Invalid namespace '{keys[0]}' in {key}. "
+                f"Valid namespaces: {', '.join(sorted(valid_namespaces))}"
+            )
+            # Continue anyway for flexibility, but warn user
+
+        # Navigate to nested location
         current = config
         for k in keys[:-1]:
             if k not in current:
                 current[k] = {}
             current = current[k]
 
-        # Try to parse value as int/float/bool, fall back to string
-        try:
-            if value.lower() in ("true", "false"):
-                current[keys[-1]] = value.lower() == "true"
-            elif value.isdigit():
-                current[keys[-1]] = int(value)
-            elif "." in value and value.replace(".", "").isdigit():
-                current[keys[-1]] = float(value)
-            else:
-                current[keys[-1]] = value
-        except (ValueError, AttributeError):
-            current[keys[-1]] = value
+        # Try to parse value with intelligent type inference
+        final_value = value
+
+        # Try JSON parsing first (for objects and arrays)
+        if value.startswith('{') or value.startswith('['):
+            try:
+                final_value = json.loads(value)
+            except json.JSONDecodeError:
+                # Not valid JSON, treat as string
+                pass
+        # Boolean
+        elif value.lower() in ("true", "false"):
+            final_value = value.lower() == "true"
+        # Integer
+        elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+            final_value = int(value)
+        # Float
+        elif '.' in value:
+            try:
+                final_value = float(value)
+            except ValueError:
+                # Not a valid float, keep as string
+                pass
+        # Remove quotes if present
+        elif value.startswith('"') and value.endswith('"'):
+            final_value = value[1:-1]
+        elif value.startswith("'") and value.endswith("'"):
+            final_value = value[1:-1]
+
+        current[keys[-1]] = final_value
 
     return config
 

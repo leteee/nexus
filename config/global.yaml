@@ -34,38 +34,45 @@ framework:
     lazy_loading: true
     max_concurrent_plugins: 4
 
-# Plugin Discovery Configuration
-# Nexus will scan these locations for plugins
-plugins:
-  # Module paths to scan (Python module names)
-  modules: []
-  # Example:
-  # modules:
-  #   - "my_custom_plugins"
-  #   - "company.data_plugins"
+  # Discovery Configuration
+  # Controls how Nexus discovers plugins and handlers
+  discovery:
+    # Plugin Discovery
+    plugins:
+      # Python module names to scan for @plugin decorators
+      modules: []
+      # Example:
+      # modules:
+      #   - "my_custom_plugins"
+      #   - "company.data_plugins"
 
-  # Directory paths to scan (relative to project root or absolute)
-  paths: []
-  # Example:
-  # paths:
-  #   - "custom_plugins"           # Relative to project root
-  #   - "/opt/shared/nexus_plugins" # Absolute path
-  #   - "~/my_plugins"             # Home directory
+      # Directory paths to scan (relative to project root or absolute)
+      paths: []
+      # Example:
+      # paths:
+      #   - "custom_plugins"           # Relative to project root
+      #   - "/opt/shared/nexus_plugins" # Absolute path
+      #   - "~/my_plugins"             # Home directory
 
-# Handler Discovery Configuration
-# Handlers manage different file formats (CSV, JSON, Parquet, etc.)
-handlers:
-  # Additional handler paths
-  paths: []
-  # Example:
-  # paths:
-  #   - "custom_handlers"
-  #   - "/opt/shared/handlers"
+      # Whether to scan subdirectories recursively
+      recursive: true
 
-# Global Plugin Defaults
-# These provide fallback defaults when not specified elsewhere
+    # Handler Discovery
+    handlers:
+      # Directory paths to scan for DataHandler implementations
+      paths: []
+      # Example:
+      # paths:
+      #   - "custom_handlers"
+      #   - "/opt/shared/handlers"
+
+      # Whether to scan subdirectories recursively
+      recursive: true
+
+# Global Plugin Configuration
+# Provides fallback defaults for all plugins when not specified elsewhere
 # IMPORTANT: Configure plugin behavior in templates/cases for actual use
-plugin_defaults:
+plugins:
   # Data Generation Plugins
   "Data Generator":
     num_rows: 1000        # Number of rows to generate
@@ -113,7 +120,7 @@ environments:
     framework:
       logging:
         level: DEBUG
-    plugin_defaults:
+    plugins:
       "Data Generator":
         num_rows: 100      # Smaller datasets for faster dev cycles
       "Data Quality Checker":
@@ -123,7 +130,7 @@ environments:
     framework:
       logging:
         level: ERROR       # Minimal logging during tests
-    plugin_defaults:
+    plugins:
       "Data Generator":
         num_rows: 50       # Tiny datasets for unit tests
         random_seed: 999   # Different seed for test isolation
@@ -135,7 +142,7 @@ environments:
       performance:
         default_cache_size: 500  # More memory available
         max_concurrent_plugins: 8
-    plugin_defaults:
+    plugins:
       "Data Generator":
         num_rows: 10000    # Larger datasets in production
       "Data Quality Checker":
@@ -193,8 +200,15 @@ environments:
 #    - Without --template: Use case.yaml
 #
 # 4. Where to configure plugins:
-#    - Global config: Organization-wide defaults only
+#    - Global config (plugins.*): Organization-wide defaults only
 #    - Templates: Reusable pipeline patterns (RECOMMENDED)
 #    - Case configs: Case-specific customizations
 #    - CLI: Quick experimentation and overrides
+#
+# 5. Configuration Namespaces:
+#    - framework.*: Framework settings (logging, performance, discovery)
+#    - data_sources.*: Global/shared data sources (optional, for cross-pipeline use)
+#    - plugins.*: Plugin behavior defaults
+#    - pipeline: Pipeline definition (in templates/cases only)
+#    - meta: Metadata (name, description, in templates/cases only)
 # ========================================================================

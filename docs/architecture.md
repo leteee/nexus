@@ -122,6 +122,27 @@ def create_configuration_context(
 3. Global configuration (`global.yaml`)
 4. Plugin defaults (from PluginConfig class)
 
+**Configuration Namespaces**:
+- **framework.***: Framework settings (logging, performance, discovery)
+- **data_sources.***: Global/shared data sources (optional, for cross-pipeline use)
+- **plugins.***: Plugin configuration defaults
+- **pipeline**: Pipeline definition (in templates/cases only)
+- **meta/case_info**: Metadata (in templates/cases only)
+
+**Discovery Configuration**:
+Plugin and handler discovery is configured under `framework.discovery`:
+```yaml
+framework:
+  discovery:
+    plugins:
+      modules: ["my_custom_plugins"]  # Python modules to scan
+      paths: ["custom_plugins"]        # Directories to scan
+      recursive: true
+    handlers:
+      paths: ["custom_handlers"]
+      recursive: true
+```
+
 **Note**: Template is NOT a configuration layer. When `--template` is specified,
 it completely replaces case.yaml (mutual exclusion, not merging).
 

@@ -313,6 +313,11 @@ sequenceDiagram
 ┌─────────────────────────────────────┐
 │      1. CLI Arguments               │  Highest Priority
 │      --config key=value             │
+│                                     │
+│  Valid namespaces:                  │
+│    framework.*  (settings)          │
+│    data_sources.* (global sources)  │
+│    plugins.* (plugin config)        │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
@@ -323,16 +328,33 @@ sequenceDiagram
 │     Use templates/<name>.yaml       │
 │   --template NOT specified:         │
 │     Use cases/<case>/case.yaml      │
+│                                     │
+│   Namespaces:                       │
+│     case_info/meta (metadata)       │
+│     data_sources.* (case sources)   │
+│     plugins.* (overrides)           │
+│     pipeline (steps)                │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
 │      3. Global Configuration        │
 │      config/global.yaml             │
+│                                     │
+│   Namespaces:                       │
+│     framework.* (all settings)      │
+│       logging, performance          │
+│       discovery.plugins.*           │
+│       discovery.handlers.*          │
+│     data_sources.* (shared sources) │
+│     plugins.* (defaults)            │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
 │      4. Plugin Defaults             │  Lowest Priority
 │      From PluginConfig class        │
+│                                     │
+│   Extracted on-demand from          │
+│   Pydantic model field defaults     │
 └─────────────────────────────────────┘
 ```
 

@@ -196,13 +196,29 @@ class PipelineEngine:
 
         # Discover from global config paths
         global_config = load_yaml(self.project_root / "config" / "global.yaml")
-        plugin_paths = global_config.get("plugins", {}).get("paths", [])
+        discovery_config = global_config.get("framework", {}).get("discovery", {})
+
+        # Discover plugins from configured paths and modules
+        plugin_config = discovery_config.get("plugins", {})
+        plugin_modules = plugin_config.get("modules", [])
+        plugin_paths = plugin_config.get("paths", [])
+
+        for module_name in plugin_modules:
+            discover_plugins_from_module(module_name)
+
         if plugin_paths:
             discover_plugins_from_paths([self.project_root / p for p in plugin_paths])
 
-        # Discover handlers
+        # Discover handlers from configured paths
+        handler_config = discovery_config.get("handlers", {})
+        handler_paths = handler_config.get("paths", [])
+
         handlers_dir = self.project_root / "src" / "nexus" / "core"
-        discover_handlers_from_paths([handlers_dir], self.project_root)
+        handler_scan_paths = [handlers_dir]
+        if handler_paths:
+            handler_scan_paths.extend([self.project_root / p for p in handler_paths])
+
+        discover_handlers_from_paths(handler_scan_paths, self.project_root)
 
         self.logger.info(f"Plugin registry contains {len(PLUGIN_REGISTRY)} plugins")
 
