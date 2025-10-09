@@ -158,29 +158,32 @@ class TestCaseManager:
         assert config_data["case_info"]["name"] == "Existing Case"
 
     def test_get_pipeline_config_new_case_with_template(self, case_manager):
-        """Test getting pipeline config for new case with template (copy behavior)."""
+        """Test getting pipeline config for new case with template (template mode)."""
         config_path, config_data = case_manager.get_pipeline_config(
             "new-case", "default"
         )
 
-        # Should copy template to case.yaml
-        assert config_path.name == "case.yaml"
-        assert "new-case" in str(config_path)
-        assert config_path.exists()
+        # Should use template directly, not copy to case.yaml
+        assert config_path.name == "default.yaml"
+        assert "templates" in str(config_path)
         assert config_data["case_info"]["name"] == "Default Template"
 
+        # case.yaml should NOT be created (template replaces it)
+        new_case_yaml = case_manager.resolve_case_path("new-case") / "case.yaml"
+        assert not new_case_yaml.exists()
+
     def test_get_pipeline_config_existing_case_with_template(self, case_manager):
-        """Test getting pipeline config for existing case with template (reference behavior)."""
+        """Test getting pipeline config for existing case with template (template mode)."""
         config_path, config_data = case_manager.get_pipeline_config(
             "existing-case", "analytics"
         )
 
-        # Should reference template directly, not modify case.yaml
+        # Should use template directly, case.yaml completely ignored
         assert config_path.name == "analytics.yaml"
         assert "templates" in str(config_path)
         assert config_data["case_info"]["name"] == "Analytics Template"
 
-        # Original case.yaml should remain unchanged
+        # Original case.yaml should remain unchanged (but ignored)
         original_case_yaml = (
             case_manager.resolve_case_path("existing-case") / "case.yaml"
         )

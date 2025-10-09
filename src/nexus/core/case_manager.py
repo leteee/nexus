@@ -2,23 +2,22 @@
 Simplified template and case management for Nexus framework.
 
 This module provides the CaseManager class for managing pipeline cases and templates
-with intelligent copy-on-write semantics.
+with clear mutual exclusion semantics.
 
 Core Concepts:
     - **Case**: A complete workspace containing data files and configuration (case.yaml)
     - **Template**: A reusable pipeline definition stored in templates/
-    - **Copy-on-First-Use**: Templates are copied to case.yaml on first execution
-    - **Reference-on-Reuse**: Existing cases reference templates without modification
+    - **Mutual Exclusion**: Template replaces case.yaml when specified, not a config layer
 
 Typical Usage:
     >>> manager = CaseManager(project_root=Path("/path/to/project"))
+    >>> # With template: Loads template directly (ignores case.yaml)
     >>> config_path, config = manager.get_pipeline_config("mycase", "etl-pipeline")
-    >>> # First run: Copies template to cases/mycase/case.yaml
-    >>> # Subsequent runs: References template directly
+    >>> # Without template: Loads case.yaml
+    >>> config_path, config = manager.get_pipeline_config("mycase")
 """
 
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -29,17 +28,16 @@ logger = logging.getLogger(__name__)
 
 class CaseManager:
     """
-    Manages pipeline cases and templates with copy-on-write semantics.
+    Manages pipeline cases and templates with mutual exclusion semantics.
 
-    The CaseManager implements a smart template system where:
-    1. **First Execution**: If case.yaml doesn't exist, copy template → case.yaml
-    2. **Subsequent Execution**: If case.yaml exists, reference template directly
-    3. **No Template**: Use existing case.yaml as-is
+    The CaseManager implements a simple template system where:
+    1. **With Template**: Load template directly, ignore case.yaml completely
+    2. **Without Template**: Load case.yaml from case directory
 
-    This pattern allows:
-    - Quick case initialization from templates
-    - Template updates benefit existing cases (via reference)
-    - Case-specific customizations persist in case.yaml
+    Template is NOT a configuration layer - it's a starting point/scaffold:
+    - Templates are reusable pipeline definitions
+    - When specified, template completely replaces case.yaml
+    - No merging, no reference semantics, pure mutual exclusion
 
     Attributes:
         project_root (Path): Root directory of the Nexus project
@@ -50,11 +48,13 @@ class CaseManager:
         >>> from pathlib import Path
         >>> manager = CaseManager(project_root=Path.cwd())
         >>>
-        >>> # First run: Creates cases/analysis/case.yaml from template
+        >>> # With template: Uses template, case.yaml ignored
         >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
+        >>> # Returns: (templates/etl-pipeline.yaml, config_from_template)
         >>>
-        >>> # Second run: References template, doesn't modify case.yaml
-        >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
+        >>> # Without template: Uses case.yaml
+        >>> path, config = manager.get_pipeline_config("analysis")
+        >>> # Returns: (cases/analysis/case.yaml, config_from_case)
         >>>
         >>> # List available resources
         >>> templates = manager.list_available_templates()
@@ -116,30 +116,26 @@ class CaseManager:
         self, case_path: str, template_name: Optional[str] = None
     ) -> tuple[Path, Dict[str, Any]]:
         """
-        Get pipeline configuration with intelligent template handling.
+        Get pipeline configuration with template mutual exclusion.
 
-        This is the primary method for retrieving pipeline configurations. It implements
-        copy-on-write semantics for templates:
+        This is the primary method for retrieving pipeline configurations. Templates
+        and case.yaml are mutually exclusive - not a configuration hierarchy.
 
         **Execution Modes**:
 
-        1. **Template + New Case** (Copy Mode):
-           - Template specified, case.yaml doesn't exist
-           - Action: Copy template → case.yaml
-           - Result: Returns (case.yaml path, copied config)
-           - Use case: Initializing new case from template
-
-        2. **Template + Existing Case** (Reference Mode):
-           - Template specified, case.yaml exists
-           - Action: Load template directly (don't modify case.yaml)
+        1. **Template Mode** (--template specified):
+           - Action: Load template directly
            - Result: Returns (template path, template config)
-           - Use case: Running with latest template updates
+           - Note: case.yaml is completely ignored (even if it exists)
+           - Use case: Using template as starting point or reusable pipeline
 
-        3. **No Template** (Direct Mode):
-           - No template specified
-           - Action: Load existing case.yaml
+        2. **Case Mode** (no --template):
+           - Action: Load case.yaml
            - Result: Returns (case.yaml path, case config)
-           - Use case: Running standalone case
+           - Use case: Running custom case configuration
+
+        **Configuration Hierarchy** (4 layers):
+            CLI overrides > Case/Template config > Global config > Plugin defaults
 
         Args:
             case_path (str): Case identifier or absolute path.
@@ -149,7 +145,7 @@ class CaseManager:
             template_name (Optional[str], optional): Template name to use.
                 Can be with or without .yaml extension.
                 Examples: "etl-pipeline", "analytics.yaml"
-                If None, uses existing case.yaml. Defaults to None.
+                If specified, case.yaml is ignored. Defaults to None.
 
         Returns:
             tuple[Path, Dict[str, Any]]: A tuple containing:
@@ -164,85 +160,67 @@ class CaseManager:
         Example:
             >>> manager = CaseManager(Path("/project"))
             >>>
-            >>> # First run: Copy template to case.yaml
-            >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
-            >>> print(path)  # /project/cases/analysis/case.yaml
-            >>>
-            >>> # Second run: Reference template
+            >>> # Template mode: Load template, ignore case.yaml
             >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
             >>> print(path)  # /project/templates/etl-pipeline.yaml
             >>>
-            >>> # No template: Use case.yaml
+            >>> # Case mode: Load case.yaml
             >>> path, config = manager.get_pipeline_config("analysis")
             >>> print(path)  # /project/cases/analysis/case.yaml
 
         Note:
-            The case directory is created automatically if it doesn't exist, allowing
-            for seamless case initialization.
+            - Template is NOT a configuration layer to merge
+            - Template is a scaffold/starting point that replaces case.yaml
+            - The case directory is created automatically for data storage
         """
         case_dir = self.resolve_case_path(case_path)
         case_config_path = case_dir / "case.yaml"
 
-        # Ensure case directory exists
+        # Ensure case directory exists (for data files)
         case_dir.mkdir(parents=True, exist_ok=True)
 
         if template_name:
-            return self._handle_template_execution(
-                case_dir, case_config_path, template_name
-            )
+            # Template mode: Load template, ignore case.yaml
+            return self._handle_template_mode(template_name)
         else:
-            return self._handle_case_execution(case_config_path)
+            # Case mode: Load case.yaml
+            return self._handle_case_mode(case_config_path)
 
-    def _handle_template_execution(
-        self, case_dir: Path, case_config_path: Path, template_name: str
+    def _handle_template_mode(
+        self, template_name: str
     ) -> tuple[Path, Dict[str, Any]]:
         """
-        Handle pipeline execution when template is specified.
+        Handle pipeline execution in template mode.
 
-        Implements the copy-on-first-use, reference-on-reuse pattern:
-        - **Copy**: If case.yaml doesn't exist, copy template to case.yaml
-        - **Reference**: If case.yaml exists, load template directly
+        Loads template directly, completely ignoring case.yaml.
 
         Args:
-            case_dir (Path): Absolute path to case directory
-            case_config_path (Path): Expected path to case.yaml file
             template_name (str): Name of template to use
 
         Returns:
-            tuple[Path, Dict[str, Any]]: Configuration path and parsed data
+            tuple[Path, Dict[str, Any]]: Template path and configuration
 
         Raises:
             FileNotFoundError: If specified template doesn't exist
         """
         template_path = self._find_template(template_name)
+        logger.info(f"Template mode: Using template {template_path}")
+        config_data = self._load_yaml(template_path)
+        return template_path, config_data
 
-        if not case_config_path.exists():
-            # Copy: First time use, copy template to case.yaml
-            logger.info(
-                f"Creating new case config from template: {template_path} → {case_config_path}"
-            )
-            shutil.copy2(template_path, case_config_path)
-            config_data = self._load_yaml(case_config_path)
-            return case_config_path, config_data
-        else:
-            # Reference: Use template directly, don't modify case.yaml
-            logger.info(f"Using template reference: {template_path}")
-            config_data = self._load_yaml(template_path)
-            return template_path, config_data
-
-    def _handle_case_execution(
+    def _handle_case_mode(
         self, case_config_path: Path
     ) -> tuple[Path, Dict[str, Any]]:
         """
-        Handle pipeline execution with existing case configuration.
+        Handle pipeline execution in case mode.
 
-        Loads configuration from case.yaml without any template interaction.
+        Loads configuration from case.yaml.
 
         Args:
             case_config_path (Path): Expected path to case.yaml file
 
         Returns:
-            tuple[Path, Dict[str, Any]]: Configuration path and parsed data
+            tuple[Path, Dict[str, Any]]: Case config path and configuration
 
         Raises:
             FileNotFoundError: If case.yaml doesn't exist, with helpful message
@@ -254,7 +232,7 @@ class CaseManager:
                 f"Either create a case.yaml file or specify a template with --template."
             )
 
-        logger.info(f"Using case configuration: {case_config_path}")
+        logger.info(f"Case mode: Using case configuration {case_config_path}")
         config_data = self._load_yaml(case_config_path)
         return case_config_path, config_data
 

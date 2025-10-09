@@ -118,10 +118,12 @@ def create_configuration_context(
 
 **Hierarchy** (highest to lowest precedence):
 1. CLI arguments (`--config key=value`)
-2. Case configuration (`case.yaml`)
-3. Template configuration (if specified)
-4. Global configuration (`global.yaml`)
-5. Plugin defaults (from PluginConfig class)
+2. Case OR Template configuration (mutual exclusion)
+3. Global configuration (`global.yaml`)
+4. Plugin defaults (from PluginConfig class)
+
+**Note**: Template is NOT a configuration layer. When `--template` is specified,
+it completely replaces case.yaml (mutual exclusion, not merging).
 
 **Benefits**:
 - Predictable configuration resolution

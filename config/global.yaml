@@ -2,11 +2,20 @@
 # =======================================================================
 # This file contains framework-wide defaults and plugin configurations.
 # It serves as the foundation for all cases and can be overridden by:
-# 1. Case-specific configurations (cases/*/case.yaml)
+# 1. Case OR Template configurations (mutual exclusion, not both)
 # 2. CLI arguments (--config key=value)
 #
-# Configuration Hierarchy (highest to lowest precedence):
-#   CLI overrides > Case config > Global config > Plugin defaults
+# Configuration Hierarchy (4 layers, highest to lowest precedence):
+#   1. CLI overrides (--config key=value)
+#   2. Case OR Template config (mutual exclusion)
+#   3. Global config (this file)
+#   4. Plugin defaults (from PluginConfig classes)
+#
+# Template Semantics:
+#   - Templates are NOT a configuration layer to merge
+#   - Templates are starting points/scaffolds that REPLACE case.yaml when specified
+#   - Use --template to run with template (case.yaml ignored)
+#   - Use without --template to run with case.yaml
 # =======================================================================
 
 framework:
@@ -176,8 +185,12 @@ environments:
 #            customer_data: "source:customer_master"  # Reference global source
 #            output_data: "data/enriched.csv"
 #
-# 3. Configuration Hierarchy:
-#    CLI overrides > Case config > Template config > Global config > Plugin defaults
+# 3. Configuration Hierarchy (4 layers):
+#    CLI overrides > Case/Template config > Global config > Plugin defaults
+#
+#    Note: Case and Template are mutually exclusive (not merged):
+#    - With --template: Use template, ignore case.yaml
+#    - Without --template: Use case.yaml
 #
 # 4. Where to configure plugins:
 #    - Global config: Organization-wide defaults only

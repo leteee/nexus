@@ -93,22 +93,24 @@ def cli(ctx, version):
     required=True,
     help="Case directory (relative to cases_root or absolute path)",
 )
-@click.option("--template", "-t", help="Template name to use (copy-on-first-use)")
+@click.option("--template", "-t", help="Template to use (replaces case.yaml)")
 @click.option(
     "--config", "-C", multiple=True, help="Config overrides (key=value format)"
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def run(case: str, template: Optional[str], config: tuple, verbose: bool):
     """
-    Run a pipeline in the specified case using case.yaml configuration.
+    Run a pipeline in the specified case.
 
     Template Behavior:
-    - With template: Copy template to case.yaml if missing, otherwise reference template
-    - Without template: Use existing case.yaml (must exist)
+    - With --template: Use template (case.yaml ignored, template replaces it)
+    - Without --template: Use case.yaml (must exist)
+
+    Templates and case.yaml are mutually exclusive, not a config hierarchy.
 
     Examples:
       nexus run --case my-analysis                          # Use case.yaml
-      nexus run --case my-analysis --template etl-pipeline  # Copy/reference template
+      nexus run --case my-analysis --template etl-pipeline  # Use template
       nexus run --case /abs/path --config plugins.DataGenerator.num_rows=5000
     """
     setup_logging("DEBUG" if verbose else "INFO")
@@ -575,7 +577,7 @@ Nexus - A modern data processing framework
 
 Basic Usage:
   nexus run --case my-analysis                    # Run case with case.yaml
-  nexus run --case my-analysis --template etl     # Copy/reference template
+  nexus run --case my-analysis --template etl     # Use template (ignore case.yaml)
   nexus plugin "Data Generator" --case my-analysis # Run single plugin
 
 Commands:
@@ -586,8 +588,8 @@ Commands:
 
 Key Features:
   - Auto Data Discovery: Automatically finds CSV, JSON, Parquet files
-  - Smart Configuration: CLI > Case > Template > Global hierarchy
-  - Template System: Copy-on-first-use, reference thereafter
+  - Simple Configuration: CLI > Case/Template > Global > Plugin (4 layers)
+  - Template System: Templates replace case.yaml when specified (mutual exclusion)
   - Case Isolation: Each case has its own data and config context
 
 Examples:

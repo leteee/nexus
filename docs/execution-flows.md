@@ -104,9 +104,9 @@ sequenceDiagram
 
 3. **Configuration Resolution**
    - Load global.yaml (provides plugin behavior defaults)
-   - Load case.yaml (if exists, or use auto-discovered config)
+   - Load case.yaml (if no --template) OR template.yaml (if --template specified)
    - Apply CLI overrides
-   - Merge with hierarchy: CLI > Case > Template > Global > Plugin Defaults
+   - Merge with hierarchy: CLI > Case/Template > Global > Plugin Defaults (4 layers)
 
 4. **DataHub Setup**
    - Create DataHub instance
@@ -316,25 +316,28 @@ sequenceDiagram
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
-│      2. Case Configuration          │
-│      case.yaml                      │
+│   2. Case OR Template Config        │
+│   (Mutual Exclusion)                │
+│                                     │
+│   --template specified:             │
+│     Use templates/<name>.yaml       │
+│   --template NOT specified:         │
+│     Use cases/<case>/case.yaml      │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
-│      3. Template Configuration      │
-│      templates/*.yaml               │
-└─────────────────────────────────────┘
-              ↓ Overrides
-┌─────────────────────────────────────┐
-│      4. Global Configuration        │
+│      3. Global Configuration        │
 │      config/global.yaml             │
 └─────────────────────────────────────┘
               ↓ Overrides
 ┌─────────────────────────────────────┐
-│      5. Plugin Defaults             │  Lowest Priority
+│      4. Plugin Defaults             │  Lowest Priority
 │      From PluginConfig class        │
 └─────────────────────────────────────┘
 ```
+
+**Note**: Templates are NOT a configuration layer to merge. They are starting points
+that completely replace case.yaml when specified.
 
 ---
 
