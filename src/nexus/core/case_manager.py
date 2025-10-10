@@ -2,24 +2,30 @@
 Simplified template and case management for Nexus framework.
 
 This module provides the CaseManager class for managing pipeline cases and templates
-with clear mutual exclusion semantics.
+with flexible template discovery from multiple search paths.
 
 Core Concepts:
     - **Case**: A complete workspace containing data files and configuration (case.yaml)
-    - **Template**: A reusable pipeline definition stored in templates/
+    - **Template**: A reusable pipeline definition discovered from configured paths
+    - **Template Discovery**: Configurable search paths with priority and nesting support
     - **Mutual Exclusion**: Template replaces case.yaml when specified, not a config layer
 
 Typical Usage:
-    >>> manager = CaseManager(project_root=Path("/path/to/project"))
+    >>> manager = CaseManager(
+    ...     project_root=Path("/path/to/project"),
+    ...     template_paths=["templates", "custom_templates"],
+    ...     template_recursive=True
+    ... )
     >>> # With template: Loads template directly (ignores case.yaml)
-    >>> config_path, config = manager.get_pipeline_config("mycase", "etl-pipeline")
+    >>> config_path, config = manager.get_pipeline_config("mycase", "quickstart")
     >>> # Without template: Loads case.yaml
     >>> config_path, config = manager.get_pipeline_config("mycase")
 """
 
 import logging
+import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -28,11 +34,17 @@ logger = logging.getLogger(__name__)
 
 class CaseManager:
     """
-    Manages pipeline cases and templates with mutual exclusion semantics.
+    Manages pipeline cases and templates with configurable template discovery.
 
-    The CaseManager implements a simple template system where:
-    1. **With Template**: Load template directly, ignore case.yaml completely
+    The CaseManager implements a template system with flexible discovery:
+    1. **With Template**: Load template from configured search paths, ignore case.yaml
     2. **Without Template**: Load case.yaml from case directory
+
+    Template Discovery Features:
+    - Multiple search paths with priority order (first match wins)
+    - Support for nested template organization (custom/pipeline.yaml → "custom/pipeline")
+    - Path resolution: relative, absolute, user home (~), environment variables
+    - Configurable recursive scanning
 
     Template is NOT a configuration layer - it's a starting point/scaffold:
     - Templates are reusable pipeline definitions
@@ -42,15 +54,20 @@ class CaseManager:
     Attributes:
         project_root (Path): Root directory of the Nexus project
         cases_root (Path): Directory containing all case workspaces
-        templates_dir (Path): Directory containing template definitions
+        template_paths (List[str]): List of template search paths (in priority order)
+        template_recursive (bool): Whether to search template paths recursively
 
     Example:
         >>> from pathlib import Path
-        >>> manager = CaseManager(project_root=Path.cwd())
+        >>> manager = CaseManager(
+        ...     project_root=Path.cwd(),
+        ...     template_paths=["templates", "custom_templates", "~/shared/templates"],
+        ...     template_recursive=True
+        ... )
         >>>
         >>> # With template: Uses template, case.yaml ignored
-        >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
-        >>> # Returns: (templates/etl-pipeline.yaml, config_from_template)
+        >>> path, config = manager.get_pipeline_config("analysis", "quickstart")
+        >>> # Returns: (templates/quickstart.yaml, config_from_template)
         >>>
         >>> # Without template: Uses case.yaml
         >>> path, config = manager.get_pipeline_config("analysis")
@@ -61,25 +78,93 @@ class CaseManager:
         >>> cases = manager.list_existing_cases()
     """
 
-    def __init__(self, project_root: Path, cases_root: str = "cases"):
+    def __init__(
+        self,
+        project_root: Path,
+        cases_root: str = "cases",
+        template_paths: List[str] = None,
+        template_recursive: bool = False,
+    ):
         """
-        Initialize CaseManager with project structure.
+        Initialize CaseManager with configurable template discovery.
 
         Args:
             project_root (Path): Absolute path to project root directory.
-                This should contain both 'cases/' and 'templates/' subdirectories.
             cases_root (str, optional): Relative path to cases directory from project_root.
                 Defaults to "cases".
+            template_paths (List[str], optional): List of template search paths in priority order.
+                Supports:
+                - Relative paths (relative to project_root): "templates", "custom"
+                - Absolute paths: "/opt/shared/templates"
+                - User home: "~/my_templates"
+                - Environment variables: "$NEXUS_TEMPLATES"
+                Defaults to ["templates"].
+            template_recursive (bool, optional): Whether to search template paths recursively.
+                False: Only top-level *.yaml files (flat structure)
+                True: All *.yaml in subdirectories (nested organization)
+                Defaults to False.
 
         Example:
             >>> manager = CaseManager(
             ...     project_root=Path("/path/to/project"),
-            ...     cases_root="my_cases"
+            ...     cases_root="my_cases",
+            ...     template_paths=["templates", "~/shared", "/opt/company"],
+            ...     template_recursive=True
             ... )
         """
         self.project_root = project_root
-        self.cases_root = project_root / cases_root
-        self.templates_dir = project_root / "templates"
+        self.cases_root = self._resolve_path(cases_root)
+        self.template_paths = template_paths or ["templates"]
+        self.template_recursive = template_recursive
+
+        # Resolve all template search paths
+        self._template_search_paths = [
+            self._resolve_path(path) for path in self.template_paths
+        ]
+
+        logger.debug(
+            f"CaseManager initialized with template search paths: "
+            f"{[str(p) for p in self._template_search_paths]}, "
+            f"recursive={self.template_recursive}"
+        )
+
+    def _resolve_path(self, path_str: str) -> Path:
+        """
+        Resolve path string to absolute Path object.
+
+        Supports:
+        - Relative paths (resolved relative to project root)
+        - Absolute paths
+        - User home directory (~)
+        - Environment variables ($VAR or ${VAR})
+
+        Args:
+            path_str (str): Path string to resolve
+
+        Returns:
+            Path: Resolved absolute Path object
+
+        Example:
+            >>> manager._resolve_path("templates")
+            Path('/project/templates')
+            >>> manager._resolve_path("~/my_templates")
+            Path('/home/user/my_templates')
+            >>> manager._resolve_path("/opt/templates")
+            Path('/opt/templates')
+        """
+        # Expand environment variables
+        expanded = os.path.expandvars(path_str)
+
+        # Expand user home directory
+        expanded = os.path.expanduser(expanded)
+
+        path_obj = Path(expanded)
+
+        # If not absolute, make relative to project root
+        if not path_obj.is_absolute():
+            path_obj = self.project_root / path_obj
+
+        return path_obj.resolve()
 
     def resolve_case_path(self, case_path: str) -> Path:
         """
@@ -124,10 +209,11 @@ class CaseManager:
         **Execution Modes**:
 
         1. **Template Mode** (--template specified):
-           - Action: Load template directly
+           - Action: Load template from configured search paths
            - Result: Returns (template path, template config)
            - Note: case.yaml is completely ignored (even if it exists)
            - Use case: Using template as starting point or reusable pipeline
+           - Supports nested templates: "custom/pipeline" if recursive=True
 
         2. **Case Mode** (no --template):
            - Action: Load case.yaml
@@ -144,7 +230,7 @@ class CaseManager:
 
             template_name (Optional[str], optional): Template name to use.
                 Can be with or without .yaml extension.
-                Examples: "etl-pipeline", "analytics.yaml"
+                Examples: "quickstart", "demo", "custom/pipeline"
                 If specified, case.yaml is ignored. Defaults to None.
 
         Returns:
@@ -158,11 +244,15 @@ class CaseManager:
                 The error message includes available templates or suggests creating case.yaml.
 
         Example:
-            >>> manager = CaseManager(Path("/project"))
+            >>> manager = CaseManager(
+            ...     Path("/project"),
+            ...     template_paths=["templates"],
+            ...     template_recursive=True
+            ... )
             >>>
             >>> # Template mode: Load template, ignore case.yaml
-            >>> path, config = manager.get_pipeline_config("analysis", "etl-pipeline")
-            >>> print(path)  # /project/templates/etl-pipeline.yaml
+            >>> path, config = manager.get_pipeline_config("analysis", "demo")
+            >>> print(path)  # /project/templates/demo.yaml
             >>>
             >>> # Case mode: Load case.yaml
             >>> path, config = manager.get_pipeline_config("analysis")
@@ -172,6 +262,7 @@ class CaseManager:
             - Template is NOT a configuration layer to merge
             - Template is a scaffold/starting point that replaces case.yaml
             - The case directory is created automatically for data storage
+            - Template search follows priority order of template_paths
         """
         case_dir = self.resolve_case_path(case_path)
         case_config_path = case_dir / "case.yaml"
@@ -192,16 +283,16 @@ class CaseManager:
         """
         Handle pipeline execution in template mode.
 
-        Loads template directly, completely ignoring case.yaml.
+        Loads template from configured search paths, completely ignoring case.yaml.
 
         Args:
-            template_name (str): Name of template to use
+            template_name (str): Name of template to use (may include path if recursive)
 
         Returns:
             tuple[Path, Dict[str, Any]]: Template path and configuration
 
         Raises:
-            FileNotFoundError: If specified template doesn't exist
+            FileNotFoundError: If specified template doesn't exist in any search path
         """
         template_path = self._find_template(template_name)
         logger.info(f"Template mode: Using template {template_path}")
@@ -238,38 +329,64 @@ class CaseManager:
 
     def _find_template(self, template_name: str) -> Path:
         """
-        Locate template file by name with flexible naming.
+        Locate template file by name across all configured search paths.
 
-        Supports both "template-name" and "template-name.yaml" formats.
+        Searches template paths in priority order (first match wins).
 
         Args:
-            template_name (str): Template identifier (with or without .yaml extension)
+            template_name (str): Template identifier (e.g., "quickstart" or "custom/pipeline")
+                Can be with or without .yaml extension
 
         Returns:
             Path: Absolute path to template file
 
         Raises:
-            FileNotFoundError: If template not found, listing available templates
+            FileNotFoundError: If template not found in any search path,
+                with list of available templates
+
+        Example:
+            >>> # With recursive=False
+            >>> manager._find_template("quickstart")
+            Path('/project/templates/quickstart.yaml')
+
+            >>> # With recursive=True (custom nested template)
+            >>> manager._find_template("custom/pipeline")
+            Path('/project/templates/custom/pipeline.yaml')
         """
         template_filename = (
             template_name
             if template_name.endswith(".yaml")
             else f"{template_name}.yaml"
         )
-        template_path = self.templates_dir / template_filename
 
-        if not template_path.exists():
-            available = (
-                [f.stem for f in self.templates_dir.glob("*.yaml")]
-                if self.templates_dir.exists()
-                else []
-            )
-            raise FileNotFoundError(
-                f"Template '{template_name}' not found at {template_path}. "
-                f"Available templates: {available}"
-            )
+        # Search in priority order (first match wins)
+        for search_path in self._template_search_paths:
+            if not search_path.exists():
+                logger.debug(f"Template search path does not exist: {search_path}")
+                continue
 
-        return template_path
+            # Try direct path first (handles both flat and nested templates)
+            template_path = search_path / template_filename
+            if template_path.exists():
+                logger.debug(f"Found template at: {template_path}")
+                return template_path
+
+            # If recursive, try glob search (for flexibility)
+            if self.template_recursive:
+                # Search for template in subdirectories
+                glob_pattern = f"**/{template_filename}"
+                for found_path in search_path.glob(glob_pattern):
+                    logger.debug(f"Found template via glob at: {found_path}")
+                    return found_path
+
+        # Template not found in any search path
+        available = self.list_available_templates()
+        search_paths_str = ", ".join(str(p) for p in self._template_search_paths)
+
+        raise FileNotFoundError(
+            f"Template '{template_name}' not found in search paths: [{search_paths_str}]. "
+            f"Available templates: {available}"
+        )
 
     def _load_yaml(self, file_path: Path) -> Dict[str, Any]:
         """
@@ -290,28 +407,59 @@ class CaseManager:
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML in {file_path}: {e}")
 
-    def list_available_templates(self) -> list[str]:
+    def list_available_templates(self) -> List[str]:
         """
-        List all available template names.
+        List all available template names from all configured search paths.
+
+        Templates are discovered from all search paths in priority order.
+        Duplicates are removed (first occurrence wins based on search path priority).
 
         Returns:
-            list[str]: List of template names (without .yaml extension).
-                Empty list if templates directory doesn't exist.
+            List[str]: Template names (without .yaml extension).
+                For nested templates (if recursive=True), includes path like "custom/pipeline".
+                Empty list if no templates found.
 
         Example:
+            >>> # With recursive=False
             >>> manager.list_available_templates()
-            ['etl-pipeline', 'analytics', 'data-quality', 'default']
-        """
-        if not self.templates_dir.exists():
-            return []
-        return [f.stem for f in self.templates_dir.glob("*.yaml")]
+            ['demo', 'quickstart']
 
-    def list_existing_cases(self) -> list[str]:
+            >>> # With recursive=True (with custom nested templates)
+            >>> manager.list_available_templates()
+            ['demo', 'quickstart', 'custom/pipeline1', 'custom/pipeline2']
+        """
+        templates = []
+        seen = set()
+
+        for search_path in self._template_search_paths:
+            if not search_path.exists():
+                logger.debug(f"Template search path does not exist: {search_path}")
+                continue
+
+            # Get YAML files based on recursive setting
+            if self.template_recursive:
+                yaml_files = search_path.glob("**/*.yaml")
+            else:
+                yaml_files = search_path.glob("*.yaml")
+
+            for yaml_file in yaml_files:
+                # Calculate relative template name
+                rel_path = yaml_file.relative_to(search_path)
+                template_name = str(rel_path.with_suffix("")).replace("\\", "/")
+
+                # Add if not already seen (first occurrence wins)
+                if template_name not in seen:
+                    templates.append(template_name)
+                    seen.add(template_name)
+
+        return sorted(templates)
+
+    def list_existing_cases(self) -> List[str]:
         """
         List all existing cases with case.yaml files.
 
         Returns:
-            list[str]: List of case directory names that contain case.yaml.
+            List[str]: List of case directory names that contain case.yaml.
                 Empty list if cases directory doesn't exist.
 
         Example:

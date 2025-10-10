@@ -4,7 +4,7 @@ Auto-generated API documentation for Nexus framework.
 
 ## Contents
 
-- **[Plugins](plugins/README.md)** - 2 available plugins
+- **[Plugins](plugins/README.md)** - 5 available plugins
 - **[Handlers](handlers/README.md)** - 6 data format handlers
 
 ---

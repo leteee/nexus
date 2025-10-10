@@ -129,7 +129,7 @@ class TestCLI:
         with patch("nexus.cli.find_project_root", return_value=temp_project):
             result = runner.invoke(cli, ["run", "--case", "nonexistent"])
             assert result.exit_code == 1
-            assert "Error:" in result.output
+            assert "ERROR:" in result.output
 
     def test_run_command_with_template(self, runner, temp_project):
         """Test run command with template."""

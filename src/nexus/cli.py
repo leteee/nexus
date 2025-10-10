@@ -39,6 +39,24 @@ def setup_logging(level: str = "INFO"):
     )
 
 
+def load_template_config(global_config: Dict[str, Any]) -> tuple[list[str], bool]:
+    """
+    Load template discovery configuration from global config.
+
+    Args:
+        global_config: Global configuration dictionary
+
+    Returns:
+        tuple: (template_paths, template_recursive)
+    """
+    discovery_config = global_config.get("framework", {}).get("discovery", {})
+    template_config = discovery_config.get("templates", {})
+    template_paths = template_config.get("paths", ["templates"])
+    template_recursive = template_config.get("recursive", False)
+
+    return template_paths, template_recursive
+
+
 def parse_config_overrides(config_list: tuple) -> Dict[str, Any]:
     """
     Parse --config key=value pairs into nested dictionary.
@@ -170,8 +188,16 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
         global_config = load_yaml(project_root / "config" / "global.yaml")
         cases_root = global_config.get("framework", {}).get("cases_root", "cases")
 
-        # Initialize case manager and get pipeline config
-        case_manager = CaseManager(project_root, cases_root)
+        # Load template discovery configuration
+        template_paths, template_recursive = load_template_config(global_config)
+
+        # Initialize case manager with template configuration
+        case_manager = CaseManager(
+            project_root,
+            cases_root,
+            template_paths=template_paths,
+            template_recursive=template_recursive,
+        )
         config_path, pipeline_config = case_manager.get_pipeline_config(case, template)
 
         # Parse config overrides
@@ -223,7 +249,16 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
         global_config = load_yaml(project_root / "config" / "global.yaml")
         cases_root = global_config.get("framework", {}).get("cases_root", "cases")
 
-        case_manager = CaseManager(project_root, cases_root)
+        # Load template discovery configuration
+        template_paths, template_recursive = load_template_config(global_config)
+
+        # Initialize case manager with template configuration
+        case_manager = CaseManager(
+            project_root,
+            cases_root,
+            template_paths=template_paths,
+            template_recursive=template_recursive,
+        )
         case_dir = case_manager.resolve_case_path(case)
         case_dir.mkdir(parents=True, exist_ok=True)
 
@@ -272,20 +307,58 @@ def list(what: str):
         if what == "templates":
             global_config = load_yaml(project_root / "config" / "global.yaml")
             cases_root = global_config.get("framework", {}).get("cases_root", "cases")
-            case_manager = CaseManager(project_root, cases_root)
+
+            # Load template discovery configuration
+            template_paths, template_recursive = load_template_config(global_config)
+
+            # Initialize case manager with template configuration
+            case_manager = CaseManager(
+                project_root,
+                cases_root,
+                template_paths=template_paths,
+                template_recursive=template_recursive,
+            )
 
             templates = case_manager.list_available_templates()
             if templates:
                 click.echo("Available templates:")
-                for template in sorted(templates):
-                    click.echo(f"  {template}")
+
+                # Group by directory if recursive
+                if template_recursive:
+                    # Show with directory structure
+                    current_dir = None
+                    for template in sorted(templates):
+                        template_dir = str(Path(template).parent) if "/" in template else ""
+                        if template_dir != current_dir:
+                            if template_dir:
+                                click.echo(f"\n  {template_dir}/")
+                            current_dir = template_dir
+
+                        template_name = Path(template).name
+                        prefix = "    " if template_dir else "  "
+                        click.echo(f"{prefix}{template_name}")
+                else:
+                    # Simple flat list
+                    for template in sorted(templates):
+                        click.echo(f"  {template}")
             else:
-                click.echo("No templates found in templates/ directory")
+                click.echo("No templates found in search paths")
+                click.echo(f"Search paths: {template_paths}")
 
         elif what == "cases":
             global_config = load_yaml(project_root / "config" / "global.yaml")
             cases_root = global_config.get("framework", {}).get("cases_root", "cases")
-            case_manager = CaseManager(project_root, cases_root)
+
+            # Load template configuration for consistency
+            template_paths, template_recursive = load_template_config(global_config)
+
+            # Initialize case manager
+            case_manager = CaseManager(
+                project_root,
+                cases_root,
+                template_paths=template_paths,
+                template_recursive=template_recursive,
+            )
 
             cases = case_manager.list_existing_cases()
             if cases:
@@ -348,6 +421,7 @@ def ensure_plugins_discovered(project_root: Path) -> None:
 
     # Discover built-in plugins
     discover_plugins_from_module("nexus.plugins.generators")
+    discover_plugins_from_module("nexus.plugins.processors")
 
     # Discover from project directories
     plugins_dir = project_root / "src" / "nexus" / "plugins"
@@ -718,84 +792,192 @@ def _generate_handler_json_doc(handler_name: str, handler_class) -> str:
     return json_module.dumps(doc_data, indent=2)
 
 
+def _has_nested_models(config_model) -> bool:
+    """Check if config model has nested Pydantic models."""
+    from pydantic import BaseModel
+
+    for field_name, field_info in config_model.model_fields.items():
+        if _is_nested_model(field_info):
+            return True
+    return False
+
+
+def _is_nested_model(field_info) -> bool:
+    """Check if a field is a nested Pydantic model."""
+    from pydantic import BaseModel
+    import inspect
+
+    # Get the actual type, unwrapping Annotated if necessary
+    annotation = field_info.annotation
+    if hasattr(annotation, "__origin__"):  # Handle generic types
+        return False
+
+    # Check if it's a BaseModel subclass
+    try:
+        return inspect.isclass(annotation) and issubclass(annotation, BaseModel)
+    except (TypeError, AttributeError):
+        return False
+
+
+def _get_field_type_name(field_info) -> str:
+    """Get a clean type name for a field."""
+    annotation = field_info.annotation
+
+    if hasattr(annotation, "__name__"):
+        return annotation.__name__
+    else:
+        # Handle complex types
+        type_str = str(annotation)
+        # Clean up common patterns
+        type_str = type_str.replace("typing.", "")
+        return type_str
+
+
+def _format_default_value(default_val) -> str:
+    """Format default value for display in table."""
+    if default_val is None:
+        return "*(required)*"
+
+    type_name = type(default_val).__name__
+
+    if type_name == 'str':
+        return f'`"{default_val}"`'
+    elif type_name == 'bool':
+        return f'`{str(default_val).lower()}`'
+    elif type_name in ('int', 'float'):
+        return f'`{default_val}`'
+    elif type_name in ('list', 'tuple'):
+        return f'`{default_val}`'
+    else:
+        return f'`{default_val}`'
+
+
+def _generate_yaml_config(config_model, lines: list, indent: int = 6):
+    """Generate YAML configuration with rich comments including type and description."""
+    from pydantic import BaseModel
+
+    indent_str = " " * indent
+
+    for field_name, field_info in config_model.model_fields.items():
+        # Get default value
+        default_val = field_info.default if field_info.default is not None else None
+
+        # Check if it's a nested model
+        if _is_nested_model(field_info):
+            # Handle nested model
+            nested_comment_parts = []
+            if field_info.description:
+                nested_comment_parts.append(field_info.description)
+
+            comment = f"  # {', '.join(nested_comment_parts)}" if nested_comment_parts else ""
+            lines.append(f"{indent_str}{field_name}:{comment}")
+
+            # Get the nested model class
+            nested_model = field_info.annotation
+
+            # Generate nested fields
+            for nested_field_name, nested_field_info in nested_model.model_fields.items():
+                nested_default = nested_field_info.default if nested_field_info.default is not None else None
+                formatted_val = _format_yaml_value(nested_default)
+
+                # Build rich comment: type + description
+                nested_comment_parts = []
+                nested_type = _get_field_type_name(nested_field_info)
+                nested_comment_parts.append(nested_type)
+                if nested_field_info.description:
+                    nested_comment_parts.append(nested_field_info.description)
+
+                nested_comment = f"  # {': '.join(nested_comment_parts)}" if nested_comment_parts else ""
+                lines.append(f"{indent_str}  {nested_field_name}: {formatted_val}{nested_comment}")
+        else:
+            # Simple field
+            formatted_val = _format_yaml_value(default_val)
+
+            # Build rich comment: type + description
+            comment_parts = []
+            field_type = _get_field_type_name(field_info)
+            comment_parts.append(field_type)
+            if field_info.description:
+                comment_parts.append(field_info.description)
+
+            comment = f"  # {': '.join(comment_parts)}" if comment_parts else ""
+            lines.append(f"{indent_str}{field_name}: {formatted_val}{comment}")
+
+
+def _format_yaml_value(value) -> str:
+    """Format a value for YAML output."""
+    if value is None:
+        return "# REQUIRED"
+
+    type_name = type(value).__name__
+
+    if type_name == 'str':
+        return f'"{value}"'
+    elif type_name == 'bool':
+        return str(value).lower()
+    elif type_name in ('int', 'float'):
+        return str(value)
+    elif type_name in ('list', 'tuple'):
+        if not value:  # Empty list
+            return "[]"
+        return str(value)
+    elif type_name == 'PydanticUndefinedType':
+        return "# REQUIRED"
+    else:
+        # For complex types, try to serialize
+        try:
+            return str(value)
+        except:
+            return "# REQUIRED"
+
+
 def _generate_markdown_doc(plugin_name: str, plugin_spec) -> str:
     """Generate markdown documentation for a plugin."""
-    import inspect
+    from pydantic import BaseModel
 
     lines = []
     lines.append(f"# {plugin_name}")
     lines.append("")
 
-    # Description
-    if plugin_spec.description:
-        lines.append(f"**Description**: {plugin_spec.description}")
-        lines.append("")
-
-    # Function docstring
+    # Overview (function docstring only)
     if plugin_spec.func.__doc__:
         lines.append("## Overview")
         lines.append("")
         lines.append(plugin_spec.func.__doc__.strip())
         lines.append("")
 
-    # Configuration
+    # Configuration (YAML only - no redundant table)
     if plugin_spec.config_model:
         lines.append("## Configuration")
         lines.append("")
-        lines.append("| Parameter | Type | Default | Description |")
-        lines.append("|-----------|------|---------|-------------|")
+        lines.append("```yaml")
+        lines.append("pipeline:")
+        lines.append(f'  - plugin: "{plugin_name}"')
+        lines.append("    config:")
 
-        for field_name, field_info in plugin_spec.config_model.model_fields.items():
-            field_type = (
-                field_info.annotation.__name__
-                if hasattr(field_info.annotation, "__name__")
-                else str(field_info.annotation)
-            )
-            default = (
-                field_info.default if field_info.default is not None else "*(required)*"
-            )
-            description = field_info.description or ""
-            lines.append(
-                f"| `{field_name}` | `{field_type}` | {default} | {description} |"
-            )
+        # Generate YAML with rich comments (type + description)
+        _generate_yaml_config(plugin_spec.config_model, lines, indent=6)
 
-        lines.append("")
-
-    # Function signature
-    lines.append("## Function Signature")
-    lines.append("")
-    try:
-        sig = inspect.signature(plugin_spec.func)
-        lines.append("```python")
-        lines.append(f"def {plugin_spec.func.__name__}{sig}:")
-        lines.append("    ...")
         lines.append("```")
         lines.append("")
-    except Exception:
-        pass
 
-    # Usage example
-    lines.append("## Usage Example")
+    # CLI Usage
+    lines.append("## CLI Usage")
     lines.append("")
-    lines.append("### CLI")
     lines.append("```bash")
+    lines.append(f'# Run with defaults')
     lines.append(f'nexus plugin "{plugin_name}" --case mycase')
+    lines.append("")
     if plugin_spec.config_model:
-        # Show example config
-        first_field = next(iter(plugin_spec.config_model.model_fields.keys()), None)
-        if first_field:
-            lines.append(
-                f'nexus plugin "{plugin_name}" --case mycase --config {first_field}=value'
-            )
-    lines.append("```")
-    lines.append("")
-
-    lines.append("### Python API")
-    lines.append("```python")
-    lines.append("from nexus import create_engine")
-    lines.append("")
-    lines.append('engine = create_engine("mycase")')
-    lines.append(f'result = engine.run_single_plugin("{plugin_name}")')
+        # Show example with meaningful field names (exclude nested models from CLI examples)
+        field_items = [item for item in plugin_spec.config_model.model_fields.items()
+                      if not _is_nested_model(item[1])][:2]
+        if field_items:
+            lines.append(f'# Run with custom config')
+            lines.append(f'nexus plugin "{plugin_name}" --case mycase \\')
+            for i, (field_name, _) in enumerate(field_items):
+                connector = " \\" if i < len(field_items) - 1 else ""
+                lines.append(f'  -C {field_name}=value{connector}')
     lines.append("```")
     lines.append("")
 

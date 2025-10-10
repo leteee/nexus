@@ -6,268 +6,234 @@ Welcome to Nexus - A modern, functional data processing framework.
 
 ## 📚 Documentation Guide
 
-This guide helps you find the right documentation for your needs. Each document has a clear purpose and target audience.
+### Quick Start Path
+
+**New to Nexus?** Follow this path:
+1. **[Main README](../README.md)** - Installation & quick start
+2. **[User Guide](user-guide.md)** - Complete usage guide
+3. **[Example Cases](../cases/README.md)** - Ready-to-run examples
 
 ---
 
-## 🎯 By Role
+## 📖 Core Documentation
 
-### For New Users
-Start here if you're new to Nexus:
+### 📘 [User Guide](user-guide.md)
+**Complete usage documentation**
 
-1. **[Main README](../README.md)** - Installation, quick start, first examples
-2. **[Example Cases](../cases/README.md)** - Ready-to-run examples to learn from
-3. **[CLI Reference](cli-reference.md)** - Learn the basic commands
-4. **[Execution Flows](execution-flows.md)** - Understand how Nexus works with diagrams
-
-### For Pipeline Developers
-Building data pipelines with Nexus:
-
-1. **[Feature Guide](features.md)** - Complete feature overview and capabilities
-2. **[Execution Flows](execution-flows.md)** - Detailed execution flow diagrams
-3. **[Configuration Best Practices](configuration-best-practices.md)** - Advanced configuration patterns
-4. **[CLI Reference](cli-reference.md)** - All commands and options
-5. **[Example Cases](../cases/README.md)** - Real-world pipeline examples
-
-### For Framework Developers
-Extending or contributing to Nexus:
-
-1. **[Architecture](architecture.md)** - Framework design, principles, and internals
-2. **[Execution Flows](execution-flows.md)** - Detailed sequence diagrams
-3. **[Feature Guide](features.md)** - Plugin system and extensibility points
-4. **[Configuration Best Practices](configuration-best-practices.md)** - Configuration system deep dive
-
----
-
-## 📖 By Document
-
-### 📘 [Main README](../README.md)
-**Purpose**: Getting started guide
-**Audience**: New users
-**Content**:
-- Installation instructions
+**What's inside**:
 - Quick start tutorial
-- Basic usage examples
-- Project overview
+- All CLI commands with examples
+- Configuration system
+- Built-in plugins reference
+- Creating custom plugins
+- Best practices & tips
 
-**When to use**: You're installing Nexus for the first time or need a quick refresher.
+**When to read**: You're learning Nexus or need command/feature reference.
 
----
-
-### 📗 [Feature Guide](features.md)
-**Purpose**: Comprehensive feature documentation
-**Audience**: Pipeline developers
-**Content**:
-- Plugin system overview
-- Configuration management
-- Data handling features
-- Template system
-- Case management
-- All framework capabilities
-
-**When to use**: You need to understand what Nexus can do and how to use specific features.
+**Length**: ~685 lines (comprehensive but focused)
 
 ---
 
-### 📙 [CLI Reference](cli-reference.md)
-**Purpose**: Command-line interface documentation
-**Audience**: All users
-**Content**:
-- Complete command reference
-- All options and flags
-- Usage examples for each command
-- Command patterns and conventions
+### 📗 [Architecture](architecture.md)
+**Framework design and internals**
 
-**When to use**: You need syntax help for CLI commands or want to discover available options.
+**What's inside**:
+- Design philosophy and principles
+- Component architecture
+- Plugin system internals
+- Data management design
+- Performance considerations
+- Security design
+
+**When to read**: You want to extend Nexus or contribute to development.
+
+**Length**: ~470 lines (technical depth)
 
 ---
 
-### 📕 [Execution Flows](execution-flows.md)
-**Purpose**: Visual execution flow documentation
-**Audience**: Pipeline developers, framework developers
-**Content**:
-- Sequence diagrams for single plugin execution
-- Sequence diagrams for full pipeline execution
+### 📙 [Execution Flows](execution-flows.md)
+**Visual execution flow documentation**
+
+**What's inside**:
+- Pipeline execution diagrams
+- Single plugin execution flow
 - Configuration resolution flow
 - Data flow diagrams
 - Error handling flows
 
-**When to use**: You need to understand how Nexus executes pipelines internally, or you're debugging execution issues.
+**When to read**: You need to understand how Nexus works internally or debug issues.
+
+**Length**: ~556 lines (visual diagrams)
 
 ---
 
-### 📓 [Configuration Best Practices](configuration-best-practices.md)
-**Purpose**: Advanced configuration patterns and practices
-**Audience**: Experienced pipeline developers
-**Content**:
-- Configuration hierarchy in depth
-- Plugin configuration patterns
-- Environment-specific configurations
-- Security best practices
-- Performance optimization
-- Reusable configuration strategies
+### 📕 [Example Cases](../cases/README.md)
+**Ready-to-run examples**
 
-**When to use**: You're building complex pipelines and need advanced configuration techniques.
+**What's inside**:
+- **quickstart** - Minimal single-plugin example
+- **demo** - Comprehensive 4-step pipeline (Generate → Filter → Aggregate → Validate)
+
+**When to read**: You want working examples to learn from.
 
 ---
 
-### 📔 [Architecture](architecture.md)
-**Purpose**: Framework design and internals
-**Audience**: Framework developers, contributors
-**Content**:
-- Design philosophy and principles
-- Component architecture
-- Design patterns used
-- Type safety approach
-- Performance considerations
-- Security design
-- Testing strategy
+### 📓 [API Documentation](api/README.md)
+**Auto-generated plugin and handler docs**
 
-**When to use**: You want to understand Nexus internals, extend the framework, or contribute to development.
+**What's inside**:
+- 5 plugin specifications
+- 6 handler specifications
+- Configuration schemas
+- Usage examples
 
----
+**When to read**: You need detailed plugin/handler reference.
 
-### 📒 [Example Cases](../cases/README.md)
-**Purpose**: Ready-to-run example pipelines
-**Audience**: All users
-**Content**:
-- Quickstart example
-- Pipeline flow example
-- Multi-output example
-- Hybrid paths example
-- Complete case configurations
-- Expected outputs
-
-**When to use**: You want to see working examples or need a starting point for your own pipeline.
+**How to generate**: Run `nexus doc --force`
 
 ---
 
-## 🔍 By Topic
+### 📔 [Documentation Design](documentation-design.md)
+**Documentation generation design and best practices**
 
-### Installation & Setup
-- [Main README → Installation](../README.md#installation)
-- [Main README → Quick Start](../README.md#quick-start)
+**What's inside**:
+- Documentation design principles (DRY, YAGNI, Practical First)
+- Plugin API documentation format and evolution
+- Implementation details of `nexus doc` command
+- CLI help system design decisions
+- Best practices for maintaining documentation
+
+**When to read**: You're working on documentation generation or want to understand design decisions.
+
+**Length**: ~560 lines (comprehensive meta-documentation)
+
+---
+
+## 🎯 By Task
 
 ### Running Pipelines
-- [CLI Reference → nexus run](cli-reference.md#nexus-run)
-- [Execution Flows → Full Pipeline Execution](execution-flows.md#full-pipeline-execution)
+- [User Guide → nexus run](user-guide.md#nexus-run)
 - [Example Cases](../cases/README.md)
 
-### Running Individual Plugins
-- [CLI Reference → nexus plugin](cli-reference.md#nexus-plugin)
-- [Execution Flows → Single Plugin Execution](execution-flows.md#single-plugin-execution)
+### Running Single Plugins
+- [User Guide → nexus plugin](user-guide.md#nexus-plugin)
+- [User Guide → Built-in Plugins](user-guide.md#built-in-plugins)
 
 ### Configuration
-- [Feature Guide → Configuration Management](features.md#configuration-management)
-- [Configuration Best Practices](configuration-best-practices.md)
-- [Execution Flows → Configuration Resolution](execution-flows.md#configuration-resolution)
+- [User Guide → Configuration System](user-guide.md#configuration-system)
+- [User Guide → Configuration Overrides](user-guide.md#configuration-overrides)
 
-### Plugin Development
-- [Feature Guide → Plugin System](features.md#plugin-system)
+### Creating Plugins
+- [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins)
 - [Architecture → Plugin System](architecture.md#3-plugin-system)
-- [Configuration Best Practices → Plugin Configuration](configuration-best-practices.md#plugin-configuration-patterns)
 
-### Data Handling
-- [Feature Guide → Data Management](features.md#data-management)
-- [Architecture → Data Management](architecture.md#4-data-management)
-- [Execution Flows → Data Flow](execution-flows.md#data-flow)
-
-### Templates & Cases
-- [Feature Guide → Templates](features.md#templates)
-- [CLI Reference → nexus init](cli-reference.md#nexus-init)
-- [Example Cases](../cases/README.md)
-
-### Troubleshooting
-- [Execution Flows → Error Handling Flow](execution-flows.md#error-handling-flow)
-- [Configuration Best Practices → Debugging](configuration-best-practices.md#debugging-configuration-issues)
+### Understanding Framework
+- [Architecture](architecture.md)
+- [Execution Flows](execution-flows.md)
 
 ---
 
-## 🚀 Quick Start Paths
+## 🚀 Learning Paths
 
-### "I want to run my first pipeline"
-1. [Main README → Installation](../README.md#installation)
-2. [Main README → Quick Start](../README.md#quick-start)
-3. [Example Cases → Quickstart](../cases/README.md#quickstart)
+### "I want to use Nexus"
+1. Read [Main README](../README.md)
+2. Run [Example Cases](../cases/README.md)
+3. Reference [User Guide](user-guide.md)
 
-### "I want to build a custom pipeline"
-1. [Feature Guide](features.md)
-2. [CLI Reference → nexus init](cli-reference.md#nexus-init)
-3. [Configuration Best Practices](configuration-best-practices.md)
-4. [Example Cases](../cases/README.md)
+### "I want to build custom pipelines"
+1. Read [User Guide → CLI Commands](user-guide.md#cli-commands)
+2. Study [User Guide → Pipeline Definition](user-guide.md#pipeline-definition)
+3. Try [Example Cases → demo](../cases/README.md#demo)
 
-### "I want to develop a plugin"
-1. [Feature Guide → Plugin System](features.md#plugin-system)
-2. [Architecture → Plugin System](architecture.md#3-plugin-system)
-3. [Configuration Best Practices → Plugin Configuration](configuration-best-practices.md#plugin-configuration-patterns)
+### "I want to create plugins"
+1. Read [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins)
+2. Study [Architecture → Plugin System](architecture.md#3-plugin-system)
+3. Review [Built-in Plugins](user-guide.md#built-in-plugins) for examples
 
-### "I want to understand how it works"
-1. [Architecture](architecture.md)
-2. [Execution Flows](execution-flows.md)
-3. [Feature Guide](features.md)
+### "I want to understand internals"
+1. Read [Architecture](architecture.md)
+2. Study [Execution Flows](execution-flows.md)
+3. Explore source code in `src/nexus/`
 
-### "I want to contribute to Nexus"
-1. [Architecture](architecture.md)
-2. [Execution Flows](execution-flows.md)
-3. [Main README → Development](../README.md#development)
+### "I want to contribute"
+1. Read [Architecture](architecture.md)
+2. Study [Execution Flows](execution-flows.md)
+3. Check [Main README → Development](../README.md#development)
+
+---
+
+## 📈 Documentation Structure
+
+```
+nexus/
+├── README.md                    # Installation & quick start
+├── docs/
+│   ├── README.md               # This file - Documentation index
+│   ├── user-guide.md           # Complete usage guide
+│   ├── architecture.md         # Framework design & internals
+│   ├── execution-flows.md      # Visual flow diagrams
+│   ├── documentation-design.md # Documentation generation design
+│   └── api/                    # Auto-generated API docs
+│       ├── README.md
+│       ├── plugins/            # Plugin documentation
+│       └── handlers/           # Handler documentation
+└── cases/
+    ├── README.md               # Example cases index
+    ├── quickstart/             # Minimal example
+    └── demo/                   # Comprehensive pipeline
+```
 
 ---
 
 ## 📋 Documentation Principles
 
-Our documentation follows these principles:
-
-### 1. **Clear Separation of Concerns**
+### 1. **No Redundancy**
 Each document has a single, well-defined purpose. No overlap or duplication.
 
 ### 2. **Progressive Disclosure**
-Start simple, provide paths to deeper knowledge. Beginners aren't overwhelmed, experts can dive deep.
+Start simple (User Guide), dive deep when needed (Architecture).
 
 ### 3. **Task-Oriented**
-Organized by what you want to accomplish, not by implementation details.
+Organized by what you want to accomplish, not implementation details.
 
-### 4. **Visual When Helpful**
-Sequence diagrams, flowcharts, and examples make complex concepts clear.
+### 4. **Practical Examples**
+Every concept includes working code examples.
 
-### 5. **Practical Examples**
-Every concept includes working code examples you can run.
+### 5. **Visual When Helpful**
+Diagrams and flowcharts make complex concepts clear (Execution Flows).
 
-### 6. **Consistent Structure**
-Similar documents follow similar patterns for easy navigation.
-
----
-
-## 🆘 Need Help?
-
-### Can't find what you need?
-1. Check the [topic index](#by-topic) above
-2. Use your browser's search function (Ctrl+F / Cmd+F)
-3. Browse the [example cases](../cases/README.md)
-
-### Found an issue?
-- Documentation bugs: Open an issue
-- Suggestions: Submit a pull request
-- Questions: Check existing issues or create a new one
+### 6. **Auto-Generated Documentation**
+API documentation is auto-generated using `nexus doc` command following DRY principles.
+See [Documentation Design](documentation-design.md) for design rationale and best practices.
 
 ---
 
-## 📈 Documentation Map
+## 🆘 Quick Reference
 
-```
-nexus/
-├── README.md                          # Installation & Quick Start
-├── docs/
-│   ├── README.md                      # This file - Documentation guide
-│   ├── features.md                    # Complete feature reference
-│   ├── cli-reference.md               # CLI command reference
-│   ├── execution-flows.md             # Execution flow diagrams (NEW!)
-│   ├── configuration-best-practices.md # Advanced configuration
-│   └── architecture.md                # Framework internals
-└── cases/
-    └── README.md                      # Example pipelines
-```
+| I need... | Go to... |
+|-----------|----------|
+| Install Nexus | [Main README](../README.md) |
+| Learn CLI commands | [User Guide → CLI Commands](user-guide.md#cli-commands) |
+| See examples | [Example Cases](../cases/README.md) |
+| Plugin reference | [User Guide → Built-in Plugins](user-guide.md#built-in-plugins) |
+| Create custom plugin | [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins) |
+| Understand config | [User Guide → Configuration System](user-guide.md#configuration-system) |
+| Framework internals | [Architecture](architecture.md) |
+| Execution flow | [Execution Flows](execution-flows.md) |
+| API reference | [API Documentation](api/README.md) |
+| Documentation design | [Documentation Design](documentation-design.md) |
 
 ---
 
-**Last Updated**: 2025-01-XX
-**Version**: 1.0.0
+## 📊 Documentation Stats
+
+- **Total lines**: ~2,543 (includes new documentation-design.md)
+- **Core documents**: 5 (user-guide, architecture, execution-flows, documentation-design, README)
+- **Example cases**: 2 (quickstart, demo)
+- **Plugins documented**: 5
+- **Handlers documented**: 6
+
+---
+
+**Last Updated**: 2025-01-10
+**Version**: 1.1.0

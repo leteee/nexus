@@ -35,7 +35,7 @@ framework:
     max_concurrent_plugins: 4
 
   # Discovery Configuration
-  # Controls how Nexus discovers plugins and handlers
+  # Controls how Nexus discovers plugins, handlers, and templates
   discovery:
     # Plugin Discovery
     plugins:
@@ -69,6 +69,26 @@ framework:
       # Whether to scan subdirectories recursively
       recursive: true
 
+    # Template Discovery
+    templates:
+      # Directories to search for templates (in priority order)
+      # First match wins when multiple templates have the same name
+      paths:
+        - "templates"  # Built-in templates (default, highest priority)
+
+      # Example: Add custom template directories
+      # paths:
+      #   - "templates"                  # Built-in (highest priority)
+      #   - "custom_templates"           # Project-specific
+      #   - "~/shared/nexus_templates"   # User's shared templates
+      #   - "/opt/company/templates"     # Company-wide templates
+      #   - "$NEXUS_TEMPLATES"           # Environment variable
+
+      # Search subdirectories for nested organization
+      # false: Only top-level *.yaml files (flat structure)
+      # true: All *.yaml in subdirectories (templates/custom/pipeline.yaml → "custom/pipeline")
+      recursive: false
+
 # Global Plugin Configuration
 # Provides fallback defaults for all plugins when not specified elsewhere
 # IMPORTANT: Configure plugin behavior in templates/cases for actual use
@@ -84,34 +104,25 @@ plugins:
     dataset_type: "customers"  # customers, sales, products, etc.
     size: "medium"            # small, medium, large
 
-  # Data Cleaning Plugins
-  "Data Cleaner":
-    remove_outliers: true        # Remove statistical outliers
-    outlier_threshold: 2.0       # Z-score threshold for outliers
-    fill_missing: true           # Fill missing values
-    missing_strategy: "median"   # mean, median, mode, forward_fill
-
   # Data Validation Plugins
   "Data Validator":
-    max_null_percentage: 0.05    # Maximum allowed null percentage (5%)
-    min_rows: 100               # Minimum required rows
+    check_nulls: true           # Check for null values
+    check_duplicates: true      # Check for duplicate rows
+    check_types: true           # Check data types
+    required_columns: []        # List of required columns
 
-  "Data Quality Checker":
-    check_duplicates: true       # Check for duplicate rows
-    check_data_types: true       # Validate data types
-    check_outliers: false        # Check for outliers (separate from cleaner)
-    check_consistency: true      # Check data consistency
-    outlier_threshold: 3.0       # Different threshold than cleaner
+  # Data Filter Plugin
+  "Data Filter":
+    column: "value"             # Column to filter on
+    operator: ">"               # >, <, >=, <=, ==, !=
+    threshold: 0.0              # Threshold value
+    remove_nulls: true          # Remove null values before filtering
 
-  # Data Transformation Plugins
-  "Data Transformer":
-    normalize_columns: []        # Columns to normalize (set in templates)
-    create_derived_features: false  # Create additional features
-    transformation_methods: ["standard"]  # standard, minmax, robust
-
+  # Data Aggregator Plugin
   "Data Aggregator":
-    group_by_column: "category"  # Default grouping column
-    aggregation_method: "mean"   # mean, sum, count, min, max
+    group_by: "category"        # Column to group by
+    agg_column: "value"         # Column to aggregate
+    agg_function: "mean"        # mean, sum, count, min, max, std
 
 # Environment-specific Overrides
 # Use these for development vs production differences
@@ -123,8 +134,6 @@ environments:
     plugins:
       "Data Generator":
         num_rows: 100      # Smaller datasets for faster dev cycles
-      "Data Quality Checker":
-        check_outliers: false  # Skip expensive checks in dev
 
   testing:
     framework:
@@ -145,11 +154,6 @@ environments:
     plugins:
       "Data Generator":
         num_rows: 10000    # Larger datasets in production
-      "Data Quality Checker":
-        check_duplicates: true
-        check_data_types: true
-        check_outliers: true
-        check_consistency: true
 
 # ========================================================================
 # Configuration Best Practices

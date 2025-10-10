@@ -176,3 +176,6 @@ coverage/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Auto-generated API documentation (use 'nexus doc' to regenerate)
+docs/api/

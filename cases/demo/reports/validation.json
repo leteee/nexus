@@ -1,0 +1,35 @@
+{
+  "total_rows": 10000,
+  "total_columns": 6,
+  "columns": [
+    "id",
+    "category",
+    "value",
+    "score",
+    "timestamp",
+    "is_active"
+  ],
+  "checks": {
+    "nulls": {
+      "status": "passed",
+      "message": "No null values found"
+    },
+    "duplicates": {
+      "status": "passed",
+      "message": "No duplicates found"
+    },
+    "types": {
+      "status": "passed",
+      "column_types": {
+        "id": "int64",
+        "category": "object",
+        "value": "float64",
+        "score": "float64",
+        "timestamp": "object",
+        "is_active": "bool"
+      }
+    }
+  },
+  "issues": [],
+  "passed": true
+}

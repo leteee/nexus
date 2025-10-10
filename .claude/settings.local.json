@@ -16,7 +16,8 @@
       "Bash(for f in tests/test_*.py)",
       "Bash(do echo \"=== $f ===\")",
       "Bash(done)",
-      "Bash(cd /d D:projectsnexus)"
+      "Bash(cd /d D:projectsnexus)",
+      "Bash(cd /d \"D:\\projects\\nexus\")"
     ],
     "deny": [],
     "ask": []
