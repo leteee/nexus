@@ -53,7 +53,7 @@ class CaseManager:
 
     Attributes:
         project_root (Path): Root directory of the Nexus project
-        cases_root (Path): Directory containing all case workspaces
+        cases_roots (List[Path]): List of directories containing case workspaces
         template_paths (List[str]): List of template search paths (in priority order)
         template_recursive (bool): Whether to search template paths recursively
 
@@ -61,6 +61,7 @@ class CaseManager:
         >>> from pathlib import Path
         >>> manager = CaseManager(
         ...     project_root=Path.cwd(),
+        ...     cases_roots=["cases", "shared/cases"],
         ...     template_paths=["templates", "custom_templates", "~/shared/templates"],
         ...     template_recursive=True
         ... )
@@ -69,7 +70,7 @@ class CaseManager:
         >>> path, config = manager.get_pipeline_config("analysis", "quickstart")
         >>> # Returns: (templates/quickstart.yaml, config_from_template)
         >>>
-        >>> # Without template: Uses case.yaml
+        >>> # Without template: Uses case.yaml (searches all cases_roots)
         >>> path, config = manager.get_pipeline_config("analysis")
         >>> # Returns: (cases/analysis/case.yaml, config_from_case)
         >>>
@@ -81,7 +82,7 @@ class CaseManager:
     def __init__(
         self,
         project_root: Path,
-        cases_root: str = "cases",
+        cases_roots: List[str] = None,
         template_paths: List[str] = None,
         template_recursive: bool = False,
     ):
@@ -90,8 +91,13 @@ class CaseManager:
 
         Args:
             project_root (Path): Absolute path to project root directory.
-            cases_root (str, optional): Relative path to cases directory from project_root.
-                Defaults to "cases".
+            cases_roots (List[str], optional): List of case root directories to search.
+                Supports:
+                - Relative paths (relative to project_root): "cases", "shared/cases"
+                - Absolute paths: "/opt/shared/cases"
+                - User home: "~/my_cases"
+                - Environment variables: "$NEXUS_CASES"
+                Defaults to ["cases"].
             template_paths (List[str], optional): List of template search paths in priority order.
                 Supports:
                 - Relative paths (relative to project_root): "templates", "custom"
@@ -107,13 +113,15 @@ class CaseManager:
         Example:
             >>> manager = CaseManager(
             ...     project_root=Path("/path/to/project"),
-            ...     cases_root="my_cases",
+            ...     cases_roots=["cases", "shared/cases", "~/my_cases"],
             ...     template_paths=["templates", "~/shared", "/opt/company"],
             ...     template_recursive=True
             ... )
         """
         self.project_root = project_root
-        self.cases_root = self._resolve_path(cases_root)
+        self.cases_roots = [
+            self._resolve_path(path) for path in (cases_roots or ["cases"])
+        ]
         self.template_paths = template_paths or ["templates"]
         self.template_recursive = template_recursive
 
@@ -123,9 +131,10 @@ class CaseManager:
         ]
 
         logger.debug(
-            f"CaseManager initialized with template search paths: "
-            f"{[str(p) for p in self._template_search_paths]}, "
-            f"recursive={self.template_recursive}"
+            f"CaseManager initialized with:\n"
+            f"  cases_roots: {[str(p) for p in self.cases_roots]}\n"
+            f"  template_search_paths: {[str(p) for p in self._template_search_paths]}\n"
+            f"  recursive={self.template_recursive}"
         )
 
     def _resolve_path(self, path_str: str) -> Path:
@@ -171,8 +180,11 @@ class CaseManager:
         Resolve case identifier to absolute directory path.
 
         Supports both relative case names and absolute paths for flexibility:
-        - Relative: Resolved relative to cases_root (e.g., "mycase" → "cases/mycase")
+        - Relative: Searches all cases_roots in priority order (first match wins)
         - Absolute: Used as-is (e.g., "/tmp/analysis" → "/tmp/analysis")
+
+        For relative paths, if a case exists in multiple cases_roots, the first
+        one found (based on cases_roots priority) is returned.
 
         Args:
             case_path (str): Case identifier or absolute path.
@@ -182,20 +194,38 @@ class CaseManager:
 
         Returns:
             Path: Absolute path to the case directory.
+                For relative paths, returns path in first cases_root by default,
+                or existing case if found.
 
         Example:
-            >>> manager = CaseManager(Path("/project"))
-            >>> manager.resolve_case_path("mycase")
-            Path('/project/cases/mycase')
+            >>> manager = CaseManager(
+            ...     Path("/project"),
+            ...     cases_roots=["cases", "shared/cases"]
+            ... )
+            >>> # Absolute path - use as-is
             >>> manager.resolve_case_path("/tmp/analysis")
             Path('/tmp/analysis')
+            >>> # Relative path - search in cases_roots
+            >>> manager.resolve_case_path("mycase")
+            Path('/project/cases/mycase')  # or '/project/shared/cases/mycase' if exists there
         """
         case_path_obj = Path(case_path)
 
+        # If absolute, use as-is
         if case_path_obj.is_absolute():
             return case_path_obj
-        else:
-            return self.cases_root / case_path
+
+        # For relative paths, search in all cases_roots (first match wins)
+        for cases_root in self.cases_roots:
+            candidate_path = cases_root / case_path
+            if candidate_path.exists():
+                logger.debug(f"Found existing case at: {candidate_path}")
+                return candidate_path
+
+        # If not found in any cases_root, default to first cases_root
+        default_path = self.cases_roots[0] / case_path
+        logger.debug(f"Case not found, using default path: {default_path}")
+        return default_path
 
     def get_pipeline_config(
         self, case_path: str, template_name: Optional[str] = None
@@ -456,24 +486,41 @@ class CaseManager:
 
     def list_existing_cases(self) -> List[str]:
         """
-        List all existing cases with case.yaml files.
+        List all existing cases with case.yaml files from all cases_roots.
+
+        Searches all configured cases_roots and collects unique case names.
+        If a case with the same name exists in multiple roots, it's only listed once.
 
         Returns:
             List[str]: List of case directory names that contain case.yaml.
-                Empty list if cases directory doesn't exist.
+                Empty list if no cases directories exist.
 
         Example:
+            >>> manager = CaseManager(
+            ...     Path.cwd(),
+            ...     cases_roots=["cases", "shared/cases"]
+            ... )
             >>> manager.list_existing_cases()
             ['financial-analysis', 'customer-segmentation', 'quickstart']
 
         Note:
             Only returns cases that have a case.yaml file. Empty directories
-            are not considered valid cases.
+            are not considered valid cases. If the same case name appears in
+            multiple cases_roots, it's deduplicated (listed only once).
         """
-        if not self.cases_root.exists():
-            return []
-        return [
-            d.name
-            for d in self.cases_root.iterdir()
-            if d.is_dir() and (d / "case.yaml").exists()
-        ]
+        cases = []
+        seen = set()
+
+        for cases_root in self.cases_roots:
+            if not cases_root.exists():
+                logger.debug(f"Cases root does not exist: {cases_root}")
+                continue
+
+            for case_dir in cases_root.iterdir():
+                if case_dir.is_dir() and (case_dir / "case.yaml").exists():
+                    case_name = case_dir.name
+                    if case_name not in seen:
+                        cases.append(case_name)
+                        seen.add(case_name)
+
+        return sorted(cases)

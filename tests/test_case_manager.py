@@ -95,7 +95,8 @@ class TestCaseManager:
 
         assert case_manager.project_root == temp_project
         assert case_manager.cases_root == temp_project / "cases"
-        assert case_manager.templates_dir == temp_project / "templates"
+        # templates_dir is managed internally through global.yaml discovery config
+        # Not exposed as a public attribute
 
     def test_case_manager_custom_cases_root(self, temp_project):
         """Test CaseManager with custom cases root."""

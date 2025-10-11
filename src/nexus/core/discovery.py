@@ -428,3 +428,63 @@ def clear_registry() -> None:
     """Clear the plugin registry (useful for testing)."""
     PLUGIN_REGISTRY.clear()
     logger.debug("Plugin registry cleared")
+
+
+def discover_all_plugins_and_handlers(project_root: Path) -> None:
+    """
+    Unified plugin and handler discovery from global configuration.
+
+    This function is the single source of truth for plugin/handler discovery logic.
+    Used by both PipelineEngine and CLI to ensure consistent discovery behavior.
+
+    Args:
+        project_root: Project root directory containing config/global.yaml
+
+    Side Effects:
+        - Populates PLUGIN_REGISTRY with discovered plugins
+        - Populates HANDLER_REGISTRY with discovered handlers
+        - Logs discovery progress and results
+
+    Discovery Process:
+        1. Load global configuration from config/global.yaml
+        2. Discover plugins from paths specified in discovery.plugins.paths
+        3. Discover handlers from core directory + any configured handler paths
+
+    Note:
+        This function is idempotent - plugins/handlers are only registered once.
+        Subsequent calls will see "Discovered 0" due to duplicate detection.
+    """
+    from .config import load_yaml
+
+    # Load global configuration
+    try:
+        global_config = load_yaml(project_root / "config" / "global.yaml")
+    except FileNotFoundError:
+        logger.warning(f"Global config not found at {project_root / 'config' / 'global.yaml'}")
+        return
+    except Exception as e:
+        logger.error(f"Error loading global config: {e}")
+        return
+
+    discovery_config = global_config.get("framework", {}).get("discovery", {})
+
+    # Discover plugins from configured paths
+    plugin_config = discovery_config.get("plugins", {})
+    plugin_paths = plugin_config.get("paths", [])
+    recursive = plugin_config.get("recursive", True)
+
+    if plugin_paths:
+        discover_plugins_from_paths(
+            plugin_paths,
+            project_root,
+            recursive=recursive,
+        )
+
+    # Discover handlers from configured paths
+    handler_config = discovery_config.get("handlers", {})
+    handler_paths = handler_config.get("paths", [])
+
+    if handler_paths:
+        discover_handlers_from_paths(handler_paths, project_root)
+
+    logger.info(f"Plugin registry contains {len(PLUGIN_REGISTRY)} plugins")

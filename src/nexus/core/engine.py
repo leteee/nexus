@@ -42,10 +42,7 @@ from .context import NexusContext, PluginContext
 from .datahub import DataHub
 from .discovery import (
     PLUGIN_REGISTRY,
-    discover_handlers_from_paths,
-    discover_plugins_from_directory,
-    discover_plugins_from_module,
-    discover_plugins_from_paths,
+    discover_all_plugins_and_handlers,
     get_plugin,
 )
 from .types import DataSink, DataSource
@@ -146,7 +143,7 @@ class PipelineEngine:
         self.logger = logger
 
         # Initialize plugin discovery
-        self._discover_plugins()
+        discover_all_plugins_and_handlers(self.project_root)
 
         # Create immutable context
         self.context = NexusContext(
@@ -154,73 +151,6 @@ class PipelineEngine:
             case_path=case_dir,
             logger=self.logger,
         )
-
-    def _discover_plugins(self):
-        """
-        Discover and register plugins from multiple sources.
-
-        Scans the following locations in order:
-        1. **Built-in Plugins**: nexus.plugins.generators, processors, validators
-        2. **Project Plugins**: {project_root}/src/nexus/plugins/
-        3. **Custom Paths**: Additional paths specified in global.yaml
-        4. **Data Handlers**: Handler classes for CSV, JSON, Parquet, etc.
-
-        The discovered plugins are registered in PLUGIN_REGISTRY for later lookup.
-
-        Discovery Process:
-            - Module discovery: Import and scan Python modules for @plugin decorators
-            - Directory discovery: Recursively scan directories for plugin files
-            - Path discovery: Scan specific paths from configuration
-            - Handler discovery: Find DataHandler implementations
-
-        Side Effects:
-            - Populates global PLUGIN_REGISTRY with discovered plugins
-            - Logs the total number of discovered plugins
-
-        Example Output:
-            INFO: Plugin registry contains 15 plugins
-
-        Note:
-            This method is called automatically during __init__. Discovery results
-            are cached at the module level, so repeated engine initialization is fast.
-        """
-        # Discover from built-in plugins
-        discover_plugins_from_module("nexus.plugins.generators")
-        discover_plugins_from_module("nexus.plugins.processors")
-        discover_plugins_from_module("nexus.plugins.validators")
-
-        # Discover from project directories
-        plugins_dir = self.project_root / "src" / "nexus" / "plugins"
-        if plugins_dir.exists():
-            discover_plugins_from_directory(plugins_dir)
-
-        # Discover from global config paths
-        global_config = load_yaml(self.project_root / "config" / "global.yaml")
-        discovery_config = global_config.get("framework", {}).get("discovery", {})
-
-        # Discover plugins from configured paths and modules
-        plugin_config = discovery_config.get("plugins", {})
-        plugin_modules = plugin_config.get("modules", [])
-        plugin_paths = plugin_config.get("paths", [])
-
-        for module_name in plugin_modules:
-            discover_plugins_from_module(module_name)
-
-        if plugin_paths:
-            discover_plugins_from_paths([self.project_root / p for p in plugin_paths])
-
-        # Discover handlers from configured paths
-        handler_config = discovery_config.get("handlers", {})
-        handler_paths = handler_config.get("paths", [])
-
-        handlers_dir = self.project_root / "src" / "nexus" / "core"
-        handler_scan_paths = [handlers_dir]
-        if handler_paths:
-            handler_scan_paths.extend([self.project_root / p for p in handler_paths])
-
-        discover_handlers_from_paths(handler_scan_paths, self.project_root)
-
-        self.logger.info(f"Plugin registry contains {len(PLUGIN_REGISTRY)} plugins")
 
     def run_pipeline(
         self,

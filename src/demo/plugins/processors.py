@@ -10,8 +10,7 @@ This module provides plugins for common data processing tasks:
 import pandas as pd
 from typing import Annotated, Dict, Any
 
-from ..core.discovery import plugin
-from ..core.types import PluginConfig, DataSource, DataSink
+from nexus import plugin, PluginConfig, DataSource, DataSink
 
 
 class DataFilterConfig(PluginConfig):

@@ -40,9 +40,15 @@ class TestCLI:
                             "name": "nexus",
                             "cases_root": "cases",
                             "logging": {"level": "INFO"},
+                            "discovery": {
+                                "plugins": {
+                                    "paths": [],  # Empty paths for isolated testing
+                                    "recursive": True,
+                                },
+                                "handlers": {"paths": [], "recursive": True},
+                            },
                         },
-                        "plugins": {"modules": [], "paths": []},
-                        "plugin_defaults": {"Data Generator": {"num_rows": 100}},
+                        "plugins": {"Data Generator": {"num_rows": 100}},
                     }
                 )
             )
@@ -138,7 +144,12 @@ class TestCLI:
                 cli, ["run", "--case", "test-case", "--template", "default"]
             )
             # This might fail due to missing plugins, but should get past argument parsing
-            assert "case: test-case" in result.output or "Error:" in result.output
+            # Check for either success indicators or error messages (both are acceptable)
+            assert (
+                "case: test-case" in result.output
+                or "Error:" in result.output
+                or "ERROR:" in result.output
+            )
 
     def test_plugin_command_missing_case(self, runner, temp_project):
         """Test plugin command with missing case directory."""

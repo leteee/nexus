@@ -186,7 +186,7 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
         # Find project root and load global config
         project_root = find_project_root(Path.cwd())
         global_config = load_yaml(project_root / "config" / "global.yaml")
-        cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+        cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
         # Load template discovery configuration
         template_paths, template_recursive = load_template_config(global_config)
@@ -194,7 +194,7 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
         # Initialize case manager with template configuration
         case_manager = CaseManager(
             project_root,
-            cases_root,
+            cases_roots=cases_roots,
             template_paths=template_paths,
             template_recursive=template_recursive,
         )
@@ -247,7 +247,7 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
         # Find project root and setup case context
         project_root = find_project_root(Path.cwd())
         global_config = load_yaml(project_root / "config" / "global.yaml")
-        cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+        cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
         # Load template discovery configuration
         template_paths, template_recursive = load_template_config(global_config)
@@ -255,7 +255,7 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
         # Initialize case manager with template configuration
         case_manager = CaseManager(
             project_root,
-            cases_root,
+            cases_roots=cases_roots,
             template_paths=template_paths,
             template_recursive=template_recursive,
         )
@@ -306,7 +306,7 @@ def list(what: str):
 
         if what == "templates":
             global_config = load_yaml(project_root / "config" / "global.yaml")
-            cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+            cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
             # Load template discovery configuration
             template_paths, template_recursive = load_template_config(global_config)
@@ -314,7 +314,7 @@ def list(what: str):
             # Initialize case manager with template configuration
             case_manager = CaseManager(
                 project_root,
-                cases_root,
+                cases_roots=cases_roots,
                 template_paths=template_paths,
                 template_recursive=template_recursive,
             )
@@ -347,7 +347,7 @@ def list(what: str):
 
         elif what == "cases":
             global_config = load_yaml(project_root / "config" / "global.yaml")
-            cases_root = global_config.get("framework", {}).get("cases_root", "cases")
+            cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
             # Load template configuration for consistency
             template_paths, template_recursive = load_template_config(global_config)
@@ -355,7 +355,7 @@ def list(what: str):
             # Initialize case manager
             case_manager = CaseManager(
                 project_root,
-                cases_root,
+                cases_roots=cases_roots,
                 template_paths=template_paths,
                 template_recursive=template_recursive,
             )
@@ -366,7 +366,7 @@ def list(what: str):
                 for case in sorted(cases):
                     click.echo(f"  {case}")
             else:
-                click.echo(f"No cases found in {cases_root}/ directory")
+                click.echo("No cases found in configured cases_roots directories")
 
         elif what == "plugins":
             ensure_plugins_discovered(project_root)
@@ -403,60 +403,18 @@ def list(what: str):
 
 def ensure_plugins_discovered(project_root: Path) -> None:
     """
-    Ensure plugins and handlers are discovered before generating docs.
+    Ensure plugins and handlers are discovered before listing or generating docs.
 
-    This function triggers plugin and handler discovery if not already done.
+    This function uses the unified discovery logic from discovery.py.
     """
-    from .core.discovery import (
-        discover_plugins_from_module,
-        discover_plugins_from_directory,
-        discover_plugins_from_paths,
-        discover_handlers_from_paths,
-        PLUGIN_REGISTRY
-    )
+    from .core.discovery import discover_all_plugins_and_handlers, PLUGIN_REGISTRY
 
     # Skip if already discovered
     if len(PLUGIN_REGISTRY) > 0:
         return
 
-    # Discover built-in plugins
-    discover_plugins_from_module("nexus.plugins.generators")
-    discover_plugins_from_module("nexus.plugins.processors")
-
-    # Discover from project directories
-    plugins_dir = project_root / "src" / "nexus" / "plugins"
-    if plugins_dir.exists():
-        discover_plugins_from_directory(plugins_dir)
-
-    # Discover from global config
-    try:
-        global_config = load_yaml(project_root / "config" / "global.yaml")
-        discovery_config = global_config.get("framework", {}).get("discovery", {})
-
-        # Plugin discovery
-        plugin_config = discovery_config.get("plugins", {})
-        plugin_modules = plugin_config.get("modules", [])
-        plugin_paths = plugin_config.get("paths", [])
-
-        for module_name in plugin_modules:
-            discover_plugins_from_module(module_name)
-
-        if plugin_paths:
-            discover_plugins_from_paths([project_root / p for p in plugin_paths])
-
-        # Handler discovery
-        handler_config = discovery_config.get("handlers", {})
-        handler_paths = handler_config.get("paths", [])
-
-        handlers_dir = project_root / "src" / "nexus" / "core"
-        handler_scan_paths = [handlers_dir]
-        if handler_paths:
-            handler_scan_paths.extend([project_root / p for p in handler_paths])
-
-        discover_handlers_from_paths(handler_scan_paths, project_root)
-    except Exception as e:
-        # If config loading fails, just use built-in discoveries
-        pass
+    # Use unified discovery function
+    discover_all_plugins_and_handlers(project_root)
 
 
 @cli.command()

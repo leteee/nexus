@@ -21,7 +21,15 @@
 framework:
   name: "nexus"
   version: "1.0.0"
-  cases_root: "cases"  # Cases root directory (relative or absolute path)
+
+  # Cases root directories (supports single or multiple paths)
+  # Single directory (backward compatible):
+  # cases_root: "cases"
+
+  # Multiple directories (new format, searched in priority order):
+  cases_roots:
+    - "cases"              # Relative to project root (highest priority)
+    - "shared_cases"       # Shared cases directory
 
   # Logging configuration
   logging:
@@ -39,20 +47,18 @@ framework:
   discovery:
     # Plugin Discovery
     plugins:
-      # Python module names to scan for @plugin decorators
-      modules: []
-      # Example:
-      # modules:
-      #   - "my_custom_plugins"
-      #   - "company.data_plugins"
-
       # Directory paths to scan (relative to project root or absolute)
-      paths: []
-      # Example:
+      # Framework scans these paths for Python files with @plugin decorators
+      paths:
+        # - "src/nexus/plugins"  # Built-in plugins (always included by default)
+        - "src/demo/plugins"  # Built-in plugins (always included by default)
+      # Add custom plugin directories:
       # paths:
-      #   - "custom_plugins"           # Relative to project root
+      #   - "src/nexus/plugins"        # Built-in plugins
+      #   - "custom_plugins"            # Relative to project root
       #   - "/opt/shared/nexus_plugins" # Absolute path
-      #   - "~/my_plugins"             # Home directory
+      #   - "~/my_plugins"              # Home directory expansion
+      #   - "$PLUGIN_DIR/custom"        # Environment variable expansion
 
       # Whether to scan subdirectories recursively
       recursive: true
@@ -60,11 +66,15 @@ framework:
     # Handler Discovery
     handlers:
       # Directory paths to scan for DataHandler implementations
-      paths: []
-      # Example:
+      paths:
+        - "src/demo/handlers"  # Built-in handlers (always included by default)
+      # Add custom handler directories:
       # paths:
-      #   - "custom_handlers"
-      #   - "/opt/shared/handlers"
+      #   - "src/nexus/core"           # Built-in handlers
+      #   - "custom_handlers"           # Relative to project root
+      #   - "/opt/shared/handlers"      # Absolute path
+      #   - "~/my_handlers"             # Home directory expansion
+      #   - "$HANDLER_DIR/custom"       # Environment variable expansion
 
       # Whether to scan subdirectories recursively
       recursive: true

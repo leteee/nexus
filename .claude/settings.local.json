@@ -17,7 +17,8 @@
       "Bash(do echo \"=== $f ===\")",
       "Bash(done)",
       "Bash(cd /d D:projectsnexus)",
-      "Bash(cd /d \"D:\\projects\\nexus\")"
+      "Bash(cd /d \"D:\\projects\\nexus\")",
+      "Bash(nexus run -c demo -t demo)"
     ],
     "deny": [],
     "ask": []
