@@ -291,14 +291,21 @@ class CaseManager:
         Note:
             - Template is NOT a configuration layer to merge
             - Template is a scaffold/starting point that replaces case.yaml
-            - The case directory is created automatically for data storage
+            - The case directory must exist before running
             - Template search follows priority order of template_paths
         """
         case_dir = self.resolve_case_path(case_path)
         case_config_path = case_dir / "case.yaml"
 
-        # Ensure case directory exists (for data files)
-        case_dir.mkdir(parents=True, exist_ok=True)
+        # Validate case directory exists
+        if not case_dir.exists():
+            available_cases = self.list_existing_cases()
+            cases_list = ", ".join(available_cases) if available_cases else "none"
+            raise FileNotFoundError(
+                f"Case directory not found: {case_dir}\n"
+                f"Available cases: {cases_list}\n"
+                f"Please create the case directory first, or use an existing case."
+            )
 
         if template_name:
             # Template mode: Load template, ignore case.yaml

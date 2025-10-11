@@ -235,7 +235,7 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
     This command intelligently handles case configuration:
     - If case.yaml exists: Uses defined data sources + auto-discovered files
     - If no case.yaml: Automatically discovers CSV, JSON, Parquet, Excel, XML files
-    - Creates case directory if it doesn't exist
+    - Case directory must exist before running
 
     Examples:
       nexus plugin "Data Generator" --case my-analysis --config num_rows=1000
@@ -260,7 +260,12 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
             template_recursive=template_recursive,
         )
         case_dir = case_manager.resolve_case_path(case)
-        case_dir.mkdir(parents=True, exist_ok=True)
+
+        # Validate case directory exists
+        if not case_dir.exists():
+            click.echo(f"ERROR: Case directory not found: {case_dir}", err=True)
+            click.echo(f"Please create the case directory first.", err=True)
+            sys.exit(1)
 
         # Parse config overrides
         config_overrides = parse_config_overrides(config)

@@ -130,16 +130,15 @@ def discover_plugins_from_module(
         importlib.reload(module)
 
         discovered_count = len(PLUGIN_REGISTRY) - initial_count
-        logger.info(
-            f"Discovered {discovered_count} plugins from module '{module_name}'"
-        )
+        if discovered_count > 0:
+            logger.debug(f"  Found: {module_name} ({discovered_count} plugins)")
         return discovered_count
 
     except ImportError as e:
-        logger.warning(f"Could not import plugin module '{module_name}': {e}")
+        logger.warning(f"  Failed to import '{module_name}': {e}")
         return 0
     except Exception as e:
-        logger.error(f"Error discovering plugins from '{module_name}': {e}")
+        logger.error(f"  Error in '{module_name}': {e}")
         return 0
 
 
@@ -189,6 +188,7 @@ def discover_plugins_from_paths(
     Returns:
         Total number of plugins discovered
     """
+    logger.info(f"Plugin discovery: scanning {len(paths)} path(s)")
     total_discovered = 0
 
     for path_str in paths:
@@ -198,15 +198,18 @@ def discover_plugins_from_paths(
             if resolved_path.exists() and resolved_path.is_dir():
                 count = discover_plugins_from_directory(resolved_path, recursive)
                 total_discovered += count
-                logger.info(f"Discovered {count} plugins from {resolved_path}")
+                if count > 0:
+                    logger.debug(f"  └─ {resolved_path.name}: {count} plugin(s)")
             else:
                 logger.warning(
-                    f"Plugin path does not exist or is not a directory: {resolved_path}"
+                    f"  └─ Plugin path does not exist: {resolved_path}"
                 )
 
         except Exception as e:
-            logger.error(f"Error processing plugin path '{path_str}': {e}")
+            logger.error(f"  └─ Error processing '{path_str}': {e}")
 
+    if total_discovered > 0:
+        logger.info(f"Plugin discovery: {total_discovered} plugin(s) from {len(paths)} path(s)")
     return total_discovered
 
 
@@ -224,6 +227,7 @@ def discover_handlers_from_paths(
     Returns:
         Total number of handlers discovered
     """
+    logger.info(f"Handler discovery: scanning {len(paths)} path(s)")
     total_discovered = 0
 
     for path_str in paths:
@@ -233,15 +237,18 @@ def discover_handlers_from_paths(
             if resolved_path.exists() and resolved_path.is_dir():
                 count = discover_handlers_from_directory(resolved_path, recursive)
                 total_discovered += count
-                logger.info(f"Discovered {count} handlers from {resolved_path}")
+                if count > 0:
+                    logger.debug(f"  └─ {resolved_path.name}: {count} handler(s)")
             else:
                 logger.warning(
-                    f"Handler path does not exist or is not a directory: {resolved_path}"
+                    f"  └─ Handler path does not exist: {resolved_path}"
                 )
 
         except Exception as e:
-            logger.error(f"Error processing handler path '{path_str}': {e}")
+            logger.error(f"  └─ Error processing '{path_str}': {e}")
 
+    if total_discovered > 0:
+        logger.info(f"Handler discovery: {total_discovered} handler(s) from {len(paths)} path(s)")
     return total_discovered
 
 
@@ -270,6 +277,8 @@ def discover_handlers_from_directory(directory: Path, recursive: bool = True) ->
     else:
         python_files = list(directory.glob("*.py"))
 
+    logger.debug(f"  Scanning: {directory}")
+
     for py_file in python_files:
         if py_file.name.startswith("__"):
             continue
@@ -286,10 +295,9 @@ def discover_handlers_from_directory(directory: Path, recursive: bool = True) ->
             )
 
         except Exception as e:
-            logger.warning(f"Could not load handler file {py_file}: {e}")
+            logger.warning(f"  Could not load {py_file.name}: {e}")
 
     discovered_count = len(HANDLER_REGISTRY) - initial_count
-    logger.info(f"Discovered {discovered_count} handlers from directory {directory}")
     return discovered_count
 
 
@@ -339,16 +347,15 @@ def discover_handlers_from_module(
                         logger.debug(f"Could not register handler {name}: {e}")
 
         discovered_count = len(HANDLER_REGISTRY) - initial_count
-        logger.info(
-            f"Discovered {discovered_count} handlers from module '{module_name}'"
-        )
+        if discovered_count > 0:
+            logger.debug(f"  Found: {module_name} ({discovered_count} handlers)")
         return discovered_count
 
     except ImportError as e:
-        logger.warning(f"Could not import handler module '{module_name}': {e}")
+        logger.warning(f"  Failed to import '{module_name}': {e}")
         return 0
     except Exception as e:
-        logger.error(f"Error discovering handlers from '{module_name}': {e}")
+        logger.error(f"  Error in '{module_name}': {e}")
         return 0
 
 
@@ -375,6 +382,8 @@ def discover_plugins_from_directory(directory: Path, recursive: bool = True) -> 
     else:
         python_files = list(directory.glob("*.py"))
 
+    logger.debug(f"  Scanning: {directory}")
+
     for py_file in python_files:
         if py_file.name.startswith("__"):
             continue
@@ -390,9 +399,8 @@ def discover_plugins_from_directory(directory: Path, recursive: bool = True) -> 
             )
 
         except Exception as e:
-            logger.warning(f"Could not load plugin file {py_file}: {e}")
+            logger.warning(f"  Could not load {py_file.name}: {e}")
 
-    logger.info(f"Discovered {discovered_count} plugins from directory {directory}")
     return discovered_count
 
 
@@ -487,4 +495,7 @@ def discover_all_plugins_and_handlers(project_root: Path) -> None:
     if handler_paths:
         discover_handlers_from_paths(handler_paths, project_root)
 
-    logger.info(f"Plugin registry contains {len(PLUGIN_REGISTRY)} plugins")
+    # Import HANDLER_REGISTRY for final summary
+    from .handlers import HANDLER_REGISTRY
+
+    logger.info(f"Registry ready: {len(PLUGIN_REGISTRY)} plugins, {len(HANDLER_REGISTRY)} handlers")

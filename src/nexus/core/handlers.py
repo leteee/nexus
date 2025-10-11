@@ -41,7 +41,7 @@ def register_handler(handler_type: str, handler_class: Type[DataHandler]) -> Non
         >>> register_handler('myformat', MyHandler)
     """
     HANDLER_REGISTRY[handler_type] = handler_class
-    logger.info(f"Registered handler '{handler_type}': {handler_class.__name__}")
+    logger.debug(f"    Registered: '{handler_type}' ({handler_class.__name__})")
 
 
 def get_handler(handler_type: str) -> DataHandler:
