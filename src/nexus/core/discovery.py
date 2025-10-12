@@ -1,14 +1,13 @@
 """
-Plugin discovery and registration system.
+Plugin and handler discovery system.
 
-Following data_replay's automatic discovery pattern with functional approach.
-Discovers plugins from various sources and builds the plugin registry.
+Discovers extensions by importing Python packages configured in global.yaml.
+Extensions register themselves via @plugin and @handler decorators.
 """
 
 import importlib
-import inspect
 import logging
-import os
+import sys
 from pathlib import Path
 from typing import Dict, List, get_type_hints
 
@@ -102,400 +101,174 @@ def discover_io_declarations(
     return data_sources, data_sinks
 
 
-def discover_plugins_from_module(
-    module_name: str, search_paths: List[str] = None
-) -> int:
+def discover_from_path(path_str: str, project_root: Path) -> tuple[int, int]:
     """
-    Discover and register plugins from a Python module.
+    Import a Python package from path.
+
+    Convention: directory name = package name
+    Parent directory is added to sys.path, then package is imported.
 
     Args:
-        module_name: Name of the module to import
-        search_paths: Additional paths to search for the module
+        path_str: Path to package (e.g., "nexus_workspace/alpha")
+        project_root: Project root directory
 
     Returns:
-        Number of plugins discovered
+        (plugins_count, handlers_count)
+
+    Example:
+        "nexus_workspace/alpha" → sys.path += ["nexus_workspace"], import alpha
     """
-    if search_paths:
-        import sys
+    from .handlers import HANDLER_REGISTRY
 
-        for path in search_paths:
-            if path not in sys.path:
-                sys.path.insert(0, str(path))
+    initial_plugin_count = len(PLUGIN_REGISTRY)
+    initial_handler_count = len(HANDLER_REGISTRY)
 
+    # Resolve path
+    path = resolve_path(path_str, project_root)
+
+    if not path.exists() or not path.is_dir():
+        logger.error(f"Package path not found: {path}")
+        return 0, 0
+
+    # Verify it's a Python package
+    if not (path / "__init__.py").exists():
+        logger.warning(f"Not a Python package (missing __init__.py): {path}")
+        return 0, 0
+
+    # Extract package name and parent path
+    package_name = path.name
+    parent_path = str(path.parent.resolve())
+
+    # Add to sys.path
+    if parent_path not in sys.path:
+        sys.path.insert(0, parent_path)
+        logger.debug(f"Added to sys.path: {parent_path}")
+
+    # Import package
     try:
-        module = importlib.import_module(module_name)
-        initial_count = len(PLUGIN_REGISTRY)
-
-        # Force execution of the module to trigger plugin registration
-        importlib.reload(module)
-
-        discovered_count = len(PLUGIN_REGISTRY) - initial_count
-        if discovered_count > 0:
-            logger.debug(f"  Found: {module_name} ({discovered_count} plugins)")
-        return discovered_count
-
+        importlib.import_module(package_name)
+        logger.debug(f"Imported package: {package_name}")
     except ImportError as e:
-        logger.warning(f"  Failed to import '{module_name}': {e}")
-        return 0
+        logger.error(f"Failed to import '{package_name}': {e}")
+        return 0, 0
     except Exception as e:
-        logger.error(f"  Error in '{module_name}': {e}")
-        return 0
+        logger.error(f"Error loading '{package_name}': {e}")
+        return 0, 0
+
+    # Count discoveries
+    plugins_found = len(PLUGIN_REGISTRY) - initial_plugin_count
+    handlers_found = len(HANDLER_REGISTRY) - initial_handler_count
+
+    if plugins_found > 0 or handlers_found > 0:
+        logger.info(
+            f"Package '{package_name}': "
+            f"{plugins_found} plugin(s), {handlers_found} handler(s)"
+        )
+
+    return plugins_found, handlers_found
 
 
 def resolve_path(path_str: str, project_root: Path) -> Path:
     """
-    Resolve a path string to an absolute Path object.
+    Resolve path string to absolute Path.
 
     Supports:
-    - Relative paths (resolved relative to project root)
+    - Relative paths (resolved from project root)
     - Absolute paths
-    - Home directory paths (~)
-    - Environment variable expansion
-
-    Args:
-        path_str: Path string to resolve
-        project_root: Project root directory for resolving relative paths
-
-    Returns:
-        Resolved absolute Path object
+    - Home directory (~)
+    - Environment variables
     """
-    # Expand environment variables
-    expanded_path = os.path.expandvars(path_str)
+    import os
 
-    # Expand user home directory
-    expanded_path = os.path.expanduser(expanded_path)
+    # Expand environment variables and home directory
+    expanded = os.path.expanduser(os.path.expandvars(path_str))
+    path = Path(expanded)
 
-    path_obj = Path(expanded_path)
+    # Make relative paths absolute
+    if not path.is_absolute():
+        path = project_root / path
 
-    # If it's not absolute, make it relative to project root
-    if not path_obj.is_absolute():
-        path_obj = project_root / path_obj
-
-    return path_obj.resolve()
-
-
-def discover_plugins_from_paths(
-    paths: List[str], project_root: Path, recursive: bool = True
-) -> int:
-    """
-    Discover plugins from multiple directory paths.
-
-    Args:
-        paths: List of directory paths to scan
-        project_root: Project root directory
-        recursive: Whether to search recursively
-
-    Returns:
-        Total number of plugins discovered
-    """
-    logger.info(f"Plugin discovery: scanning {len(paths)} path(s)")
-    total_discovered = 0
-
-    for path_str in paths:
-        try:
-            resolved_path = resolve_path(path_str, project_root)
-
-            if resolved_path.exists() and resolved_path.is_dir():
-                count = discover_plugins_from_directory(resolved_path, recursive)
-                total_discovered += count
-                if count > 0:
-                    logger.debug(f"  └─ {resolved_path.name}: {count} plugin(s)")
-            else:
-                logger.warning(
-                    f"  └─ Plugin path does not exist: {resolved_path}"
-                )
-
-        except Exception as e:
-            logger.error(f"  └─ Error processing '{path_str}': {e}")
-
-    if total_discovered > 0:
-        logger.info(f"Plugin discovery: {total_discovered} plugin(s) from {len(paths)} path(s)")
-    return total_discovered
-
-
-def discover_handlers_from_paths(
-    paths: List[str], project_root: Path, recursive: bool = True
-) -> int:
-    """
-    Discover handlers from multiple directory paths.
-
-    Args:
-        paths: List of directory paths to scan
-        project_root: Project root directory
-        recursive: Whether to search recursively
-
-    Returns:
-        Total number of handlers discovered
-    """
-    logger.info(f"Handler discovery: scanning {len(paths)} path(s)")
-    total_discovered = 0
-
-    for path_str in paths:
-        try:
-            resolved_path = resolve_path(path_str, project_root)
-
-            if resolved_path.exists() and resolved_path.is_dir():
-                count = discover_handlers_from_directory(resolved_path, recursive)
-                total_discovered += count
-                if count > 0:
-                    logger.debug(f"  └─ {resolved_path.name}: {count} handler(s)")
-            else:
-                logger.warning(
-                    f"  └─ Handler path does not exist: {resolved_path}"
-                )
-
-        except Exception as e:
-            logger.error(f"  └─ Error processing '{path_str}': {e}")
-
-    if total_discovered > 0:
-        logger.info(f"Handler discovery: {total_discovered} handler(s) from {len(paths)} path(s)")
-    return total_discovered
-
-
-def discover_handlers_from_directory(directory: Path, recursive: bool = True) -> int:
-    """
-    Discover handlers from all Python files in a directory.
-
-    Args:
-        directory: Directory to search for handler files
-        recursive: Whether to search recursively
-
-    Returns:
-        Number of handlers discovered
-    """
-    if not directory.exists() or not directory.is_dir():
-        logger.warning(f"Handler directory not found: {directory}")
-        return 0
-
-    from .handlers import HANDLER_REGISTRY
-
-    initial_count = len(HANDLER_REGISTRY)
-
-    # Get Python files
-    if recursive:
-        python_files = list(directory.glob("**/*.py"))
-    else:
-        python_files = list(directory.glob("*.py"))
-
-    logger.debug(f"  Scanning: {directory}")
-
-    for py_file in python_files:
-        if py_file.name.startswith("__"):
-            continue
-
-        try:
-            # Convert file path to module name
-            relative_path = py_file.relative_to(directory.parent)
-            module_parts = relative_path.with_suffix("").parts
-            module_name = ".".join(module_parts)
-
-            # Import the module to register handlers
-            discover_handlers_from_module(
-                module_name, search_paths=[str(directory.parent)]
-            )
-
-        except Exception as e:
-            logger.warning(f"  Could not load {py_file.name}: {e}")
-
-    discovered_count = len(HANDLER_REGISTRY) - initial_count
-    return discovered_count
-
-
-def discover_handlers_from_module(
-    module_name: str, search_paths: List[str] = None
-) -> int:
-    """
-    Discover and register handlers from a Python module.
-
-    Args:
-        module_name: Name of the module to import
-        search_paths: Additional paths to search for the module
-
-    Returns:
-        Number of handlers discovered
-    """
-    if search_paths:
-        import sys
-
-        for path in search_paths:
-            if path not in sys.path:
-                sys.path.insert(0, str(path))
-
-    try:
-        from .handlers import HANDLER_REGISTRY, register_handler
-
-        initial_count = len(HANDLER_REGISTRY)
-
-        module = importlib.import_module(module_name)
-
-        # Look for handler classes in the module
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            # Check if it looks like a handler (has load and save methods)
-            if (
-                hasattr(obj, "load")
-                and hasattr(obj, "save")
-                and hasattr(obj, "produced_type")
-            ):
-
-                # Try to register the handler
-                # Use the class name without 'Handler' suffix as the type
-                handler_type = name.lower().replace("handler", "")
-                if handler_type:
-                    try:
-                        register_handler(handler_type, obj)
-                    except Exception as e:
-                        logger.debug(f"Could not register handler {name}: {e}")
-
-        discovered_count = len(HANDLER_REGISTRY) - initial_count
-        if discovered_count > 0:
-            logger.debug(f"  Found: {module_name} ({discovered_count} handlers)")
-        return discovered_count
-
-    except ImportError as e:
-        logger.warning(f"  Failed to import '{module_name}': {e}")
-        return 0
-    except Exception as e:
-        logger.error(f"  Error in '{module_name}': {e}")
-        return 0
-
-
-def discover_plugins_from_directory(directory: Path, recursive: bool = True) -> int:
-    """
-    Discover plugins from all Python files in a directory.
-
-    Args:
-        directory: Directory to search for plugin files
-        recursive: Whether to search recursively
-
-    Returns:
-        Number of plugins discovered
-    """
-    if not directory.exists() or not directory.is_dir():
-        logger.warning(f"Plugin directory not found: {directory}")
-        return 0
-
-    discovered_count = 0
-
-    # Get Python files
-    if recursive:
-        python_files = list(directory.glob("**/*.py"))
-    else:
-        python_files = list(directory.glob("*.py"))
-
-    logger.debug(f"  Scanning: {directory}")
-
-    for py_file in python_files:
-        if py_file.name.startswith("__"):
-            continue
-
-        try:
-            # Convert file path to module name
-            relative_path = py_file.relative_to(directory.parent)
-            module_parts = relative_path.with_suffix("").parts
-            module_name = ".".join(module_parts)
-
-            discovered_count += discover_plugins_from_module(
-                module_name, search_paths=[str(directory.parent)]
-            )
-
-        except Exception as e:
-            logger.warning(f"  Could not load {py_file.name}: {e}")
-
-    return discovered_count
-
-
-def get_plugin(name: str) -> PluginSpec:
-    """
-    Get a plugin by name.
-
-    Args:
-        name: Plugin name
-
-    Returns:
-        Plugin specification
-
-    Raises:
-        KeyError: If plugin not found
-    """
-    if name not in PLUGIN_REGISTRY:
-        raise KeyError(f"Plugin '{name}' not found in registry")
-    return PLUGIN_REGISTRY[name]
-
-
-def list_plugins() -> Dict[str, PluginSpec]:
-    """
-    Get all registered plugins.
-
-    Returns:
-        Dictionary of all plugin specifications
-    """
-    return PLUGIN_REGISTRY.copy()
-
-
-def clear_registry() -> None:
-    """Clear the plugin registry (useful for testing)."""
-    PLUGIN_REGISTRY.clear()
-    logger.debug("Plugin registry cleared")
+    return path.resolve()
 
 
 def discover_all_plugins_and_handlers(project_root: Path) -> None:
     """
-    Unified plugin and handler discovery from global configuration.
+    Import packages from config/global.yaml and config/local.yaml.
 
-    This function is the single source of truth for plugin/handler discovery logic.
-    Used by both PipelineEngine and CLI to ensure consistent discovery behavior.
+    Configuration files (in precedence order):
+    1. config/global.yaml - Project defaults (version controlled)
+    2. config/local.yaml - User overrides (gitignored, optional)
+
+    The local.yaml is deep-merged into global.yaml, supporting all config sections.
 
     Args:
-        project_root: Project root directory containing config/global.yaml
-
-    Side Effects:
-        - Populates PLUGIN_REGISTRY with discovered plugins
-        - Populates HANDLER_REGISTRY with discovered handlers
-        - Logs discovery progress and results
-
-    Discovery Process:
-        1. Load global configuration from config/global.yaml
-        2. Discover plugins from paths specified in discovery.plugins.paths
-        3. Discover handlers from core directory + any configured handler paths
-
-    Note:
-        This function is idempotent - plugins/handlers are only registered once.
-        Subsequent calls will see "Discovered 0" due to duplicate detection.
+        project_root: Project root containing config/ directory
     """
-    from .config import load_yaml
+    from .config import deep_merge, load_yaml
+    from .handlers import HANDLER_REGISTRY
 
     # Load global configuration
     try:
         global_config = load_yaml(project_root / "config" / "global.yaml")
     except FileNotFoundError:
-        logger.warning(f"Global config not found at {project_root / 'config' / 'global.yaml'}")
+        logger.warning("Global config not found, skipping discovery")
         return
     except Exception as e:
-        logger.error(f"Error loading global config: {e}")
+        logger.error(f"Failed to load global config: {e}")
         return
 
-    discovery_config = global_config.get("framework", {}).get("discovery", {})
+    # Merge local configuration if exists
+    local_config_path = project_root / "config" / "local.yaml"
+    if local_config_path.exists():
+        try:
+            local_config = load_yaml(local_config_path)
+            if local_config:
+                global_config = deep_merge(global_config, local_config)
+                logger.info("Merged local.yaml configuration")
+        except Exception as e:
+            logger.warning(f"Failed to load local config: {e}")
 
-    # Discover plugins from configured paths
-    plugin_config = discovery_config.get("plugins", {})
-    plugin_paths = plugin_config.get("paths", [])
-    recursive = plugin_config.get("recursive", True)
+    # Extract packages for discovery
+    packages = global_config.get("framework", {}).get("packages", [])
 
-    if plugin_paths:
-        discover_plugins_from_paths(
-            plugin_paths,
-            project_root,
-            recursive=recursive,
-        )
+    # Remove duplicates (keep last occurrence)
+    packages = list(dict.fromkeys(packages))
 
-    # Discover handlers from configured paths
-    handler_config = discovery_config.get("handlers", {})
-    handler_paths = handler_config.get("paths", [])
+    if not packages:
+        logger.warning("No packages configured in framework.packages")
+        return
 
-    if handler_paths:
-        discover_handlers_from_paths(handler_paths, project_root)
+    logger.info(f"Importing {len(packages)} package(s)")
 
-    # Import HANDLER_REGISTRY for final summary
-    from .handlers import HANDLER_REGISTRY
+    # Import each package
+    total_plugins = 0
+    total_handlers = 0
 
-    logger.info(f"Registry ready: {len(PLUGIN_REGISTRY)} plugins, {len(HANDLER_REGISTRY)} handlers")
+    for path_str in packages:
+        plugins, handlers = discover_from_path(path_str, project_root)
+        total_plugins += plugins
+        total_handlers += handlers
+
+    # Summary
+    logger.info(
+        f"Discovery complete: {len(PLUGIN_REGISTRY)} plugins, "
+        f"{len(HANDLER_REGISTRY)} handlers"
+    )
+
+
+def get_plugin(name: str) -> PluginSpec:
+    """Get plugin by name."""
+    if name not in PLUGIN_REGISTRY:
+        raise KeyError(f"Plugin '{name}' not found")
+    return PLUGIN_REGISTRY[name]
+
+
+def list_plugins() -> Dict[str, PluginSpec]:
+    """Get all registered plugins."""
+    return PLUGIN_REGISTRY.copy()
+
+
+def clear_registry() -> None:
+    """Clear plugin registry (for testing)."""
+    PLUGIN_REGISTRY.clear()
+

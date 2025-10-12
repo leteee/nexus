@@ -1,103 +1,46 @@
 # Nexus Framework - Global Configuration
 # =======================================================================
-# This file contains framework-wide defaults and plugin configurations.
-# It serves as the foundation for all cases and can be overridden by:
-# 1. Case OR Template configurations (mutual exclusion, not both)
-# 2. CLI arguments (--config key=value)
+# Framework-wide defaults and plugin configurations.
 #
 # Configuration Hierarchy (4 layers, highest to lowest precedence):
 #   1. CLI overrides (--config key=value)
 #   2. Case OR Template config (mutual exclusion)
 #   3. Global config (this file)
 #   4. Plugin defaults (from PluginConfig classes)
-#
-# Template Semantics:
-#   - Templates are NOT a configuration layer to merge
-#   - Templates are starting points/scaffolds that REPLACE case.yaml when specified
-#   - Use --template to run with template (case.yaml ignored)
-#   - Use without --template to run with case.yaml
 # =======================================================================
 
 framework:
   name: "nexus"
   version: "1.0.0"
 
-  # Cases root directories (supports single or multiple paths)
-  # Single directory (backward compatible):
-  # cases_root: "cases"
-
-  # Multiple directories (new format, searched in priority order):
+  # Cases root directories (searched in priority order)
   cases_roots:
-    - "cases"              # Relative to project root (highest priority)
-    - "shared_cases"       # Shared cases directory
+    - "cases"
+    - "nexus_workspace/works"
 
-  # Logging configuration
+  # Template root directories (searched in priority order)
+  templates_roots:
+    - "templates"
+    - "nexus_workspace/templates"
+
+  # Python packages to import at startup
+  # Convention: directory name = package name, parent added to sys.path
+  #
+  # Local overrides: Create config/local.yaml to add packages without
+  # committing them to git (useful for sideloaded development packages)
+  packages:
+    - "src/nexus/contrib"
+
+  # Logging
   logging:
     level: INFO  # DEBUG, INFO, WARNING, ERROR
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-  # Performance and caching
+  # Performance
   performance:
     default_cache_size: 100  # MB
     lazy_loading: true
     max_concurrent_plugins: 4
-
-  # Discovery Configuration
-  # Controls how Nexus discovers plugins, handlers, and templates
-  discovery:
-    # Plugin Discovery
-    plugins:
-      # Directory paths to scan (relative to project root or absolute)
-      # Framework scans these paths for Python files with @plugin decorators
-      paths:
-        # - "src/nexus/plugins"  # Built-in plugins (always included by default)
-        - "src/demo/plugins"  # Built-in plugins (always included by default)
-      # Add custom plugin directories:
-      # paths:
-      #   - "src/nexus/plugins"        # Built-in plugins
-      #   - "custom_plugins"            # Relative to project root
-      #   - "/opt/shared/nexus_plugins" # Absolute path
-      #   - "~/my_plugins"              # Home directory expansion
-      #   - "$PLUGIN_DIR/custom"        # Environment variable expansion
-
-      # Whether to scan subdirectories recursively
-      recursive: true
-
-    # Handler Discovery
-    handlers:
-      # Directory paths to scan for DataHandler implementations
-      paths:
-        - "src/demo/handlers"  # Built-in handlers (always included by default)
-      # Add custom handler directories:
-      # paths:
-      #   - "src/nexus/core"           # Built-in handlers
-      #   - "custom_handlers"           # Relative to project root
-      #   - "/opt/shared/handlers"      # Absolute path
-      #   - "~/my_handlers"             # Home directory expansion
-      #   - "$HANDLER_DIR/custom"       # Environment variable expansion
-
-      # Whether to scan subdirectories recursively
-      recursive: true
-
-    # Template Discovery
-    templates:
-      # Directories to search for templates (in priority order)
-      # First match wins when multiple templates have the same name
-      paths:
-        - "templates"  # Built-in templates (default, highest priority)
-
-      # Example: Add custom template directories
-      # paths:
-      #   - "templates"                  # Built-in (highest priority)
-      #   - "custom_templates"           # Project-specific
-      #   - "~/shared/nexus_templates"   # User's shared templates
-      #   - "/opt/company/templates"     # Company-wide templates
-      #   - "$NEXUS_TEMPLATES"           # Environment variable
-
-      # Search subdirectories for nested organization
-      # false: Only top-level *.yaml files (flat structure)
-      # true: All *.yaml in subdirectories (templates/custom/pipeline.yaml → "custom/pipeline")
-      recursive: false
 
 # Global Plugin Configuration
 # Provides fallback defaults for all plugins when not specified elsewhere
@@ -133,37 +76,6 @@ plugins:
     group_by: "category"        # Column to group by
     agg_column: "value"         # Column to aggregate
     agg_function: "mean"        # mean, sum, count, min, max, std
-
-# Environment-specific Overrides
-# Use these for development vs production differences
-environments:
-  development:
-    framework:
-      logging:
-        level: DEBUG
-    plugins:
-      "Data Generator":
-        num_rows: 100      # Smaller datasets for faster dev cycles
-
-  testing:
-    framework:
-      logging:
-        level: ERROR       # Minimal logging during tests
-    plugins:
-      "Data Generator":
-        num_rows: 50       # Tiny datasets for unit tests
-        random_seed: 999   # Different seed for test isolation
-
-  production:
-    framework:
-      logging:
-        level: WARNING
-      performance:
-        default_cache_size: 500  # More memory available
-        max_concurrent_plugins: 8
-    plugins:
-      "Data Generator":
-        num_rows: 10000    # Larger datasets in production
 
 # ========================================================================
 # Configuration Best Practices

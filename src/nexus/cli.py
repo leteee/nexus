@@ -39,22 +39,18 @@ def setup_logging(level: str = "INFO"):
     )
 
 
-def load_template_config(global_config: Dict[str, Any]) -> tuple[list[str], bool]:
+def load_templates_roots(global_config: Dict[str, Any]) -> list[str]:
     """
-    Load template discovery configuration from global config.
+    Load template root directories from global config.
 
     Args:
         global_config: Global configuration dictionary
 
     Returns:
-        tuple: (template_paths, template_recursive)
+        list: Template root directories (searched in priority order)
     """
-    discovery_config = global_config.get("framework", {}).get("discovery", {})
-    template_config = discovery_config.get("templates", {})
-    template_paths = template_config.get("paths", ["templates"])
-    template_recursive = template_config.get("recursive", False)
-
-    return template_paths, template_recursive
+    templates_roots = global_config.get("framework", {}).get("templates_roots", ["templates"])
+    return templates_roots
 
 
 def parse_config_overrides(config_list: tuple) -> Dict[str, Any]:
@@ -188,15 +184,14 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
         global_config = load_yaml(project_root / "config" / "global.yaml")
         cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
-        # Load template discovery configuration
-        template_paths, template_recursive = load_template_config(global_config)
+        # Load template roots configuration
+        templates_roots = load_templates_roots(global_config)
 
-        # Initialize case manager with template configuration
+        # Initialize case manager
         case_manager = CaseManager(
             project_root,
             cases_roots=cases_roots,
-            template_paths=template_paths,
-            template_recursive=template_recursive,
+            templates_roots=templates_roots,
         )
         config_path, pipeline_config = case_manager.get_pipeline_config(case, template)
 
@@ -249,15 +244,14 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
         global_config = load_yaml(project_root / "config" / "global.yaml")
         cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
-        # Load template discovery configuration
-        template_paths, template_recursive = load_template_config(global_config)
+        # Load template roots configuration
+        templates_roots = load_templates_roots(global_config)
 
-        # Initialize case manager with template configuration
+        # Initialize case manager
         case_manager = CaseManager(
             project_root,
             cases_roots=cases_roots,
-            template_paths=template_paths,
-            template_recursive=template_recursive,
+            templates_roots=templates_roots,
         )
         case_dir = case_manager.resolve_case_path(case)
 
@@ -313,56 +307,48 @@ def list(what: str):
             global_config = load_yaml(project_root / "config" / "global.yaml")
             cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
-            # Load template discovery configuration
-            template_paths, template_recursive = load_template_config(global_config)
+            # Load template roots configuration
+            templates_roots = load_templates_roots(global_config)
 
-            # Initialize case manager with template configuration
+            # Initialize case manager
             case_manager = CaseManager(
                 project_root,
                 cases_roots=cases_roots,
-                template_paths=template_paths,
-                template_recursive=template_recursive,
+                templates_roots=templates_roots,
             )
 
             templates = case_manager.list_available_templates()
             if templates:
                 click.echo("Available templates:")
 
-                # Group by directory if recursive
-                if template_recursive:
-                    # Show with directory structure
-                    current_dir = None
-                    for template in sorted(templates):
-                        template_dir = str(Path(template).parent) if "/" in template else ""
-                        if template_dir != current_dir:
-                            if template_dir:
-                                click.echo(f"\n  {template_dir}/")
-                            current_dir = template_dir
+                # Always show with directory structure (always recursive)
+                current_dir = None
+                for template in sorted(templates):
+                    template_dir = str(Path(template).parent) if "/" in template else ""
+                    if template_dir != current_dir:
+                        if template_dir:
+                            click.echo(f"\n  {template_dir}/")
+                        current_dir = template_dir
 
-                        template_name = Path(template).name
-                        prefix = "    " if template_dir else "  "
-                        click.echo(f"{prefix}{template_name}")
-                else:
-                    # Simple flat list
-                    for template in sorted(templates):
-                        click.echo(f"  {template}")
+                    template_name = Path(template).name
+                    prefix = "    " if template_dir else "  "
+                    click.echo(f"{prefix}{template_name}")
             else:
                 click.echo("No templates found in search paths")
-                click.echo(f"Search paths: {template_paths}")
+                click.echo(f"Search paths: {templates_roots}")
 
         elif what == "cases":
             global_config = load_yaml(project_root / "config" / "global.yaml")
             cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
 
-            # Load template configuration for consistency
-            template_paths, template_recursive = load_template_config(global_config)
+            # Load template roots for CaseManager initialization
+            templates_roots = load_templates_roots(global_config)
 
             # Initialize case manager
             case_manager = CaseManager(
                 project_root,
                 cases_roots=cases_roots,
-                template_paths=template_paths,
-                template_recursive=template_recursive,
+                templates_roots=templates_roots,
             )
 
             cases = case_manager.list_existing_cases()

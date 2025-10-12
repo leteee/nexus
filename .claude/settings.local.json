@@ -18,7 +18,14 @@
       "Bash(done)",
       "Bash(cd /d D:projectsnexus)",
       "Bash(cd /d \"D:\\projects\\nexus\")",
-      "Bash(nexus run -c demo -t demo)"
+      "Bash(nexus run -c demo -t demo)",
+      "Bash(cat config/local.yaml.example)",
+      "Bash(__NEW_LINE__ echo \"=== Testing gitignore (attempt 3) ===\")",
+      "Bash(git check-ignore -v cases/testcase/case.yaml)",
+      "Bash(git check-ignore cases/testcase/data/output.csv)",
+      "Bash(git check-ignore cases/testcase/reports/report.json)",
+      "Bash(__NEW_LINE__ rm -rf cases/testcase)",
+      "Bash(cat .gitignore)"
     ],
     "deny": [],
     "ask": []

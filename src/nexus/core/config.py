@@ -166,15 +166,15 @@ def load_yaml(file_path: Path) -> Dict[str, Any]:
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Recursively merge two dictionaries with override precedence.
+    Recursively merge two dictionaries with Docker Compose-style precedence.
 
-    Performs a deep merge where nested dictionaries are merged recursively
-    rather than replaced. This is essential for configuration management where
-    you want to override specific nested values without losing other settings.
+    Merges nested dictionaries recursively while handling arrays specially.
+    This follows Docker Compose override.yml semantics for intuitive config merging.
 
     **Merge Behavior**:
         - **Nested dicts**: Recursively merged (both must be dicts)
-        - **Other values**: Override value replaces base value
+        - **Arrays/Lists**: Appended (override items added to base items)
+        - **Scalars**: Override value replaces base value
         - **New keys**: Added to result
         - **Missing keys in override**: Base values retained
 
@@ -183,12 +183,10 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
 
     Args:
         base (Dict[str, Any]): Base configuration dictionary.
-            This represents the lower-precedence configuration.
-            Values retained unless overridden.
+            Lower-precedence configuration. Values retained unless overridden.
 
         override (Dict[str, Any]): Override configuration dictionary.
-            This represents the higher-precedence configuration.
-            Values from here take precedence over base.
+            Higher-precedence configuration. Values take precedence over base.
 
     Returns:
         Dict[str, Any]: New dictionary with merged values.
@@ -197,35 +195,39 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
     Example:
         >>> base = {
         ...     "database": {"host": "localhost", "port": 5432},
-        ...     "logging": {"level": "INFO"}
+        ...     "logging": {"level": "INFO"},
+        ...     "packages": ["pkg1", "pkg2"]
         ... }
         >>> override = {
         ...     "database": {"host": "prod-server"},
-        ...     "cache": {"enabled": True}
+        ...     "cache": {"enabled": True},
+        ...     "packages": ["pkg3"]
         ... }
         >>> result = deep_merge(base, override)
         >>> print(result)
         {
             'database': {'host': 'prod-server', 'port': 5432},
             'logging': {'level': 'INFO'},
-            'cache': {'enabled': True}
+            'cache': {'enabled': True},
+            'packages': ['pkg1', 'pkg2', 'pkg3']
         }
 
+    Array Append Example:
+        >>> base = {"framework": {"packages": ["src/nexus/contrib"]}}
+        >>> override = {"framework": {"packages": ["nexus_workspace/alpha"]}}
+        >>> result = deep_merge(base, override)
+        >>> print(result["framework"]["packages"])
+        ['src/nexus/contrib', 'nexus_workspace/alpha']  # Appended, not replaced
+
     Configuration Hierarchy Example:
-        >>> # Build configuration hierarchy
-        >>> defaults = {"plugins": {"DataGen": {"rows": 100, "seed": 42}}}
+        >>> defaults = {"plugins": {"DataGen": {"rows": 100, "tags": ["a"]}}}
         >>> global_cfg = {"plugins": {"DataGen": {"rows": 500}}}
-        >>> case_cfg = {"plugins": {"DataGen": {"seed": 123}}}
-        >>> cli_cfg = {"plugins": {"DataGen": {"rows": 1000}}}
+        >>> case_cfg = {"plugins": {"DataGen": {"tags": ["b"]}}}
         >>>
-        >>> # Merge in order: defaults -> global -> case -> CLI
-        >>> result = defaults
-        >>> result = deep_merge(result, global_cfg)
+        >>> result = deep_merge(defaults, global_cfg)
         >>> result = deep_merge(result, case_cfg)
-        >>> result = deep_merge(result, cli_cfg)
-        >>>
         >>> print(result["plugins"]["DataGen"])
-        {'rows': 1000, 'seed': 123}  # rows from CLI, seed from case
+        {'rows': 500, 'tags': ['a', 'b']}  # rows overridden, tags appended
 
     Edge Cases:
         **Type Conflicts** (both values must be dict to merge):
@@ -236,25 +238,42 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
             # result = {"key": "string"}  # Override replaces entirely
             ```
 
-        **List Values** (not merged, replaced):
+        **List Values** (appended, following Docker Compose semantics):
             ```python
             base = {"items": [1, 2, 3]}
             override = {"items": [4, 5]}
             result = deep_merge(base, override)
-            # result = {"items": [4, 5]}  # Lists are replaced, not concatenated
+            # result = {"items": [1, 2, 3, 4, 5]}  # Lists appended
+            ```
+
+        **Mixed List/Scalar Conflict**:
+            ```python
+            base = {"key": [1, 2]}
+            override = {"key": "string"}
+            result = deep_merge(base, override)
+            # result = {"key": "string"}  # Type mismatch, override replaces
             ```
 
     Note:
-        This function is pure (no side effects) and can be cached if needed.
-        For performance-critical paths, consider using Python 3.9+ dict union
-        operator `|` for shallow merges.
+        This function is pure (no side effects). Arrays are concatenated without
+        deduplication - if you need unique values, apply set() after merging.
     """
     result = base.copy()
 
     for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
+        if key in result:
+            base_val = result[key]
+            # Both are dicts: recursive merge
+            if isinstance(base_val, dict) and isinstance(value, dict):
+                result[key] = deep_merge(base_val, value)
+            # Both are lists: append
+            elif isinstance(base_val, list) and isinstance(value, list):
+                result[key] = base_val + value
+            # Otherwise: override replaces
+            else:
+                result[key] = value
         else:
+            # New key: add it
             result[key] = value
 
     return result

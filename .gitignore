@@ -179,3 +179,14 @@ coverage/
 
 # Auto-generated API documentation (use 'nexus doc' to regenerate)
 docs/api/
+
+# Local configuration (user-specific overrides)
+config/local.yaml
+
+# Cases: ignore all generated files, keep case.yaml
+cases/**/*
+!cases/*/
+!cases/*/case.yaml
+
+# User workspace (sideloaded packages)
+nexus_workspace/

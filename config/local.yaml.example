@@ -1,0 +1,52 @@
+# Nexus Local Configuration (User-Specific)
+# =======================================================================
+# This file provides a template for local configuration overrides.
+#
+# Usage:
+#   1. Copy this file: cp local.yaml.example local.yaml
+#   2. Edit local.yaml with your custom settings
+#   3. local.yaml is gitignored and won't be committed
+#
+# Configuration merging (Docker Compose style):
+#   - global.yaml: Project defaults (version controlled)
+#   - local.yaml: Your overrides (gitignored, optional)
+#   - Nested dicts: Deep merge (partial override)
+#   - Arrays/lists: Append (items added to global arrays)
+#   - Scalars: Replace (override global values)
+#
+# Supports ALL global.yaml sections:
+#   - framework.* (logging, performance, packages, etc.)
+#   - plugins.* (plugin-specific defaults)
+# =======================================================================
+
+framework:
+  # Python packages - APPENDED to global.yaml packages
+  # Just list your local packages, global ones are automatically included
+  packages:
+    - "nexus_workspace/alpha"
+    # - "nexus_workspace/my_plugins"
+    # - "~/shared/nexus_extensions"
+
+  # Logging config - MERGED with global.yaml
+  # Only override specific fields you want to change
+  logging:
+    level: DEBUG  # Overrides global.yaml level: INFO
+    # format: inherited from global.yaml
+
+  # Performance config - MERGED with global.yaml
+  # performance:
+  #   max_concurrent_plugins: 8      # Overrides global: 4
+  #   default_cache_size: 200        # Overrides global: 100
+  #   lazy_loading: true              # Inherited from global
+
+# Plugin defaults - MERGED with global.yaml
+# Only override specific plugin settings you want to change
+# plugins:
+#   "Data Generator":
+#     num_rows: 100        # Overrides global: 1000
+#     random_seed: 999     # Overrides global: 42
+#     # num_categories: 3   # Inherited from global
+#     # noise_level: 0.1    # Inherited from global
+
+
+

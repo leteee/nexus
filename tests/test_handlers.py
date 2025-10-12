@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from nexus.core.handlers import HANDLER_REGISTRY, CSVHandler, JSONHandler, get_handler
+from nexus.contrib.basic.handlers import CSVHandler, JSONHandler
+from nexus.core.handlers import HANDLER_REGISTRY, get_handler
 
 
 class TestDataHandlers:
