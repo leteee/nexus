@@ -9,7 +9,7 @@ description = "Modern data processing framework inspired by data_replay"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "light", email = "leiteng712@gmail.com" }
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

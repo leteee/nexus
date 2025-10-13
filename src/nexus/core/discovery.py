@@ -105,18 +105,19 @@ def discover_from_path(path_str: str, project_root: Path) -> tuple[int, int]:
     """
     Import a Python package from path.
 
-    Convention: directory name = package name
-    Parent directory is added to sys.path, then package is imported.
+    Supports both single-level and nested packages (e.g., "alpha/plugins").
+    The parent directory is added to sys.path, and the full package path is imported.
 
     Args:
-        path_str: Path to package (e.g., "nexus_workspace/alpha")
+        path_str: Path to package (e.g., "nexus_workspace/alpha" or "nexus_workspace/alpha/plugins")
         project_root: Project root directory
 
     Returns:
         (plugins_count, handlers_count)
 
-    Example:
-        "nexus_workspace/alpha" → sys.path += ["nexus_workspace"], import alpha
+    Examples:
+        "nexus_workspace/alpha" → sys.path += ["<project_root>/nexus_workspace"], import alpha
+        "nexus_workspace/alpha/plugins" → sys.path += ["<project_root>/nexus_workspace"], import alpha.plugins
     """
     from .handlers import HANDLER_REGISTRY
 
@@ -135,9 +136,20 @@ def discover_from_path(path_str: str, project_root: Path) -> tuple[int, int]:
         logger.warning(f"Not a Python package (missing __init__.py): {path}")
         return 0, 0
 
-    # Extract package name and parent path
-    package_name = path.name
-    parent_path = str(path.parent.resolve())
+    # Find the top-level package by walking up until we find a directory without __init__.py
+    # This identifies where to add to sys.path and constructs the full package name
+    current = path
+    package_parts = []
+
+    while current != project_root and (current / "__init__.py").exists():
+        package_parts.insert(0, current.name)
+        current = current.parent
+
+    # Parent path (directory to add to sys.path)
+    parent_path = str(current.resolve())
+
+    # Full package name (e.g., "alpha.plugins")
+    package_name = ".".join(package_parts)
 
     # Add to sys.path
     if parent_path not in sys.path:

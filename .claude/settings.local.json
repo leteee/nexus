@@ -25,7 +25,8 @@
       "Bash(git check-ignore cases/testcase/data/output.csv)",
       "Bash(git check-ignore cases/testcase/reports/report.json)",
       "Bash(__NEW_LINE__ rm -rf cases/testcase)",
-      "Bash(cat .gitignore)"
+      "Bash(cat .gitignore)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
