@@ -117,12 +117,22 @@ class CaseManager:
             ... )
         """
         self.project_root = project_root
+
+        cases_roots = cases_roots or ["cases"]
+        if isinstance(cases_roots, (str, Path)):
+            cases_roots = [cases_roots]
+
+        templates_roots = templates_roots or ["templates"]
+        if isinstance(templates_roots, (str, Path)):
+            templates_roots = [templates_roots]
+
         self.cases_roots = [
-            self._resolve_path(path) for path in (cases_roots or ["cases"])
+            self._resolve_path(path) for path in cases_roots
         ]
         self.templates_roots = [
-            self._resolve_path(path) for path in (templates_roots or ["templates"])
+            self._resolve_path(path) for path in templates_roots
         ]
+        self.cases_root = self.cases_roots[0]
 
         logger.debug(
             f"CaseManager initialized with:\n"
@@ -293,15 +303,10 @@ class CaseManager:
         case_dir = self.resolve_case_path(case_path)
         case_config_path = case_dir / "case.yaml"
 
-        # Validate case directory exists
+        # Ensure case directory exists (create automatically for convenience)
         if not case_dir.exists():
-            available_cases = self.list_existing_cases()
-            cases_list = ", ".join(available_cases) if available_cases else "none"
-            raise FileNotFoundError(
-                f"Case directory not found: {case_dir}\n"
-                f"Available cases: {cases_list}\n"
-                f"Please create the case directory first, or use an existing case."
-            )
+            case_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created case directory: {case_dir}")
 
         if template_name:
             # Template mode: Load template, ignore case.yaml

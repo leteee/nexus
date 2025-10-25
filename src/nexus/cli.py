@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 import click
 
 from .core.case_manager import CaseManager
-from .core.config import load_yaml
+from .core.config import load_global_configuration
 from .core.discovery import get_plugin, list_plugins
 from .core.engine import PipelineEngine
 
@@ -50,6 +50,8 @@ def load_templates_roots(global_config: Dict[str, Any]) -> list[str]:
         list: Template root directories (searched in priority order)
     """
     templates_roots = global_config.get("framework", {}).get("templates_roots", ["templates"])
+    if isinstance(templates_roots, str):
+        templates_roots = [templates_roots]
     return templates_roots
 
 
@@ -181,8 +183,10 @@ def run(case: str, template: Optional[str], config: tuple, verbose: bool):
     try:
         # Find project root and load global config
         project_root = find_project_root(Path.cwd())
-        global_config = load_yaml(project_root / "config" / "global.yaml")
+        global_config = load_global_configuration(project_root)
         cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
+        if isinstance(cases_roots, str):
+            cases_roots = [cases_roots]
 
         # Load template roots configuration
         templates_roots = load_templates_roots(global_config)
@@ -241,8 +245,10 @@ def plugin(plugin_name: str, case: str, config: tuple, verbose: bool):
     try:
         # Find project root and setup case context
         project_root = find_project_root(Path.cwd())
-        global_config = load_yaml(project_root / "config" / "global.yaml")
+        global_config = load_global_configuration(project_root)
         cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
+        if isinstance(cases_roots, str):
+            cases_roots = [cases_roots]
 
         # Load template roots configuration
         templates_roots = load_templates_roots(global_config)
@@ -304,8 +310,10 @@ def list(what: str):
         project_root = find_project_root(Path.cwd())
 
         if what == "templates":
-            global_config = load_yaml(project_root / "config" / "global.yaml")
+            global_config = load_global_configuration(project_root)
             cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
+            if isinstance(cases_roots, str):
+                cases_roots = [cases_roots]
 
             # Load template roots configuration
             templates_roots = load_templates_roots(global_config)
@@ -338,8 +346,10 @@ def list(what: str):
                 click.echo(f"Search paths: {templates_roots}")
 
         elif what == "cases":
-            global_config = load_yaml(project_root / "config" / "global.yaml")
+            global_config = load_global_configuration(project_root)
             cases_roots = global_config.get("framework", {}).get("cases_roots", ["cases"])
+            if isinstance(cases_roots, str):
+                cases_roots = [cases_roots]
 
             # Load template roots for CaseManager initialization
             templates_roots = load_templates_roots(global_config)

@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional, get_type_hints
 from .config import (
     create_configuration_context,
     get_plugin_configuration,
+    load_global_configuration,
     load_yaml,
 )
 from .context import NexusContext, PluginContext
@@ -275,7 +276,7 @@ class PipelineEngine:
         config_overrides = config_overrides or {}
 
         # Load global configuration
-        global_config = load_yaml(self.project_root / "config" / "global.yaml")
+        global_config = load_global_configuration(self.project_root)
 
         # Create configuration context with proper hierarchy
         config_context = create_configuration_context(
@@ -458,7 +459,7 @@ class PipelineEngine:
         config_overrides = config_overrides or {}
 
         # Load global configuration
-        global_config = load_yaml(self.project_root / "config" / "global.yaml")
+        global_config = load_global_configuration(self.project_root)
 
         # Try to load existing case configuration
         case_config = {}

@@ -8,8 +8,32 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .core.case_manager import CaseManager
-from .core.config import load_yaml
+from .core.config import load_global_configuration
 from .core.engine import PipelineEngine
+
+
+def _build_case_manager(project_root: Path) -> tuple[CaseManager, Dict[str, Any]]:
+    """Construct CaseManager using merged global/local configuration."""
+
+    global_config = load_global_configuration(project_root)
+    framework_cfg = global_config.get("framework", {})
+
+    cases_roots = framework_cfg.get("cases_roots", ["cases"])
+    if isinstance(cases_roots, str):
+        cases_roots = [cases_roots]
+
+    templates_roots = framework_cfg.get("templates_roots", ["templates"])
+    if isinstance(templates_roots, str):
+        templates_roots = [templates_roots]
+
+    manager = CaseManager(
+        project_root,
+        cases_roots=cases_roots,
+        templates_roots=templates_roots,
+    )
+
+    return manager, global_config
+
 
 
 def create_engine(
@@ -35,11 +59,8 @@ def create_engine(
         else:
             project_root = Path.cwd()
 
-    # Load global config and resolve case path
-    global_config = load_yaml(project_root / "config" / "global.yaml")
-    cases_root = global_config.get("framework", {}).get("cases_root", "cases")
-
-    case_manager = CaseManager(project_root, cases_root)
+    # Load merged configuration and resolve case path
+    case_manager, _ = _build_case_manager(project_root)
     case_dir = case_manager.resolve_case_path(case_path)
 
     return PipelineEngine(project_root, case_dir)
@@ -73,11 +94,8 @@ def run_pipeline(
         else:
             project_root = Path.cwd()
 
-    # Load global config and get pipeline configuration
-    global_config = load_yaml(project_root / "config" / "global.yaml")
-    cases_root = global_config.get("framework", {}).get("cases_root", "cases")
-
-    case_manager = CaseManager(project_root, cases_root)
+    # Load merged configuration and access pipeline data
+    case_manager, _ = _build_case_manager(project_root)
     config_path, pipeline_config = case_manager.get_pipeline_config(
         case_path, template_name
     )
@@ -116,11 +134,8 @@ def run_plugin(
         else:
             project_root = Path.cwd()
 
-    # Load global config and resolve case path
-    global_config = load_yaml(project_root / "config" / "global.yaml")
-    cases_root = global_config.get("framework", {}).get("cases_root", "cases")
-
-    case_manager = CaseManager(project_root, cases_root)
+    # Load merged configuration and resolve case path
+    case_manager, _ = _build_case_manager(project_root)
     case_dir = case_manager.resolve_case_path(case_path)
 
     # Create and run plugin

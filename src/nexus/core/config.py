@@ -279,6 +279,20 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
     return result
 
 
+def load_global_configuration(project_root: Path) -> Dict[str, Any]:
+    """Load global config merged with optional local overrides."""
+
+    global_config = load_yaml(project_root / "config" / "global.yaml")
+
+    local_path = project_root / "config" / "local.yaml"
+    if local_path.exists():
+        local_config = load_yaml(local_path)
+        if local_config:
+            global_config = deep_merge(global_config, local_config)
+
+    return global_config
+
+
 def create_configuration_context(
     global_config: Dict[str, Any],
     case_config: Dict[str, Any],
