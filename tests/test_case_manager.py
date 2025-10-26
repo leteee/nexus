@@ -150,17 +150,17 @@ class TestCaseManager:
         cases = case_manager.list_existing_cases()
         assert cases == []
 
-    def test_get_pipeline_config_existing_case_no_template(self, case_manager):
+    def test_get_case_config_existing_case_no_template(self, case_manager):
         """Test getting pipeline config for existing case without template."""
-        config_path, config_data = case_manager.get_pipeline_config("existing-case")
+        config_path, config_data = case_manager.get_case_config("existing-case")
 
         assert config_path.name == "case.yaml"
         assert "existing-case" in str(config_path)
         assert config_data["case_info"]["name"] == "Existing Case"
 
-    def test_get_pipeline_config_new_case_with_template(self, case_manager):
+    def test_get_case_config_new_case_with_template(self, case_manager):
         """Test getting pipeline config for new case with template (template mode)."""
-        config_path, config_data = case_manager.get_pipeline_config(
+        config_path, config_data = case_manager.get_case_config(
             "new-case", "default"
         )
 
@@ -173,9 +173,9 @@ class TestCaseManager:
         new_case_yaml = case_manager.resolve_case_path("new-case") / "case.yaml"
         assert not new_case_yaml.exists()
 
-    def test_get_pipeline_config_existing_case_with_template(self, case_manager):
+    def test_get_case_config_existing_case_with_template(self, case_manager):
         """Test getting pipeline config for existing case with template (template mode)."""
-        config_path, config_data = case_manager.get_pipeline_config(
+        config_path, config_data = case_manager.get_case_config(
             "existing-case", "analytics"
         )
 
@@ -191,25 +191,25 @@ class TestCaseManager:
         original_config = yaml.safe_load(original_case_yaml.read_text())
         assert original_config["case_info"]["name"] == "Existing Case"
 
-    def test_get_pipeline_config_missing_case_no_template(self, case_manager):
+    def test_get_case_config_missing_case_no_template(self, case_manager):
         """Test getting pipeline config for missing case without template."""
         with pytest.raises(FileNotFoundError) as exc_info:
-            case_manager.get_pipeline_config("nonexistent-case")
+            case_manager.get_case_config("nonexistent-case")
 
         assert "No case configuration found" in str(exc_info.value)
         assert "specify a template" in str(exc_info.value)
 
-    def test_get_pipeline_config_invalid_template(self, case_manager):
+    def test_get_case_config_invalid_template(self, case_manager):
         """Test getting pipeline config with invalid template name."""
         with pytest.raises(FileNotFoundError) as exc_info:
-            case_manager.get_pipeline_config("some-case", "nonexistent-template")
+            case_manager.get_case_config("some-case", "nonexistent-template")
 
         assert "Template 'nonexistent-template' not found" in str(exc_info.value)
         assert "Available templates:" in str(exc_info.value)
 
     def test_template_name_with_yaml_extension(self, case_manager):
         """Test template names with .yaml extension are handled correctly."""
-        config_path, config_data = case_manager.get_pipeline_config(
+        config_path, config_data = case_manager.get_case_config(
             "test-case", "default.yaml"
         )
 
@@ -219,7 +219,7 @@ class TestCaseManager:
     def test_case_directory_creation(self, case_manager):
         """Test that case directories are created automatically."""
         case_path = "deeply/nested/new-case"
-        config_path, config_data = case_manager.get_pipeline_config(
+        config_path, config_data = case_manager.get_case_config(
             case_path, "default"
         )
 
@@ -236,7 +236,7 @@ class TestCaseManager:
         (bad_case_dir / "case.yaml").write_text("invalid: yaml: content: [")
 
         with pytest.raises(ValueError) as exc_info:
-            case_manager.get_pipeline_config("bad-case")
+            case_manager.get_case_config("bad-case")
 
         assert "Invalid YAML" in str(exc_info.value)
 
@@ -247,7 +247,7 @@ class TestCaseManager:
         empty_case_dir.mkdir()
         (empty_case_dir / "case.yaml").write_text("")
 
-        config_path, config_data = case_manager.get_pipeline_config("empty-case")
+        config_path, config_data = case_manager.get_case_config("empty-case")
 
         # Should return empty dict for empty YAML
         assert config_data == {}
@@ -272,7 +272,8 @@ class TestCaseManager:
         (nested_dir / "case.yaml").write_text(yaml.dump(nested_config))
 
         # Should be able to access with relative path
-        config_path, config_data = case_manager.get_pipeline_config(
+        config_path, config_data = case_manager.get_case_config(
             "project1/analysis1"
         )
         assert config_data["case_info"]["name"] == "Nested Case"
+

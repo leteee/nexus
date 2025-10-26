@@ -10,7 +10,12 @@ from pathlib import Path
 
 import yaml
 
-from nexus.core.config import create_configuration_context, deep_merge, load_yaml
+from nexus.core.config import (
+    create_configuration_context,
+    deep_merge,
+    load_global_configuration,
+    load_yaml,
+)
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
@@ -70,6 +75,22 @@ class TestConfiguration:
         expected = {"a": 1, "b": 3, "c": 4}
         assert result == expected
 
+    def test_load_global_configuration_layers(self, tmp_path: Path):
+        """Global config loader merges base and local layers."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        global_cfg = {"framework": {"packages": ["base"]}, "plugins": {"a": {"rows": 1}}}
+        local_cfg = {"framework": {"packages": ["override"]}, "plugins": {"a": {"rows": 5}}}
+
+        (config_dir / "global.yaml").write_text(yaml.dump(global_cfg), encoding="utf-8")
+        (config_dir / "local.yaml").write_text(yaml.dump(local_cfg), encoding="utf-8")
+
+        merged = load_global_configuration(tmp_path)
+
+        assert merged["framework"]["packages"] == ["base", "override"]
+        assert merged["plugins"]["a"]["rows"] == 5
+
     def test_create_configuration_context(self):
         """Test configuration context creation with hierarchy."""
         global_config = {"framework": {"name": "nexus"}, "plugins": {"test": 1}}
@@ -85,3 +106,9 @@ class TestConfiguration:
         assert context["plugins"]["test"] == 3  # CLI override
         assert context["plugins"]["case_only"] is True  # Case value
         assert context["framework"]["name"] == "nexus"  # Global value
+
+
+
+
+
+

@@ -1,0 +1,41 @@
+# Nexus Comprehensive Demo (legacy)
+# Demonstrates file-based pipeline for historical reference
+
+case_info:
+  name: "Comprehensive Demo (Legacy)"
+  description: "Full pipeline: Generate ¡ú Filter ¡ú Aggregate ¡ú Validate (with file IO)"
+  version: "1.0.0"
+
+pipeline:
+  - plugin: "Data Generator"
+    config:
+      num_rows: 10000
+      num_categories: 5
+      noise_level: 0.15
+      random_seed: 42
+      output_data: "data/01_raw_data.csv"
+
+  - plugin: "Data Filter"
+    config:
+      input_data: "data/01_raw_data.csv"
+      output_data: "data/02_filtered.csv"
+      column: "value"
+      operator: ">"
+      threshold: 0.5
+      remove_nulls: true
+
+  - plugin: "Data Aggregator"
+    config:
+      input_data: "data/02_filtered.csv"
+      output_data: "data/03_aggregated.csv"
+      group_by: "category"
+      agg_column: "value"
+      agg_function: "mean"
+
+  - plugin: "Data Validator"
+    config:
+      input_data: "data/03_aggregated.csv"
+      output_report: "reports/validation.json"
+      check_nulls: true
+      check_duplicates: true
+      check_types: true

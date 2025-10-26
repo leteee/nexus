@@ -26,7 +26,9 @@
       "Bash(git check-ignore cases/testcase/reports/report.json)",
       "Bash(__NEW_LINE__ rm -rf cases/testcase)",
       "Bash(cat .gitignore)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(mkdir -p \"src/nexus/contrib/basic/nexus\")",
+      "Bash(nexus list)"
     ],
     "deny": [],
     "ask": []

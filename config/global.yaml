@@ -16,20 +16,21 @@ framework:
   # Cases root directories (searched in priority order)
   cases_roots:
     - "cases"
-    - "nexus_workspace/works"
 
   # Template root directories (searched in priority order)
   templates_roots:
     - "templates"
-    - "nexus_workspace/templates"
 
   # Python packages to import at startup
   # Convention: directory name = package name, parent added to sys.path
   #
-  # Local overrides: Create config/local.yaml to add packages without
-  # committing them to git (useful for sideloaded development packages)
+  # Built-in plugins (version controlled):
   packages:
-    - "src/nexus/contrib"
+    - "src/nexus/contrib/basic"
+
+  # For sideloading external packages:
+  # Create config/local.yaml and add paths under framework.packages
+  # Example: nexus_workspace/alpha (see config/local.yaml.example)
 
   # Logging
   logging:
@@ -138,3 +139,5 @@ plugins:
 #    - pipeline: Pipeline definition (in templates/cases only)
 #    - meta: Metadata (name, description, in templates/cases only)
 # ========================================================================
+
+

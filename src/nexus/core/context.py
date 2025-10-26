@@ -1,8 +1,7 @@
-"""
+﻿"""
 Context definitions for the Nexus framework.
 
-Following data_replay's immutable context pattern with dataclasses.
-Provides clean separation of concerns and thread-safe execution.
+Provides lightweight immutable contexts used during pipeline execution.
 """
 
 from dataclasses import dataclass, field
@@ -12,56 +11,53 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
-from .datahub import DataHub
-
 
 @dataclass(frozen=True)
 class NexusContext:
-    """
-    Immutable global context for pipeline execution.
+    """Global execution context shared across plugins."""
 
-    Contains all the information needed for a complete pipeline run,
-    following data_replay's context pattern.
-    """
     project_root: Path
     case_path: Path
     logger: Logger
     run_config: Dict[str, Any] = field(default_factory=dict)
 
-    def create_datahub(self) -> DataHub:
-        """Create a DataHub instance for this context."""
-        return DataHub(case_path=self.case_path, logger=self.logger)
+    def create_plugin_context(
+        self,
+        *,
+        config: Optional[BaseModel] = None,
+        shared_state: Dict[str, Any],
+    ) -> "PluginContext":
+        """Produce a PluginContext for a plugin invocation."""
+        return PluginContext(
+            project_root=self.project_root,
+            case_path=self.case_path,
+            logger=self.logger,
+            config=config,
+            shared_state=shared_state,
+        )
 
 
-@dataclass(frozen=True)
+@dataclass
 class PluginContext:
-    """
-    Immutable context provided to plugins during execution.
+    """Context passed to plugins during execution."""
 
-    Contains everything a plugin needs to execute, including
-    data access, logging, and configuration.
-    """
-    datahub: DataHub
-    logger: Logger
     project_root: Path
     case_path: Path
+    logger: Logger
     config: Optional[BaseModel] = None
-    output_path: Optional[Path] = None
+    shared_state: Dict[str, Any] = field(default_factory=dict)
 
-    @classmethod
-    def from_nexus_context(
-        cls,
-        nexus_context: NexusContext,
-        datahub: DataHub,
-        config: Optional[BaseModel] = None,
-        output_path: Optional[Path] = None
-    ) -> "PluginContext":
-        """Create a PluginContext from a NexusContext."""
-        return cls(
-            datahub=datahub,
-            logger=nexus_context.logger,
-            project_root=nexus_context.project_root,
-            case_path=nexus_context.case_path,
-            config=config,
-            output_path=output_path
-        )
+    def resolve_path(self, value: str | Path) -> Path:
+        """Resolve a path relative to the case directory."""
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return self.case_path / path
+
+    def remember(self, key: str, value: Any) -> None:
+        """Store a value in the shared state for subsequent plugins."""
+        self.shared_state[key] = value
+
+    def recall(self, key: str, default: Any = None) -> Any:
+        """Retrieve a value stored by a previous plugin."""
+        return self.shared_state.get(key, default)

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Simplified template and case management for Nexus framework.
 
 This module provides the CaseManager class for managing pipeline cases and templates
@@ -16,11 +16,11 @@ Typical Usage:
     ...     templates_roots=["templates", "custom_templates"]
     ... )
     >>> # With template: Loads template directly (ignores case.yaml)
-    >>> config_path, config = manager.get_pipeline_config("mycase", "quickstart")
+    >>> config_path, config = manager.get_case_config("mycase", "quickstart")
     >>> # With nested template: Uses path syntax
-    >>> config_path, config = manager.get_pipeline_config("mycase", "basic/etl")
+    >>> config_path, config = manager.get_case_config("mycase", "basic/etl")
     >>> # Without template: Loads case.yaml
-    >>> config_path, config = manager.get_pipeline_config("mycase")
+    >>> config_path, config = manager.get_case_config("mycase")
 """
 
 import logging
@@ -66,15 +66,15 @@ class CaseManager:
         ... )
         >>>
         >>> # With template: Uses template, case.yaml ignored
-        >>> path, config = manager.get_pipeline_config("analysis", "quickstart")
+        >>> path, config = manager.get_case_config("analysis", "quickstart")
         >>> # Returns: (templates/quickstart.yaml, config_from_template)
         >>>
         >>> # With nested template: Supports hierarchical organization
-        >>> path, config = manager.get_pipeline_config("analysis", "basic/etl")
+        >>> path, config = manager.get_case_config("analysis", "basic/etl")
         >>> # Returns: (templates/basic/etl.yaml, config_from_template)
         >>>
         >>> # Without template: Uses case.yaml (searches all cases_roots)
-        >>> path, config = manager.get_pipeline_config("analysis")
+        >>> path, config = manager.get_case_config("analysis")
         >>> # Returns: (cases/analysis/case.yaml, config_from_case)
         >>>
         >>> # List available resources
@@ -184,7 +184,7 @@ class CaseManager:
 
         Supports both relative case names and absolute paths for flexibility:
         - Relative: Searches all cases_roots in priority order (first match wins)
-        - Absolute: Used as-is (e.g., "/tmp/analysis" → "/tmp/analysis")
+        - Absolute: Used as-is (e.g., "/tmp/analysis" ?"/tmp/analysis")
 
         For relative paths, if a case exists in multiple cases_roots, the first
         one found (based on cases_roots priority) is returned.
@@ -230,13 +230,13 @@ class CaseManager:
         logger.debug(f"Case not found, using default path: {default_path}")
         return default_path
 
-    def get_pipeline_config(
+    def get_case_config(
         self, case_path: str, template_name: Optional[str] = None
     ) -> tuple[Path, Dict[str, Any]]:
         """
-        Get pipeline configuration with template mutual exclusion.
+        Get case configuration with template mutual exclusion.
 
-        This is the primary method for retrieving pipeline configurations. Templates
+        This is the primary method for retrieving case configurations. Templates
         and case.yaml are mutually exclusive - not a configuration hierarchy.
 
         **Execution Modes**:
@@ -283,15 +283,15 @@ class CaseManager:
             ... )
             >>>
             >>> # Template mode: Load template, ignore case.yaml
-            >>> path, config = manager.get_pipeline_config("analysis", "demo")
+            >>> path, config = manager.get_case_config("analysis", "demo")
             >>> print(path)  # /project/templates/demo.yaml
             >>>
             >>> # Nested template mode: Use hierarchical path
-            >>> path, config = manager.get_pipeline_config("analysis", "basic/etl")
+            >>> path, config = manager.get_case_config("analysis", "basic/etl")
             >>> print(path)  # /project/templates/basic/etl.yaml
             >>>
             >>> # Case mode: Load case.yaml
-            >>> path, config = manager.get_pipeline_config("analysis")
+            >>> path, config = manager.get_case_config("analysis")
             >>> print(path)  # /project/cases/analysis/case.yaml
 
         Note:
@@ -530,3 +530,6 @@ class CaseManager:
                         seen.add(case_name)
 
         return sorted(cases)
+
+
+

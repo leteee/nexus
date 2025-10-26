@@ -96,14 +96,14 @@ def run_pipeline(
 
     # Load merged configuration and access pipeline data
     case_manager, _ = _build_case_manager(project_root)
-    config_path, pipeline_config = case_manager.get_pipeline_config(
+    config_path, case_config = case_manager.get_case_config(
         case_path, template_name
     )
     case_dir = case_manager.resolve_case_path(case_path)
 
     # Create and run pipeline
     engine = PipelineEngine(project_root, case_dir)
-    return engine.run_pipeline(pipeline_config, config_overrides)
+    return engine.run_pipeline(case_config, config_overrides)
 
 
 def run_plugin(
@@ -141,3 +141,4 @@ def run_plugin(
     # Create and run plugin
     engine = PipelineEngine(project_root, case_dir)
     return engine.run_single_plugin(plugin_name, config_overrides)
+

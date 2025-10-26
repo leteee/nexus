@@ -43,11 +43,35 @@ Typical Usage:
     ... )
 """
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
+
+GLOBAL_CONFIG_FILES = ("global.yaml", "local.yaml")
+
+
+def _iter_global_config_layers(project_root: Path):
+    """Yield global-level configuration layers in precedence order."""
+
+    config_dir = project_root / "config"
+    for file_name in GLOBAL_CONFIG_FILES:
+        config_path = config_dir / file_name
+        if not config_path.exists():
+            if file_name == "global.yaml":
+                logger.debug("Global config file missing: %s", config_path)
+            continue
+
+        layer = load_yaml(config_path)
+        if not layer:
+            continue
+
+        logger.debug("Loaded global config layer: %s", config_path)
+        yield layer
 
 
 @lru_cache(maxsize=128)
@@ -280,17 +304,17 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
 
 
 def load_global_configuration(project_root: Path) -> Dict[str, Any]:
-    """Load global config merged with optional local overrides."""
+    """Load global configuration merged with all global-level overrides."""
 
-    global_config = load_yaml(project_root / "config" / "global.yaml")
+    merged: Dict[str, Any] = {}
 
-    local_path = project_root / "config" / "local.yaml"
-    if local_path.exists():
-        local_config = load_yaml(local_path)
-        if local_config:
-            global_config = deep_merge(global_config, local_config)
+    for layer in _iter_global_config_layers(project_root):
+        merged = deep_merge(merged, layer)
 
-    return global_config
+    if not merged:
+        logger.debug("No global configuration layers found under %s", project_root)
+
+    return merged
 
 
 def create_configuration_context(
