@@ -1,4 +1,4 @@
-﻿"""
+"""
 Simplified template and case management for Nexus framework.
 
 This module provides the CaseManager class for managing pipeline cases and templates

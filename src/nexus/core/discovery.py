@@ -1,4 +1,4 @@
-﻿"""
+"""
 Plugin discovery utilities.
 
 Responsible for loading plugin packages configured in global/local settings

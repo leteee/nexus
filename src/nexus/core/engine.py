@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pipeline execution engine focused on plugin orchestration.
 
 The engine loads pipeline definitions, resolves configuration, and executes

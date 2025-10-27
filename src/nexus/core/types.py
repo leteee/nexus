@@ -1,4 +1,4 @@
-﻿"""
+"""
 Core type definitions and annotations for the Nexus framework.
 
 Following data_replay's approach of clear type definitions with

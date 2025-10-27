@@ -1,4 +1,4 @@
-﻿"""
+"""
 Context definitions for the Nexus framework.
 
 Provides lightweight immutable contexts used during pipeline execution.

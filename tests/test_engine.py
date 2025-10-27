@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for the simplified PipelineEngine.
 """
 

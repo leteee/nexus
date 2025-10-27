@@ -1,4 +1,4 @@
-﻿"""
+"""
 End-to-end integration tests for the Nexus framework.
 """
 

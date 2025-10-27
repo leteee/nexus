@@ -1,4 +1,4 @@
-﻿"""
+"""
 Test the plugin system functionality.
 """
 
