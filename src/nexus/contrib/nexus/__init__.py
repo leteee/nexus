@@ -144,3 +144,91 @@ def validate_data(ctx):
 
     ctx.remember("last_result", report)
     return report
+
+
+# =============================================================================
+# Video Replay Plugins
+# =============================================================================
+
+from nexus.contrib.repro.video import extract_frames, compose_video
+
+
+class VideoSplitterConfig(PluginConfig):
+    video_path: str
+    output_dir: str = "frames"
+    frame_pattern: str = "frame_{:06d}.png"
+    save_timestamps: bool = True
+
+
+class VideoComposerConfig(PluginConfig):
+    frames_dir: str = "frames"
+    output_path: str = "output.mp4"
+    fps: float = 30.0
+    frame_pattern: str = "frame_{:06d}.png"
+    codec: str = "mp4v"
+    start_frame: int = 0
+    end_frame: int | None = None
+
+
+@plugin(name="Video Splitter", config=VideoSplitterConfig)
+def split_video_to_frames(ctx):
+    """
+    Extract all frames from video and save as images.
+
+    Creates:
+    - Individual frame images (PNG format)
+    - frame_timestamps.csv mapping frames to physical time
+
+    Output stored in shared context for downstream plugins.
+    """
+    video_path = ctx.resolve_path(ctx.config.video_path)
+    output_dir = ctx.resolve_path(ctx.config.output_dir)
+
+    ctx.logger.info(f"Extracting frames from {video_path}")
+
+    metadata = extract_frames(
+        video_path,
+        output_dir,
+        frame_pattern=ctx.config.frame_pattern,
+        save_timestamps=ctx.config.save_timestamps,
+    )
+
+    ctx.logger.info(
+        f"Extracted {metadata.total_frames} frames at {metadata.fps:.2f} FPS"
+    )
+
+    # Store metadata for downstream plugins
+    ctx.remember("video_metadata", metadata)
+    ctx.remember("frames_dir", output_dir)
+
+    return metadata
+
+
+@plugin(name="Video Composer", config=VideoComposerConfig)
+def compose_frames_to_video(ctx):
+    """
+    Compose video from sequence of frame images.
+
+    Can use frames from Video Splitter or custom rendered frames.
+    Supports frame range selection for creating clips.
+    """
+    frames_dir = ctx.resolve_path(ctx.config.frames_dir)
+    output_path = ctx.resolve_path(ctx.config.output_path)
+
+    ctx.logger.info(f"Composing video from {frames_dir}")
+
+    result_path = compose_video(
+        frames_dir,
+        output_path,
+        fps=ctx.config.fps,
+        frame_pattern=ctx.config.frame_pattern,
+        codec=ctx.config.codec,
+        start_frame=ctx.config.start_frame,
+        end_frame=ctx.config.end_frame,
+    )
+
+    ctx.logger.info(f"Created video: {result_path}")
+
+    ctx.remember("output_video", result_path)
+
+    return result_path
