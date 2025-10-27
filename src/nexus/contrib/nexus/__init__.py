@@ -8,11 +8,11 @@ when running within nexus environment.
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
-from nexus.contrib.basic.logic.generation import (
+from nexus.contrib.basic.generation import (
     build_sample_dataset,
     build_synthetic_dataframe,
 )
-from nexus.contrib.basic.logic.processing import (
+from nexus.contrib.basic.processing import (
     aggregate_dataframe,
     build_validation_report,
     filter_dataframe,

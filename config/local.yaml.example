@@ -20,25 +20,27 @@
 # =======================================================================
 
 framework:
-  # Python packages - APPENDED to global.yaml packages
-  # Just list your local packages, global ones are automatically included
+  # Sideload external plugins (appended to global.yaml packages)
   #
-  # Pattern: Each path should point to a package directory
-  # - Nexus adds parent directory to sys.path
-  # - Imports package_name (directory name)
-  # - Auto-discovers package_name.nexus submodule for plugin adapters
+  # Package structure requirement:
+  #   your_package/              <- Path to configure
+  #   ├── submodule/             <- Business logic (no nexus dependency)
+  #   │   └── core.py
+  #   └── nexus/                 <- Adapters (nexus dependency)
+  #       └── __init__.py        <- @plugin decorators
   #
-  # Example structure:
-  #   nexus_workspace/alpha/          <- Path in config
-  #   ├── logic/                      <- Business logic (no nexus dependency)
-  #   │   └── processor.py
-  #   └── nexus/                      <- Adapters (nexus dependency)
-  #       └── __init__.py             <- @plugin decorators here
+  # Built-in example:
+  #   src/nexus/contrib/         <- Built-in package
+  #   ├── basic/                 <- Business logic
+  #   │   ├── generation.py
+  #   │   └── processing.py
+  #   └── nexus/                 <- Adapters
+  #       └── __init__.py        <- 5 plugins defined here
   #
   packages:
-    - "nexus_workspace/alpha"         # Sideloaded example package
-    # - "nexus_workspace/my_plugins"
-    # - "~/shared/nexus_extensions"
+    - "nexus_workspace/alpha"    # Example sideloaded package
+    # - "~/shared/my_plugins"
+    # - "/absolute/path/to/package"
 
   # Logging config - MERGED with global.yaml
   # Only override specific fields you want to change

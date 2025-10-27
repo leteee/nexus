@@ -21,16 +21,21 @@ framework:
   templates_roots:
     - "templates"
 
-  # Python packages to import at startup
-  # Convention: directory name = package name, parent added to sys.path
+  # Plugin discovery paths
+  # Each path points to a package directory containing:
+  #   - Business logic (framework-independent)
+  #   - nexus/ submodule (adapters with @plugin decorators)
   #
-  # Built-in plugins (version controlled):
+  # Discovery process:
+  #   1. Add parent directory to sys.path
+  #   2. Import package_name (directory name)
+  #   3. Auto-import package_name.nexus if exists
+  #
   packages:
-    - "src/nexus/contrib/basic"
+    - "src/nexus/contrib"  # Built-in plugins
 
-  # For sideloading external packages:
-  # Create config/local.yaml and add paths under framework.packages
-  # Example: nexus_workspace/alpha (see config/local.yaml.example)
+  # Sideload external plugins:
+  # Add paths in config/local.yaml (see local.yaml.example)
 
   # Logging
   logging:

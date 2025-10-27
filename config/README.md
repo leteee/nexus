@@ -1,35 +1,60 @@
-# Configuration Files
+# Configuration Directory
 
-This directory contains various configuration files for the Nexus project.
+Nexus configuration files for framework settings and plugin defaults.
 
 ## Files
 
-### development.yaml
-Development environment configuration
+### `global.yaml`
+Framework-wide defaults (version controlled).
 
-### production.yaml
-Production environment configuration (template)
+Key sections:
+- `framework.cases_roots` - Where to find case directories
+- `framework.templates_roots` - Where to find template files
+- `framework.packages` - Plugin discovery paths
+- `plugins.*` - Default configuration for all plugins
 
-### logging.yaml
-Logging configuration for different environments
+### `local.yaml` (gitignored)
+User-specific overrides merged with global.yaml.
 
-## Usage
-
-Configuration files follow Vibecode principles:
-- Clear, descriptive naming
-- Environment-specific settings
-- Secure defaults
-- Well-documented options
-
-Load configuration in your code:
-
-```python
-import yaml
-from pathlib import Path
-
-def load_config(env: str = "development") -> dict:
-    """Load configuration for specified environment."""
-    config_path = Path(__file__).parent / f"{env}.yaml"
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+Create from example:
+```bash
+cp local.yaml.example local.yaml
 ```
+
+Use for:
+- Sideloading external plugin packages
+- Local logging levels
+- Development-specific settings
+
+### `local.yaml.example`
+Template showing how to configure local overrides.
+
+## Configuration Hierarchy
+
+From highest to lowest precedence:
+
+1. **CLI overrides** - `--config key=value`
+2. **Case/Template** - `case.yaml` or template YAML
+3. **Local config** - `local.yaml` (merged with global)
+4. **Global config** - `global.yaml`
+5. **Plugin defaults** - From `PluginConfig` classes
+
+## Sideloading Plugins
+
+Add external plugin packages in `local.yaml`:
+
+```yaml
+framework:
+  packages:
+    - "path/to/your_package"
+```
+
+Required structure:
+```
+your_package/
+├── submodule/      # Business logic (no nexus dependency)
+└── nexus/          # Adapters (@plugin decorators)
+    └── __init__.py
+```
+
+See `local.yaml.example` for detailed examples.
