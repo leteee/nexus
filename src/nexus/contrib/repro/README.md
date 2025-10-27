@@ -1,296 +1,468 @@
 # Repro - Data Replay Visualization Module
 
-数据回放可视化系统，用于将时序数据同步到视频帧进行可视化回放。
+数据回放可视化系统，将时序数据同步到视频帧进行可视化回放。
 
-## 📋 **核心概念**
+## 🎯 **设计理念**
 
-### **工作流程**
-
-```
-原始视频 → 切帧 → 数据匹配 → 渲染叠加 → 合成视频
-```
-
-1. **视频切分** - 将视频分解成独立帧 + 时间戳映射
-2. **时间匹配** - 根据物理时间匹配数据到对应帧
-3. **数据渲染** - 将数据可视化绘制到帧上
-4. **视频合成** - 将处理后的帧合成新视频
-
----
-
-## 📁 **数据结构设计**
-
-### **1. 帧时间映射** (`frame_timestamps.csv`)
-
-视频切分时自动生成：
-
-```csv
-frame_index,timestamp_ms
-0,0.0
-1,33.33
-2,66.67
-3,100.00
-```
-
-### **2. 数据时间线** (必须包含 `timestamp_ms` 列)
-
-示例 - 速度数据 (`speed_data.csv`):
-```csv
-timestamp_ms,speed_kmh,acceleration
-0.0,0.0,0.0
-50.0,10.5,2.1
-100.0,20.3,1.8
-150.0,30.1,2.0
-```
-
-示例 - GPS数据 (`gps_data.csv`):
-```csv
-timestamp_ms,latitude,longitude,altitude
-0.0,39.9042,116.4074,50.0
-100.0,39.9043,116.4075,50.5
-200.0,39.9044,116.4076,51.0
-```
-
----
-
-## 🏗️ **模块架构**
-
-### **业务逻辑** (`contrib/repro/`)
-
-```
-repro/
-├── types.py        # 数据结构和协议定义
-├── video.py        # 视频处理（切分/合成）
-├── matching.py     # 时间匹配算法
-└── rendering.py    # 渲染接口和基础实现
-```
-
-### **Nexus插件** (`contrib/nexus/__init__.py`)
-
-- `Video Splitter` - 视频切帧插件
-- `Video Composer` - 帧合成视频插件
-
----
-
-## 🎨 **自定义数据渲染器**
-
-实现 `DataRenderer` 协议来可视化自定义数据类型：
+**用户继承抽象基类 `DataRenderer`，实现三个方法即可将自定义数据叠加到视频帧：**
 
 ```python
-from nexus.contrib.repro.types import DataPoint, DataRenderer
-from nexus.contrib.repro.rendering import BaseRenderer
+from nexus.contrib.repro.types import DataRenderer
+
+class MyRenderer(DataRenderer):
+    def load_data(self, data_path):
+        """如何加载数据"""
+
+    def match_data(self, timestamp_ms):
+        """如何匹配时间戳"""
+
+    def render(self, frame, data):
+        """如何绘制到帧上"""
+```
+
+---
+
+## 📋 **工作流程**
+
+```
+视频 ──┐
+       ├─→ 切帧 ──→ 数据渲染 ──→ 合成视频
+数据 ──┘
+```
+
+### **三个Nexus插件**
+
+1. **Video Splitter** - 视频切帧 + 生成时间戳映射
+2. **Data Renderer** - 应用自定义渲染器到所有帧 ⭐ 核心
+3. **Video Composer** - 帧序列合成视频
+
+---
+
+## 📁 **数据格式 - JSONL (推荐)**
+
+### **为什么用JSONL而非CSV？**
+
+| 格式 | 优势 | 劣势 |
+|------|------|------|
+| **CSV** | 简单 | ❌ 只能扁平结构 |
+| **JSONL** | ✅ 支持嵌套数据<br>✅ 灵活字段<br>✅ 逐行解析 | 稍复杂 |
+
+### **JSONL示例**
+
+**简单数值** (`speed.jsonl`):
+```jsonl
+{"timestamp_ms": 0.0, "speed": 120.5}
+{"timestamp_ms": 50.0, "speed": 125.3}
+{"timestamp_ms": 100.0, "speed": 130.1}
+```
+
+**嵌套结构** (`gps.jsonl`):
+```jsonl
+{"timestamp_ms": 0.0, "gps": {"lat": 39.9042, "lon": 116.4074}, "altitude": 50.0}
+{"timestamp_ms": 50.0, "gps": {"lat": 39.9043, "lon": 116.4075}, "altitude": 51.2}
+```
+
+**复杂传感器** (`sensors.jsonl`):
+```jsonl
+{
+  "timestamp_ms": 0.0,
+  "vehicle": {
+    "speed": 120.5,
+    "gear": 3,
+    "rpm": 3000
+  },
+  "sensors": {
+    "temperature": 85.0,
+    "pressure": 101.3
+  },
+  "gps": {"lat": 39.9, "lon": 116.4}
+}
+```
+
+---
+
+## 🏗️ **抽象基类 `DataRenderer`**
+
+### **定义**
+
+```python
+from abc import ABC, abstractmethod
+from pathlib import Path
 import numpy as np
 
-class SpeedRenderer(BaseRenderer):
-    """速度数据渲染器"""
+class DataRenderer(ABC):
+    """
+    抽象基类：用户继承此类实现自定义数据渲染。
 
-    def __init__(self, data_series):
-        self.data_series = data_series
+    必须实现三个方法：
+    1. load_data() - 加载数据
+    2. match_data() - 匹配时间戳
+    3. render() - 绘制到帧
+    """
+
+    def __init__(self, data_path: Path | str):
+        self.data_path = Path(data_path)
+        self.data = None
+        self.load_data(self.data_path)  # 自动调用
+
+    @abstractmethod
+    def load_data(self, data_path: Path) -> None:
+        """加载数据到 self.data"""
+
+    @abstractmethod
+    def match_data(self, timestamp_ms: float, tolerance_ms: float = 50.0) -> List[dict]:
+        """返回匹配时间戳的数据列表"""
+
+    @abstractmethod
+    def render(self, frame: np.ndarray, data: List[dict]) -> np.ndarray:
+        """在帧上绘制数据，返回修改后的帧"""
+```
+
+---
+
+## 📝 **示例实现**
+
+### **示例1：简单数值渲染器**
+
+```python
+from nexus.contrib.repro.types import DataRenderer, load_jsonl
+import cv2
+
+class SpeedRenderer(DataRenderer):
+    """显示速度数据"""
+
+    def __init__(self, data_path, label="Speed", position=(20, 50)):
+        self.label = label
+        self.position = position
+        super().__init__(data_path)  # 调用父类，触发 load_data
+
+    def load_data(self, data_path):
+        """加载JSONL数据"""
+        self.data = load_jsonl(data_path)
 
     def match_data(self, timestamp_ms, tolerance_ms=50.0):
-        from nexus.contrib.repro.matching import match_data_to_timestamp
-        return match_data_to_timestamp(
-            self.data_series,
-            timestamp_ms,
-            tolerance_ms=tolerance_ms,
-            method="nearest"
-        )
+        """最近邻匹配"""
+        if not self.data:
+            return []
 
-    def render_on_frame(self, frame, data):
+        closest = min(self.data, key=lambda d: abs(d["timestamp_ms"] - timestamp_ms))
+
+        if abs(closest["timestamp_ms"] - timestamp_ms) <= tolerance_ms:
+            return [closest]
+        return []
+
+    def render(self, frame, data):
+        """绘制速度文本"""
         if not data:
-            return frame
+            text = f"{self.label}: N/A"
+        else:
+            speed = data[0].get("speed", 0)
+            text = f"{self.label}: {speed:.1f} km/h"
 
-        speed = data[0].data.get("speed_kmh", 0)
+        # 绘制黑色背景
+        cv2.rectangle(frame, (15, 25), (250, 60), (0, 0, 0), -1)
 
-        # 绘制速度表
-        text = f"Speed: {speed:.1f} km/h"
-        frame = self.draw_text(
-            frame,
-            text,
-            position=(20, 50),
-            font_scale=1.5,
-            color=(0, 255, 0),
-            bg_color=(0, 0, 0)
-        )
+        # 绘制绿色文本
+        cv2.putText(frame, text, self.position,
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
 
         return frame
 ```
 
-### **渲染器接口定义**
+### **示例2：嵌套数据渲染器**
 
 ```python
-class DataRenderer(Protocol):
-    def match_data(self, timestamp_ms: float, tolerance_ms: float) -> List[DataPoint]:
-        """匹配数据点到时间戳"""
+class GPSRenderer(DataRenderer):
+    """显示GPS坐标和海拔"""
+
+    def load_data(self, data_path):
+        self.data = load_jsonl(data_path)
+
+    def match_data(self, timestamp_ms, tolerance_ms=50.0):
+        # 同上
         ...
 
-    def render_on_frame(self, frame: np.ndarray, data: List[DataPoint]) -> np.ndarray:
-        """将数据绘制到帧上"""
-        ...
+    def render(self, frame, data):
+        if not data:
+            return frame
+
+        # 提取嵌套结构
+        record = data[0]
+        gps = record.get("gps", {})
+        lat = gps.get("lat", 0)
+        lon = gps.get("lon", 0)
+        alt = record.get("altitude", 0)
+
+        # 绘制多行文本
+        lines = [
+            f"GPS: {lat:.4f}, {lon:.4f}",
+            f"Alt: {alt:.1f}m"
+        ]
+
+        y = 50
+        for line in lines:
+            cv2.putText(frame, line, (20, y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+            y += 35
+
+        return frame
+```
+
+### **内置示例渲染器**
+
+位于 `nexus.contrib.repro.examples`:
+
+- `SimpleTextRenderer` - 单个数值显示
+- `MultiValueRenderer` - 多字段仪表盘
+- `NestedDataRenderer` - 嵌套数据示例
+
+---
+
+## 🚀 **完整使用流程**
+
+### **步骤1：准备数据**
+
+创建 `data/speed.jsonl`:
+```jsonl
+{"timestamp_ms": 0.0, "speed": 120.5}
+{"timestamp_ms": 33.33, "speed": 122.0}
+{"timestamp_ms": 66.67, "speed": 125.5}
+```
+
+### **步骤2：实现渲染器**
+
+创建 `my_renderers.py`:
+```python
+from nexus.contrib.repro.types import DataRenderer, load_jsonl
+import cv2
+
+class SpeedRenderer(DataRenderer):
+    # ... 参考上面的实现
+```
+
+### **步骤3：配置Pipeline**
+
+创建 `case.yaml`:
+```yaml
+pipeline:
+  # 1. 切分视频
+  - plugin: "Video Splitter"
+    config:
+      video_path: "input.mp4"
+      output_dir: "frames"
+
+  # 2. 渲染数据 ⭐ 指定自定义渲染器
+  - plugin: "Data Renderer"
+    config:
+      frames_dir: "frames"
+      output_dir: "rendered_frames"
+      renderer_class: "my_renderers.SpeedRenderer"  # 你的渲染器类
+      renderer_kwargs:
+        data_path: "data/speed.jsonl"
+        label: "Vehicle Speed"
+        position: [20, 50]
+
+  # 3. 合成视频
+  - plugin: "Video Composer"
+    config:
+      frames_dir: "rendered_frames"
+      output_path: "output.mp4"
+      fps: 30.0
+```
+
+### **步骤4：运行**
+
+```bash
+nexus run --case my_replay
 ```
 
 ---
 
-## 🚀 **使用示例**
+## 📊 **高级用法**
 
-### **示例1: 视频切分**
+### **多数据线渲染**
 
-使用 Nexus CLI:
-```bash
-nexus plugin "Video Splitter" --case replay \
-  --config video_path=input.mp4 \
-  --config output_dir=frames
-```
-
-Python API:
-```python
-from pathlib import Path
-from nexus.contrib.repro.video import extract_frames
-
-metadata = extract_frames(
-    Path("input.mp4"),
-    Path("frames/"),
-    frame_pattern="frame_{:06d}.png",
-    save_timestamps=True
-)
-
-print(f"Extracted {metadata.total_frames} frames at {metadata.fps} FPS")
-```
-
-### **示例2: 视频合成**
-
-```bash
-nexus plugin "Video Composer" --case replay \
-  --config frames_dir=frames \
-  --config output_path=output.mp4 \
-  --config fps=30.0
-```
-
-### **示例3: 完整数据回放流程**
+同时渲染多个数据源：
 
 ```python
+class MultiDataRenderer(DataRenderer):
+    def __init__(self, speed_path, gps_path):
+        self.speed_data = load_jsonl(speed_path)
+        self.gps_data = load_jsonl(gps_path)
+        # 不调用 super().__init__，因为有多个数据源
+
+    def load_data(self, data_path):
+        pass  # 已在 __init__ 中加载
+
+    def match_data(self, timestamp_ms, tolerance_ms=50.0):
+        speed = self._match_from(self.speed_data, timestamp_ms, tolerance_ms)
+        gps = self._match_from(self.gps_data, timestamp_ms, tolerance_ms)
+        return [{"speed": speed, "gps": gps}]
+
+    def _match_from(self, data, timestamp_ms, tolerance_ms):
+        # 通用匹配逻辑
+        ...
+```
+
+### **使用内置示例**
+
+```yaml
+- plugin: "Data Renderer"
+  config:
+    renderer_class: "nexus.contrib.repro.examples.SimpleTextRenderer"
+    renderer_kwargs:
+      data_path: "data/speed.jsonl"
+      value_key: "speed"
+      label: "Speed"
+```
+
+### **Python API直接调用**
+
+```python
 from pathlib import Path
-import pandas as pd
-from nexus.contrib.repro.video import extract_frames, compose_video, get_frame_at_timestamp
-from nexus.contrib.repro.types import load_frame_timestamps, load_data_series
-from nexus.contrib.repro.rendering import TextRenderer
+from nexus.contrib.repro.video import extract_frames, compose_video
+from nexus.contrib.repro.types import load_frame_timestamps
+from my_renderers import SpeedRenderer
+import cv2
 
-# 1. 切分视频
-metadata = extract_frames(
-    Path("input.mp4"),
-    Path("frames/"),
-)
+# 1. 切帧
+metadata = extract_frames(Path("input.mp4"), Path("frames/"))
 
-# 2. 加载数据
+# 2. 渲染
 frame_times = load_frame_timestamps(Path("frames/frame_timestamps.csv"))
-speed_data = load_data_series(Path("speed_data.csv"))
-
-# 3. 创建渲染器
-renderer = TextRenderer(
-    speed_data,
-    label="Speed",
-    value_column="speed_kmh",
-    position=(20, 50)
-)
-
-# 4. 渲染每一帧
-rendered_dir = Path("rendered_frames/")
-rendered_dir.mkdir(exist_ok=True)
+renderer = SpeedRenderer("data/speed.jsonl")
 
 for _, row in frame_times.iterrows():
     frame_idx = int(row["frame_index"])
     timestamp = row["timestamp_ms"]
 
-    # 加载原始帧
-    frame = get_frame_at_timestamp(
-        Path("frames/"),
-        timestamp,
-        frame_times
-    )
+    frame = cv2.imread(f"frames/frame_{frame_idx:06d}.png")
+    data = renderer.match_data(timestamp)
+    rendered = renderer.render(frame, data)
+    cv2.imwrite(f"rendered/frame_{frame_idx:06d}.png", rendered)
 
-    # 匹配数据并渲染
-    data = renderer.match_data(timestamp, tolerance_ms=50.0)
-    rendered_frame = renderer.render_on_frame(frame, data)
-
-    # 保存渲染后的帧
-    import cv2
-    cv2.imwrite(str(rendered_dir / f"frame_{frame_idx:06d}.png"), rendered_frame)
-
-# 5. 合成视频
-compose_video(
-    rendered_dir,
-    Path("replay_output.mp4"),
-    fps=metadata.fps
-)
+# 3. 合成
+compose_video(Path("rendered/"), Path("output.mp4"), fps=metadata.fps)
 ```
 
 ---
 
-## 🛠️ **高级功能**
+## 🛠️ **工具函数**
 
-### **时间匹配方法**
+### **数据加载**
+
+```python
+from nexus.contrib.repro.types import load_jsonl, save_jsonl, load_data_series
+
+# JSONL
+data = load_jsonl("data.jsonl")  # List[dict]
+
+# CSV (向后兼容)
+df = load_data_series("data.csv")  # DataFrame
+
+# 保存JSONL
+save_jsonl(data, "output.jsonl")
+```
+
+### **时间匹配算法**
 
 ```python
 from nexus.contrib.repro.matching import match_data_to_timestamp
 
-# 最近邻匹配
-data = match_data_to_timestamp(data_series, 100.0, method="nearest")
+# 最近邻
+data = match_data_to_timestamp(df, 100.0, method="nearest")
 
-# 范围匹配（容差内所有点）
-data = match_data_to_timestamp(data_series, 100.0, method="range", tolerance_ms=100)
+# 范围匹配
+data = match_data_to_timestamp(df, 100.0, method="range", tolerance_ms=100)
 
 # 线性插值
-data = match_data_to_timestamp(data_series, 100.0, method="interpolate")
-```
-
-### **自定义渲染工具**
-
-`BaseRenderer` 提供了常用绘图函数：
-
-```python
-# 文本绘制
-frame = renderer.draw_text(frame, "Hello", (100, 100))
-
-# 数值显示
-frame = renderer.draw_value_overlay(frame, "Speed", "120.5", (20, 50))
-
-# 简单折线图
-frame = renderer.draw_graph(frame, [1, 2, 3, 4], (50, 50), (200, 100))
+data = match_data_to_timestamp(df, 100.0, method="interpolate")
 ```
 
 ---
 
-## 📊 **性能建议**
+## 🎨 **渲染技巧**
 
-1. **帧格式选择**:
-   - PNG - 无损，文件较大，适合精确渲染
-   - JPEG - 有损，文件小，适合快速预览
+### **使用OpenCV绘图**
 
-2. **批处理**:
-   - 处理大量帧时考虑多进程并行渲染
-   - 使用 `start_frame` 和 `end_frame` 参数处理视频片段
+```python
+import cv2
 
-3. **内存优化**:
-   - 流式处理：读取帧 → 渲染 → 保存 → 释放
-   - 避免同时加载所有帧到内存
+# 文本
+cv2.putText(frame, "Hello", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
+# 矩形
+cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), -1)  # -1填充
+
+# 圆形
+cv2.circle(frame, (cx, cy), radius, (0, 0, 255), 2)
+
+# 折线
+points = np.array([[x1, y1], [x2, y2], ...], np.int32)
+cv2.polylines(frame, [points], False, (255, 255, 0), 2)
+```
+
+### **颜色代码**
+
+OpenCV使用BGR格式：
+```python
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (0, 0, 255)
+GREEN = (0, 255, 0)
+BLUE = (255, 0, 0)
+YELLOW = (0, 255, 255)
+MAGENTA = (255, 0, 255)
+CYAN = (255, 255, 0)
+```
+
+---
+
+## 📂 **项目结构**
+
+```
+contrib/repro/
+├── types.py          # DataRenderer抽象基类 + JSONL工具
+├── video.py          # 视频切分/合成
+├── matching.py       # 时间匹配算法
+├── rendering.py      # (已废弃，使用examples.py)
+├── examples.py       # 示例渲染器实现 ⭐
+└── README.md         # 本文档
+
+contrib/nexus/
+└── __init__.py       # 3个插件：Video Splitter, Data Renderer, Video Composer
+```
 
 ---
 
 ## 🎯 **典型应用场景**
 
-- 自动驾驶数据回放（传感器数据叠加到行车记录）
-- 体育比赛数据可视化（速度、心率等）
-- 无人机飞行数据分析（GPS轨迹、高度、姿态）
-- 实验数据记录（时序测量值可视化）
+- **自动驾驶**: 传感器数据、轨迹、速度叠加到行车记录
+- **体育分析**: 心率、速度、位置可视化
+- **无人机**: GPS轨迹、高度、姿态角
+- **实验记录**: 温度、压力、流量等测量值
+- **游戏回放**: 玩家状态、坐标、操作
 
 ---
 
-## 📝 **后续扩展**
+## 🔧 **FAQ**
 
-可以创建更多专用渲染器插件：
+**Q: 必须用JSONL吗？**
+A: 不是。继承 `DataRenderer` 后，`load_data()` 可以读取任何格式（CSV、数据库、API等）。JSONL只是推荐格式。
 
-- `GPS Trajectory Renderer` - 绘制地图轨迹
-- `Chart Renderer` - 动态图表显示
-- `Heatmap Renderer` - 热力图叠加
-- `3D Overlay Renderer` - 3D模型叠加
+**Q: 如何处理大数据？**
+A: 渲染器中用生成器或分块加载。`match_data()` 可以使用二分查找优化。
 
-每个渲染器可以作为独立Nexus插件，实现 `DataRenderer` 协议即可。
+**Q: 能否并行渲染？**
+A: 可以。参考 `multiprocessing` 并行处理帧。
+
+**Q: 渲染器能否有状态（如历史窗口）？**
+A: 可以。在 `__init__` 中初始化状态，在 `render()` 中更新。
+
+---
+
+## 📚 **参考资料**
+
+- OpenCV文档: https://docs.opencv.org/
+- JSONL格式: https://jsonlines.org/
+- Python ABC: https://docs.python.org/3/library/abc.html
