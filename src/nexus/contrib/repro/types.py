@@ -46,19 +46,21 @@ class DataRenderer(ABC):
     """
     Abstract base class for rendering time-series data onto video frames.
 
-    Users implement this class to define custom data visualizations.
-
-    Required implementations:
+    Subclasses define their own __init__ with required data sources,
+    then implement the three core methods:
         1. load_data() - How to load data from file (JSONL/CSV/etc)
         2. match_data() - How to find data matching a timestamp
         3. render() - How to draw data on frame
 
     Example:
         >>> class SpeedRenderer(DataRenderer):
-        ...     def load_data(self, data_path):
+        ...     def __init__(self, data_path):
         ...         self.data = load_jsonl(data_path)
         ...
-        ...     def match_data(self, timestamp_ms):
+        ...     def load_data(self, data_path):
+        ...         pass  # Already loaded in __init__
+        ...
+        ...     def match_data(self, timestamp_ms, tolerance_ms=50.0):
         ...         # Find nearest data point
         ...         ...
         ...
@@ -68,31 +70,16 @@ class DataRenderer(ABC):
         ...         return frame
     """
 
-    def __init__(self, data_path: Path | str):
-        """
-        Initialize renderer with data source.
-
-        Args:
-            data_path: Path to data file (JSONL, CSV, etc.)
-        """
-        self.data_path = Path(data_path)
-        self.data = None
-        self.load_data(self.data_path)
-
     @abstractmethod
     def load_data(self, data_path: Path) -> None:
         """
         Load time-series data from file.
 
-        Must set self.data to loaded dataset.
-        Supports JSONL (recommended), CSV, or custom formats.
+        Note: This method may not be called if data is loaded in __init__.
+        Kept for interface compatibility.
 
         Args:
             data_path: Path to data file
-
-        Example:
-            >>> def load_data(self, data_path):
-            ...     self.data = load_jsonl(data_path)
         """
         raise NotImplementedError
 

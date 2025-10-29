@@ -1,0 +1,7 @@
+# Vehicle Data Replay Case
+# Uses template: repro
+
+case_info:
+  name: "Vehicle Data Replay"
+  description: "Replay vehicle data with video visualization"
+  template: "repro"

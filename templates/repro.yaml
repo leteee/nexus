@@ -3,8 +3,8 @@
 
 case_info:
   name: "Vehicle Data Replay"
-  description: "Extract frames, render speed data overlay, compose output video"
-  version: "1.0.0"
+  description: "Extract frames, render speed and ADB target data overlay, compose output video"
+  version: "2.0.0"
 
 pipeline:
   # Step 1: Extract frames from video
@@ -15,26 +15,27 @@ pipeline:
       frame_pattern: "frame_{:06d}.png"
       save_timestamps: true
 
-  # Step 2: Render speed data onto frames
+  # Step 2: Render comprehensive vehicle data onto frames
   - plugin: "Data Renderer"
     config:
       frames_dir: "temp/frames"
       output_dir: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Use custom timeline with absolute timestamps
-      renderer_class: "nexus.contrib.repro.examples.BackwardMatchRenderer"
+      renderer_class: "nexus.contrib.repro.vehicle_renderer.VehicleDataRenderer"
       renderer_kwargs:
-        data_path: "input/speed.jsonl"
-        value_key: "speed"
-        label: "Speed (km/h)"
-        position: [30, 60]
-        tolerance_ms: 100.0  # Match data within 100ms backward
+        speed_data_path: "input/speed.jsonl"
+        targets_data_path: "input/adb_targets.jsonl"
+        calibration_path: "camera_calibration.yaml"
+        speed_tolerance_ms: 5000.0  # Forward matching: up to 5000ms before frame
+        target_tolerance_ms: 50.0   # Nearest matching: within 50ms
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
     config:
       frames_dir: "temp/rendered_frames"
-      output_path: "output/vehicle_with_speed.mp4"
+      output_path: "output/vehicle_replay.mp4"
       fps: 30.0
       frame_pattern: "frame_{:06d}.png"
       codec: "mp4v"
+

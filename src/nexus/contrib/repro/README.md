@@ -94,20 +94,18 @@ class DataRenderer(ABC):
     """
     抽象基类：用户继承此类实现自定义数据渲染。
 
-    必须实现三个方法：
+    子类自定义 __init__ 接受所需的数据源参数，
+    然后实现三个核心方法：
     1. load_data() - 加载数据
     2. match_data() - 匹配时间戳
     3. render() - 绘制到帧
     """
 
-    def __init__(self, data_path: Path | str):
-        self.data_path = Path(data_path)
-        self.data = None
-        self.load_data(self.data_path)  # 自动调用
-
     @abstractmethod
     def load_data(self, data_path: Path) -> None:
-        """加载数据到 self.data"""
+        """
+        加载数据 (可选实现，如果在 __init__ 中已加载)
+        """
 
     @abstractmethod
     def match_data(self, timestamp_ms: float, tolerance_ms: float = 50.0) -> List[dict]:
@@ -134,11 +132,11 @@ class SpeedRenderer(DataRenderer):
     def __init__(self, data_path, label="Speed", position=(20, 50)):
         self.label = label
         self.position = position
-        super().__init__(data_path)  # 调用父类，触发 load_data
+        self.data = load_jsonl(data_path)  # 直接在 __init__ 中加载
 
     def load_data(self, data_path):
-        """加载JSONL数据"""
-        self.data = load_jsonl(data_path)
+        """可选：如果需要延迟加载"""
+        pass
 
     def match_data(self, timestamp_ms, tolerance_ms=50.0):
         """最近邻匹配"""
@@ -175,12 +173,19 @@ class SpeedRenderer(DataRenderer):
 class GPSRenderer(DataRenderer):
     """显示GPS坐标和海拔"""
 
-    def load_data(self, data_path):
+    def __init__(self, data_path):
         self.data = load_jsonl(data_path)
 
+    def load_data(self, data_path):
+        pass  # 已在 __init__ 中加载
+
     def match_data(self, timestamp_ms, tolerance_ms=50.0):
-        # 同上
-        ...
+        if not self.data:
+            return []
+        closest = min(self.data, key=lambda d: abs(d["timestamp_ms"] - timestamp_ms))
+        if abs(closest["timestamp_ms"] - timestamp_ms) <= tolerance_ms:
+            return [closest]
+        return []
 
     def render(self, frame, data):
         if not data:
@@ -208,13 +213,34 @@ class GPSRenderer(DataRenderer):
         return frame
 ```
 
-### **内置示例渲染器**
+### **示例3：多数据源渲染器 (VehicleDataRenderer)**
 
-位于 `nexus.contrib.repro.examples`:
+实际案例参考 `nexus.contrib.repro.vehicle_renderer.VehicleDataRenderer`：
 
-- `SimpleTextRenderer` - 单个数值显示
-- `MultiValueRenderer` - 多字段仪表盘
-- `NestedDataRenderer` - 嵌套数据示例
+```python
+class VehicleDataRenderer(DataRenderer):
+    """同时渲染速度、ADB目标、帧信息"""
+
+    def __init__(self, speed_data_path, targets_data_path, calibration_path,
+                 speed_tolerance_ms=5000.0, target_tolerance_ms=50.0):
+        # 加载多个数据源
+        self.speed_data = load_jsonl(speed_data_path)
+        self.targets_data = load_jsonl(targets_data_path)
+        self.calibration = self._load_calibration(calibration_path)
+        self.speed_tolerance_ms = speed_tolerance_ms
+        self.target_tolerance_ms = target_tolerance_ms
+
+    def load_data(self, data_path):
+        pass  # 多数据源已在 __init__ 中加载
+
+    def match_data(self, timestamp_ms, tolerance_ms=50.0):
+        # 分别匹配各个数据源
+        ...
+
+    def render(self, frame, data):
+        # 绘制速度、目标、帧信息
+        ...
+```
 
 ---
 
@@ -289,7 +315,6 @@ class MultiDataRenderer(DataRenderer):
     def __init__(self, speed_path, gps_path):
         self.speed_data = load_jsonl(speed_path)
         self.gps_data = load_jsonl(gps_path)
-        # 不调用 super().__init__，因为有多个数据源
 
     def load_data(self, data_path):
         pass  # 已在 __init__ 中加载
@@ -300,20 +325,32 @@ class MultiDataRenderer(DataRenderer):
         return [{"speed": speed, "gps": gps}]
 
     def _match_from(self, data, timestamp_ms, tolerance_ms):
-        # 通用匹配逻辑
+        if not data:
+            return None
+        closest = min(data, key=lambda d: abs(d["timestamp_ms"] - timestamp_ms))
+        if abs(closest["timestamp_ms"] - timestamp_ms) <= tolerance_ms:
+            return closest
+        return None
+
+    def render(self, frame, data):
+        # 同时绘制速度和GPS
         ...
 ```
 
-### **使用内置示例**
+### **使用实际渲染器**
+
+参考内置的 `VehicleDataRenderer`：
 
 ```yaml
 - plugin: "Data Renderer"
   config:
-    renderer_class: "nexus.contrib.repro.examples.SimpleTextRenderer"
+    renderer_class: "nexus.contrib.repro.vehicle_renderer.VehicleDataRenderer"
     renderer_kwargs:
-      data_path: "data/speed.jsonl"
-      value_key: "speed"
-      label: "Speed"
+      speed_data_path: "input/speed.jsonl"
+      targets_data_path: "input/adb_targets.jsonl"
+      calibration_path: "camera_calibration.yaml"
+      speed_tolerance_ms: 5000.0
+      target_tolerance_ms: 50.0
 ```
 
 ### **Python API直接调用**
@@ -352,31 +389,49 @@ compose_video(Path("rendered/"), Path("output.mp4"), fps=metadata.fps)
 ### **数据加载**
 
 ```python
-from nexus.contrib.repro.types import load_jsonl, save_jsonl, load_data_series
+from nexus.contrib.repro.types import load_jsonl, save_jsonl, load_frame_timestamps
 
-# JSONL
+# 加载JSONL数据
 data = load_jsonl("data.jsonl")  # List[dict]
-
-# CSV (向后兼容)
-df = load_data_series("data.csv")  # DataFrame
 
 # 保存JSONL
 save_jsonl(data, "output.jsonl")
+
+# 加载帧时间戳映射
+frame_times = load_frame_timestamps("frames/frame_timestamps.csv")  # DataFrame
 ```
 
-### **时间匹配算法**
+### **数据生成**
 
 ```python
-from nexus.contrib.repro.matching import match_data_to_timestamp
+from nexus.contrib.repro.datagen import (
+    generate_timeline_with_jitter,
+    generate_speed_data_event_driven,
+    generate_adb_target_data,
+    parse_time_string,
+    get_video_metadata,
+)
 
-# 最近邻
-data = match_data_to_timestamp(df, 100.0, method="nearest")
+# 从视频获取元数据
+meta = get_video_metadata("video.mp4")
 
-# 范围匹配
-data = match_data_to_timestamp(df, 100.0, method="range", tolerance_ms=100)
+# 解析时间字符串
+timestamp = parse_time_string("2025-10-27 08:30:00")
 
-# 线性插值
-data = match_data_to_timestamp(df, 100.0, method="interpolate")
+# 生成时间线
+timeline = generate_timeline_with_jitter(
+    fps=30.0, total_frames=900, start_timestamp_ms=timestamp
+)
+
+# 生成速度数据
+speed_data = generate_speed_data_event_driven(
+    start_timestamp_ms=timestamp, duration_s=30.0
+)
+
+# 生成ADB目标数据
+target_data = generate_adb_target_data(
+    start_timestamp_ms=timestamp, duration_s=30.0, frequency_hz=20.0
+)
 ```
 
 ---
@@ -422,15 +477,20 @@ CYAN = (255, 255, 0)
 
 ```
 contrib/repro/
-├── types.py          # DataRenderer抽象基类 + JSONL工具
-├── video.py          # 视频切分/合成
-├── matching.py       # 时间匹配算法
-├── rendering.py      # (已废弃，使用examples.py)
-├── examples.py       # 示例渲染器实现 ⭐
-└── README.md         # 本文档
+├── __init__.py            # 模块初始化
+├── types.py               # DataRenderer抽象基类 + JSONL工具
+├── video.py               # 视频切分/合成功能
+├── datagen.py             # 数据生成工具 (timeline, speed, ADB targets)
+├── vehicle_renderer.py    # 车辆数据渲染器实现 ⭐
+└── README.md              # 本文档
 
-contrib/nexus/
-└── __init__.py       # 3个插件：Video Splitter, Data Renderer, Video Composer
+contrib/nexus/repro.py     # Nexus插件适配器
+  ├── Video Splitter       # 视频切帧插件
+  ├── Data Renderer        # 数据渲染插件
+  ├── Video Composer       # 视频合成插件
+  ├── Timeline Generator   # 时间线生成插件
+  ├── Speed Data Generator # 速度数据生成插件
+  └── ADB Target Generator # ADB目标生成插件
 ```
 
 ---

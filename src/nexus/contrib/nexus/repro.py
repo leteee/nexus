@@ -180,6 +180,18 @@ def render_data_on_frames(ctx):
         renderer_kwargs["data_path"] = ctx.resolve_path(
             renderer_kwargs["data_path"]
         )
+    if "speed_data_path" in renderer_kwargs:
+        renderer_kwargs["speed_data_path"] = ctx.resolve_path(
+            renderer_kwargs["speed_data_path"]
+        )
+    if "targets_data_path" in renderer_kwargs:
+        renderer_kwargs["targets_data_path"] = ctx.resolve_path(
+            renderer_kwargs["targets_data_path"]
+        )
+    if "calibration_path" in renderer_kwargs:
+        renderer_kwargs["calibration_path"] = ctx.resolve_path(
+            renderer_kwargs["calibration_path"]
+        )
 
     # Initialize renderer
     renderer = RendererClass(**renderer_kwargs)
@@ -205,6 +217,12 @@ def render_data_on_frames(ctx):
             ctx.logger.warning(f"Failed to read frame: {frame_path}")
             continue
 
+        # Set context for renderer if it has these attributes
+        if hasattr(renderer, '_current_frame_idx'):
+            renderer._current_frame_idx = frame_idx
+        if hasattr(renderer, '_current_timestamp_ms'):
+            renderer._current_timestamp_ms = timestamp_ms
+
         # Match data and render
         data = renderer.match_data(timestamp_ms, tolerance_ms=50.0)
         rendered_frame = renderer.render(frame, data)
@@ -217,6 +235,7 @@ def render_data_on_frames(ctx):
 
         if (rendered_count) % 100 == 0:
             ctx.logger.info(f"Rendered {rendered_count} frames...")
+
 
     ctx.logger.info(
         f"Completed: rendered {rendered_count} frames to {output_dir}"
