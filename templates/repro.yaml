@@ -1,0 +1,40 @@
+# Nexus Video Data Replay Template
+# Demonstrates overlaying time-series data onto video frames
+
+case_info:
+  name: "Vehicle Data Replay"
+  description: "Extract frames, render speed data overlay, compose output video"
+  version: "1.0.0"
+
+pipeline:
+  # Step 1: Extract frames from video
+  - plugin: "Video Splitter"
+    config:
+      video_path: "input/vehicle.mp4"
+      output_dir: "temp/frames"
+      frame_pattern: "frame_{:06d}.png"
+      save_timestamps: true
+
+  # Step 2: Render speed data onto frames
+  - plugin: "Data Renderer"
+    config:
+      frames_dir: "temp/frames"
+      output_dir: "temp/rendered_frames"
+      frame_pattern: "frame_{:06d}.png"
+      timestamps_path: "input/vehicle_timeline.csv"  # Use custom timeline with absolute timestamps
+      renderer_class: "nexus.contrib.repro.examples.BackwardMatchRenderer"
+      renderer_kwargs:
+        data_path: "input/speed.jsonl"
+        value_key: "speed"
+        label: "Speed (km/h)"
+        position: [30, 60]
+        tolerance_ms: 100.0  # Match data within 100ms backward
+
+  # Step 3: Compose rendered frames back to video
+  - plugin: "Video Composer"
+    config:
+      frames_dir: "temp/rendered_frames"
+      output_path: "output/vehicle_with_speed.mp4"
+      fps: 30.0
+      frame_pattern: "frame_{:06d}.png"
+      codec: "mp4v"

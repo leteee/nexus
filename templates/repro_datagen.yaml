@@ -1,0 +1,111 @@
+# Nexus Data Generation Template for Vehicle Data Replay
+# Generates synthetic timeline, speed, and ADB target data for testing
+
+case_info:
+  name: "Vehicle Data Generation"
+  description: "Generate synthetic timeline, speed, and ADB target data from video"
+  version: "2.0.0"
+
+pipeline:
+  # Step 1: Generate timeline with realistic jitter
+  # Automatically extracts FPS and frame count from video
+  - plugin: "Timeline Generator"
+    config:
+      video_path: "input/vehicle.mp4"    # Video file to analyze
+      start_time: "2025-10-27 08:30:00"  # Human-readable time format
+      jitter_ms: 1.5                      # ±1.5ms random jitter to simulate real capture
+      output_csv: "output/vehicle_timeline.csv"
+      random_seed: 42                     # For reproducibility
+
+  # Step 2: Generate event-driven speed data
+  # Speed data is INDEPENDENT - can be longer or shorter than video
+  # Only records when speed changes or every 5 seconds minimum
+  - plugin: "Speed Data Generator"
+    config:
+      # start_time automatically inherited from Timeline Generator
+      duration_s: 45.0                    # Generate 45s of speed data (independent of video)
+      max_interval_s: 5.0                 # Send at least every 5 seconds
+      speed_change_threshold: 2.0         # Record if speed changes by 2+ km/h
+      output_jsonl: "output/speed.jsonl"
+      random_seed: 42
+      use_default_profile: true           # Realistic driving: accelerate, cruise, decelerate
+
+  # Step 3: Generate ADB target data (20Hz with timing jitter)
+  # Simulates adaptive driving beam system detecting vehicles/pedestrians
+  # Data is INDEPENDENT - generated at 20Hz regardless of video frame rate
+  - plugin: "ADB Target Generator"
+    config:
+      # start_time automatically inherited from Timeline Generator
+      duration_s: 45.0                    # Generate 45s of target data (independent of video)
+      frequency_hz: 20.0                  # Fixed 20Hz data rate
+      timing_jitter_ms: 2.0               # ±2ms reception timing error
+      num_targets: 3                      # 2-3 concurrent targets
+      ego_speed_kmh: 60.0                 # Our vehicle speed
+      output_jsonl: "output/adb_targets.jsonl"
+      random_seed: 42
+
+# Configuration Notes:
+#
+# 1. Video Input:
+#    - Timeline Generator extracts FPS and duration automatically
+#    - Example: 30 FPS, 900 frames = 30 seconds
+#
+# 2. Time Format:
+#    - Use human-readable: "2025-10-27 08:30:00"
+#    - Automatically converted to Unix timestamp (ms)
+#
+# 3. Independent Data Generation:
+#    - Speed and ADB data can exceed video duration
+#    - Simulates real sensors that run independently
+#    - Example: 30s video, 45s sensor data
+#
+# 4. Data Frequencies:
+#    - Timeline: Matches video FPS (e.g., 30 FPS)
+#    - Speed: Event-driven (change + 5s minimum)
+#    - ADB: Fixed 20Hz with ±2ms jitter
+#
+# Expected Output Files:
+# - output/vehicle_timeline.csv: Frame timestamps with ±1.5ms jitter
+# - output/speed.jsonl: Event-driven speed data
+# - output/adb_targets.jsonl: 20Hz ADB target detections
+#
+# Usage:
+#   nexus run -c repro -t repro_datagen
+#
+# Data Format Examples:
+#
+# vehicle_timeline.csv:
+#   frame_index,timestamp_ms
+#   0,1730019000000.0
+#   1,1730019000034.8
+#   2,1730019000067.1
+#
+# speed.jsonl (event-driven):
+#   {"timestamp_ms": 1730019000000.0, "speed": 0.0}
+#   {"timestamp_ms": 1730019002150.5, "speed": 12.3}
+#   {"timestamp_ms": 1730019007890.2, "speed": 25.8}
+#
+# adb_targets.jsonl (20Hz, edge angles format):
+#   {"timestamp_ms": 1730019000000.0, "targets": [
+#     {
+#       "id": 1,
+#       "type": "car",
+#       "distance_m": 45.2,
+#       "angle_left": 1.8,
+#       "angle_right": 2.8,
+#       "angle_top": -0.3,
+#       "angle_bottom": -0.7
+#     }
+#   ]}
+#   {"timestamp_ms": 1730019000052.3, "targets": [
+#     {
+#       "id": 1,
+#       "type": "car",
+#       "distance_m": 44.8,
+#       "angle_left": 1.9,
+#       "angle_right": 2.9,
+#       "angle_top": -0.3,
+#       "angle_bottom": -0.7
+#     }
+#   ]}
+
