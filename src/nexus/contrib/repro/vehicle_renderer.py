@@ -76,7 +76,7 @@ class VehicleDataRenderer(DataRenderer):
         self._current_timestamp_ms = 0.0
 
     def _build_projection_matrix(self):
-        """Build camera projection matrix from calibration."""
+        """Build camera projection matrix and rvec/tvec for cv2.projectPoints."""
         import math
 
         # Get intrinsics
@@ -116,10 +116,14 @@ class VehicleDataRenderer(DataRenderer):
         # Translation vector
         t = np.array([[tx], [ty], [tz]], dtype=np.float32)
 
-        # Extrinsic matrix [R|t]
+        # For cv2.projectPoints, convert rotation matrix to rotation vector
+        self.rvec, _ = cv2.Rodrigues(R.astype(np.float32))
+        self.tvec = t
+
+        # Extrinsic matrix [R|t] (for reference, not used with cv2.projectPoints)
         self.RT = np.hstack([R, t]).astype(np.float32)
 
-        # Full projection matrix P = K * [R|t]
+        # Full projection matrix P = K * [R|t] (for reference)
         self.P = self.K @ self.RT
 
     def load_data(self, data_path: Path) -> None:
@@ -189,7 +193,12 @@ class VehicleDataRenderer(DataRenderer):
 
     def _project_target_to_image(self, target: dict) -> dict | None:
         """
-        Project 3D target in ADS coordinates to 2D image coordinates.
+        Project 3D target in ADS coordinates to 2D image coordinates using OpenCV.
+
+        Coordinate system conversion:
+        - ADS: X=forward, Y=left, Z=up
+        - Camera: X=right, Y=down, Z=forward
+        - Conversion: cam_X=-ADS_Y, cam_Y=-ADS_Z, cam_Z=ADS_X
 
         Args:
             target: Target dict with distance_m and angle edges
@@ -207,7 +216,6 @@ class VehicleDataRenderer(DataRenderer):
 
         # Convert edge angles to 3D corners in ADS coordinates
         # ADS: X forward, Y left, Z up
-        # Calculate 3D positions of corners (distance and angles define rays)
 
         # Top-left corner
         x_tl = distance * math.cos(angle_left)
@@ -229,28 +237,39 @@ class VehicleDataRenderer(DataRenderer):
         y_br = distance * math.sin(angle_right)
         z_br = distance * math.tan(angle_bottom)
 
-        # Build 3D points in homogeneous coordinates [X, Y, Z, 1]
+        # Convert ADS to Camera coordinates
+        # ADS: X=forward, Y=left, Z=up
+        # Camera: X=right, Y=down, Z=forward
+        # Conversion: cam_X = -ADS_Y, cam_Y = -ADS_Z, cam_Z = ADS_X
         corners_3d = np.array([
-            [x_tl, y_tl, z_tl, 1],
-            [x_tr, y_tr, z_tr, 1],
-            [x_br, y_br, z_br, 1],
-            [x_bl, y_bl, z_bl, 1],
-        ], dtype=np.float32).T  # Shape: (4, 4)
+            [-y_tl, -z_tl, x_tl],  # TL
+            [-y_tr, -z_tr, x_tr],  # TR
+            [-y_br, -z_br, x_br],  # BR
+            [-y_bl, -z_bl, x_bl],  # BL
+        ], dtype=np.float32)
 
-        # Project to image: P * [X, Y, Z, 1]^T
-        proj = self.P @ corners_3d  # Shape: (3, 4)
+        # Use OpenCV's projectPoints (standard method)
+        # rvec and tvec from extrinsics (rotation vector and translation)
+        points_2d, _ = cv2.projectPoints(
+            corners_3d,
+            self.rvec,  # Rotation vector
+            self.tvec,  # Translation vector
+            self.K,     # Camera intrinsic matrix
+            None        # No distortion
+        )
 
-        # Normalize by Z (perspective division)
-        corners_2d = []
-        for i in range(4):
-            z = proj[2, i]
-            if z <= 0:  # Behind camera
+        # Convert to list of tuples
+        corners_2d = [(int(pt[0][0]), int(pt[0][1])) for pt in points_2d]
+
+        # Get image bounds from calibration
+        img_width = self.calib['camera']['resolution']['width']
+        img_height = self.calib['camera']['resolution']['height']
+
+        # Check if any point is outside image bounds (allow some margin)
+        margin = 100
+        for x, y in corners_2d:
+            if x < -margin or y < -margin or x > img_width + margin or y > img_height + margin:
                 return None
-
-            u = proj[0, i] / z
-            v = proj[1, i] / z
-
-            corners_2d.append((int(u), int(v)))
 
         return {
             "corners": corners_2d,  # [(x, y), ...] for TL, TR, BR, BL

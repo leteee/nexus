@@ -6,23 +6,23 @@
 camera:
   name: "roof_forward_camera"
 
-  # Image resolution
+  # Image resolution (matches video resolution 640x360)
   resolution:
-    width: 1920
-    height: 1080
+    width: 640
+    height: 360
 
   # Intrinsic parameters (camera matrix)
   # These define the camera's optical properties
   intrinsics:
     # Focal length in pixels (fx, fy)
     # Calculated for ~60° horizontal FOV: fx = width / (2 * tan(FOV_h/2))
-    # fx = 1920 / (2 * tan(30°)) ≈ 1663
-    fx: 1663.0
-    fy: 1663.0
+    # fx = 640 / (2 * tan(30°)) ≈ 554
+    fx: 554.0
+    fy: 554.0
 
     # Principal point (optical center, usually image center)
-    cx: 960.0   # width / 2
-    cy: 540.0   # height / 2
+    cx: 320.0   # width / 2
+    cy: 180.0   # height / 2
 
     # Distortion coefficients (k1, k2, p1, p2, k3)
     # Set to zero for simplified model
