@@ -111,23 +111,29 @@ class DataRenderer(ABC):
     def render(
         self,
         frame: np.ndarray,
-        data: List[dict],
+        timestamp_ms: float,
     ) -> np.ndarray:
         """
         Render data visualization onto frame.
 
+        This method internally calls match_data() with the timestamp,
+        then renders the matched data.
+
         Args:
             frame: Video frame as numpy array (H, W, C) in BGR format
-            data: Matched data points to visualize
+            timestamp_ms: Frame timestamp in milliseconds
 
         Returns:
             Frame with data rendered (modified in-place or copied)
 
         Example:
-            >>> def render(self, frame, data):
-            ...     if not data:
+            >>> def render(self, frame, timestamp_ms):
+            ...     # Match data for this timestamp
+            ...     matched = self.match_data(timestamp_ms, self.tolerance_ms)
+            ...     if not matched:
             ...         return frame
-            ...     speed = data[0].get('speed', 0)
+            ...     # Render the data
+            ...     speed = matched[0].get('speed', 0)
             ...     cv2.putText(frame, f"Speed: {speed:.1f}", (20, 50), ...)
             ...     return frame
         """
