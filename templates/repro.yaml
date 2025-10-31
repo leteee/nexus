@@ -4,7 +4,7 @@
 case_info:
   name: "Vehicle Data Replay"
   description: "Extract frames, render speed and ADB target data overlay, compose output video"
-  version: "2.0.0"
+  version: "3.0.0"
 
 pipeline:
   # Step 1: Extract frames from video
@@ -15,20 +15,33 @@ pipeline:
       frame_pattern: "frame_{:06d}.png"
       save_timestamps: true
 
-  # Step 2: Render comprehensive vehicle data onto frames
+  # Step 2: Render data onto frames using modular renderers
   - plugin: "Data Renderer"
     config:
       frames_dir: "temp/frames"
       output_dir: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Use custom timeline with absolute timestamps
-      renderer_class: "nexus.contrib.repro.vehicle_renderer.VehicleDataRenderer"
-      renderer_kwargs:
-        speed_data_path: "input/speed.jsonl"
-        targets_data_path: "input/adb_targets.jsonl"
-        calibration_path: "camera_calibration.yaml"
-        speed_tolerance_ms: 5000.0  # Forward matching: up to 5000ms before frame
-        target_tolerance_ms: 50.0   # Nearest matching: within 50ms
+
+      # New format: Multiple renderers (each handles one data type)
+      renderers:
+        # Render vehicle speed (top-left corner)
+        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+          kwargs:
+            data_path: "input/speed.jsonl"
+            position: [30, 60]
+            tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
+            font_scale: 1.2
+            color: [0, 255, 0]  # Green
+
+        # Render 3D target detections (projected to 2D)
+        - class: "nexus.contrib.repro.renderers.TargetRenderer"
+          kwargs:
+            data_path: "input/adb_targets.jsonl"
+            calibration_path: "camera_calibration.yaml"
+            tolerance_ms: 50.0  # Nearest matching: within 50ms
+            box_color: [0, 255, 0]  # Green boxes
+            show_panel: true
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
@@ -38,4 +51,42 @@ pipeline:
       fps: 30.0
       frame_pattern: "frame_{:06d}.png"
       codec: "mp4v"
+
+# Architecture Notes:
+#
+# 1. Modular Renderers:
+#    - Each renderer handles ONE data type
+#    - SpeedRenderer: Vehicle speed with forward matching
+#    - TargetRenderer: 3D object detection with projection
+#
+# 2. Easy to Extend:
+#    - Add new data type: Create a renderer class
+#    - Inherit from BaseDataRenderer
+#    - Implement render(frame, timestamp_ms)
+#    - Add to renderers list above
+#
+# 3. Matching Strategies:
+#    - Forward: Use most recent data ≤ timestamp (good for speed, GPS)
+#    - Nearest: Use closest data point (good for high-freq like targets)
+#    - Backward: Use earliest data ≥ timestamp (for predictive data)
+#
+# 4. Data Flow:
+#    Video → Frames → [Renderer 1] → [Renderer 2] → ... → Rendered Frames → Video
+#    Each renderer applies its visualization sequentially
+#
+# Example: Adding GPS Renderer
+#
+# renderers:
+#   - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#     kwargs: { ... }
+#
+#   - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#     kwargs: { ... }
+#
+#   - class: "myproject.GPSRenderer"  # Custom renderer
+#     kwargs:
+#       data_path: "input/gps.jsonl"
+#       position: [20, 100]
+#       tolerance_ms: 1000
+#
 

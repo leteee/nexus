@@ -115,36 +115,41 @@ class DataRendererConfig(PluginConfig):
     frames_dir: str = "frames"
     output_dir: str = "rendered_frames"
     frame_pattern: str = "frame_{:06d}.png"
-    renderer_class: str  # e.g., "nexus.contrib.repro.examples.SimpleTextRenderer"
-    renderer_kwargs: dict = {}  # Additional args for renderer __init__
     timestamps_path: str | None = None  # Optional: custom timestamps CSV path
+    renderers: list[dict]  # List of {"class": "...", "kwargs": {...}}
 
 
 @plugin(name="Data Renderer", config=DataRendererConfig)
 def render_data_on_frames(ctx):
     """
-    Apply custom data renderer to all video frames.
+    Apply multiple data renderers to all video frames.
 
-    Dynamically loads user-defined renderer class and processes frames.
+    Each renderer is applied sequentially to render different data types.
+
+    Config format:
+        renderers:
+          - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+            kwargs:
+              data_path: "input/speed.jsonl"
+              position: [30, 60]
+              tolerance_ms: 5000
+
+          - class: "nexus.contrib.repro.renderers.TargetRenderer"
+            kwargs:
+              data_path: "input/adb_targets.jsonl"
+              calibration_path: "camera_calibration.yaml"
+              tolerance_ms: 50
 
     Config:
         frames_dir: Directory containing extracted frames
         output_dir: Directory for rendered frames
         frame_pattern: Frame filename pattern
-        renderer_class: Fully-qualified class name
-        renderer_kwargs: Arguments for renderer initialization
-
-    Example config:
-        renderer_class: "nexus.contrib.repro.examples.SimpleTextRenderer"
-        renderer_kwargs:
-            data_path: "data/speed.jsonl"
-            value_key: "speed"
-            label: "Speed (km/h)"
-            position: [20, 50]
+        timestamps_path: Optional custom timestamps CSV path
+        renderers: List of renderer configurations
     """
     import importlib
-
     from pathlib import Path
+    import cv2
 
     frames_dir = ctx.resolve_path(ctx.config.frames_dir)
     output_dir = ctx.resolve_path(ctx.config.output_dir)
@@ -153,7 +158,6 @@ def render_data_on_frames(ctx):
     # Load frame timestamps
     from nexus.contrib.repro.types import load_frame_timestamps
 
-    # Use custom timestamps path if provided, otherwise use default
     if ctx.config.timestamps_path:
         timestamps_path = ctx.resolve_path(ctx.config.timestamps_path)
     else:
@@ -167,38 +171,31 @@ def render_data_on_frames(ctx):
 
     frame_times = load_frame_timestamps(timestamps_path)
 
-    # Dynamically import renderer class
-    module_path, class_name = ctx.config.renderer_class.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    RendererClass = getattr(module, class_name)
+    # Load all renderers
+    def load_renderer(class_path: str, kwargs: dict):
+        """Load renderer class and instantiate with kwargs."""
+        module_path, class_name = class_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        RendererClass = getattr(module, class_name)
 
-    ctx.logger.info(f"Loaded renderer: {ctx.config.renderer_class}")
+        # Resolve paths in kwargs
+        resolved_kwargs = kwargs.copy()
+        for key in ["data_path", "calibration_path"]:
+            if key in resolved_kwargs:
+                resolved_kwargs[key] = ctx.resolve_path(resolved_kwargs[key])
 
-    # Resolve paths in renderer_kwargs
-    renderer_kwargs = ctx.config.renderer_kwargs.copy()
-    if "data_path" in renderer_kwargs:
-        renderer_kwargs["data_path"] = ctx.resolve_path(
-            renderer_kwargs["data_path"]
-        )
-    if "speed_data_path" in renderer_kwargs:
-        renderer_kwargs["speed_data_path"] = ctx.resolve_path(
-            renderer_kwargs["speed_data_path"]
-        )
-    if "targets_data_path" in renderer_kwargs:
-        renderer_kwargs["targets_data_path"] = ctx.resolve_path(
-            renderer_kwargs["targets_data_path"]
-        )
-    if "calibration_path" in renderer_kwargs:
-        renderer_kwargs["calibration_path"] = ctx.resolve_path(
-            renderer_kwargs["calibration_path"]
-        )
+        return RendererClass(**resolved_kwargs)
 
-    # Initialize renderer
-    renderer = RendererClass(**renderer_kwargs)
+    ctx.logger.info(f"Loading {len(ctx.config.renderers)} renderers")
+    renderers = []
+    for i, renderer_config in enumerate(ctx.config.renderers):
+        renderer_class = renderer_config["class"]
+        renderer_kwargs = renderer_config.get("kwargs", {})
+        renderer = load_renderer(renderer_class, renderer_kwargs)
+        renderers.append(renderer)
+        ctx.logger.info(f"  [{i+1}] {renderer_class}")
 
     ctx.logger.info(f"Rendering {len(frame_times)} frames...")
-
-    import cv2
 
     rendered_count = 0
 
@@ -217,25 +214,18 @@ def render_data_on_frames(ctx):
             ctx.logger.warning(f"Failed to read frame: {frame_path}")
             continue
 
-        # Set context for renderer if it has these attributes
-        if hasattr(renderer, '_current_frame_idx'):
-            renderer._current_frame_idx = frame_idx
-        if hasattr(renderer, '_current_timestamp_ms'):
-            renderer._current_timestamp_ms = timestamp_ms
-
-        # Match data and render
-        data = renderer.match_data(timestamp_ms, tolerance_ms=50.0)
-        rendered_frame = renderer.render(frame, data)
+        # Apply all renderers sequentially
+        for renderer in renderers:
+            frame = renderer.render(frame, timestamp_ms)
 
         # Save rendered frame
         output_path = output_dir / ctx.config.frame_pattern.format(frame_idx)
-        cv2.imwrite(str(output_path), rendered_frame)
+        cv2.imwrite(str(output_path), frame)
 
         rendered_count += 1
 
         if (rendered_count) % 100 == 0:
             ctx.logger.info(f"Rendered {rendered_count} frames...")
-
 
     ctx.logger.info(
         f"Completed: rendered {rendered_count} frames to {output_dir}"
