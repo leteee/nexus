@@ -7,15 +7,18 @@ Adapts video replay and data rendering logic to Nexus plugin interface.
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
-from nexus.contrib.repro.video import extract_frames, compose_video
+from nexus.contrib.repro.video import extract_frames, compose_video, render_all_frames
+from nexus.contrib.repro.io import save_jsonl
+from nexus.contrib.repro.utils import (
+    parse_time_string,
+    parse_time_value,
+    get_video_metadata,
+)
 from nexus.contrib.repro.datagen import (
     generate_timeline_with_jitter,
     generate_speed_data_event_driven,
     generate_adb_target_data,
-    save_jsonl,
     save_timeline_csv,
-    parse_time_string,
-    get_video_metadata,
     SpeedProfile,
 )
 
@@ -29,7 +32,6 @@ class VideoSplitterConfig(PluginConfig):
     video_path: str
     output_dir: str = "frames"
     frame_pattern: str = "frame_{:06d}.png"
-    save_timestamps: bool = True
 
 
 class VideoComposerConfig(PluginConfig):
@@ -47,11 +49,11 @@ def split_video_to_frames(ctx):
     """
     Extract all frames from video and save as images.
 
-    Creates:
-    - Individual frame images (PNG format)
-    - frame_timestamps.csv mapping frames to physical time
-
+    Creates individual frame images in PNG format.
     Output stored in shared context for downstream plugins.
+
+    Note: Use a separate Timeline Generator plugin to create
+    frame_timestamps.csv with real acquisition times.
     """
     video_path = ctx.resolve_path(ctx.config.video_path)
     output_dir = ctx.resolve_path(ctx.config.output_dir)
@@ -62,7 +64,6 @@ def split_video_to_frames(ctx):
         video_path,
         output_dir,
         frame_pattern=ctx.config.frame_pattern,
-        save_timestamps=ctx.config.save_timestamps,
     )
 
     ctx.logger.info(
@@ -112,6 +113,10 @@ def compose_frames_to_video(ctx):
 
 
 class DataRendererConfig(PluginConfig):
+    # Time range control (video timeline is the primary timeline)
+    start_time: str | float | None = None  # Start time: None, timestamp_ms, or time string
+    end_time: str | float | None = None    # End time: None, timestamp_ms, or time string
+
     frames_dir: str = "frames"
     output_dir: str = "rendered_frames"
     frame_pattern: str = "frame_{:06d}.png"
@@ -124,7 +129,8 @@ def render_data_on_frames(ctx):
     """
     Apply multiple data renderers to all video frames.
 
-    Each renderer is applied sequentially to render different data types.
+    This plugin adapts the repro.render_all_frames() function to Nexus.
+    The actual rendering logic is implemented in the repro module.
 
     Config format:
         renderers:
@@ -147,89 +153,60 @@ def render_data_on_frames(ctx):
         timestamps_path: Optional custom timestamps CSV path
         renderers: List of renderer configurations
     """
-    import importlib
     from pathlib import Path
-    import cv2
 
+    # Resolve paths
     frames_dir = ctx.resolve_path(ctx.config.frames_dir)
     output_dir = ctx.resolve_path(ctx.config.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Load frame timestamps
-    from nexus.contrib.repro.types import load_frame_timestamps
 
     if ctx.config.timestamps_path:
         timestamps_path = ctx.resolve_path(ctx.config.timestamps_path)
     else:
         timestamps_path = frames_dir / "frame_timestamps.csv"
 
-    if not timestamps_path.exists():
-        raise FileNotFoundError(
-            f"Frame timestamps not found: {timestamps_path}. "
-            "Run Video Splitter first or specify timestamps_path in config."
-        )
+    # Resolve paths in renderer kwargs
+    renderer_configs = []
+    for renderer_config in ctx.config.renderers:
+        config = renderer_config.copy()
+        kwargs = config.get("kwargs", {}).copy()
 
-    frame_times = load_frame_timestamps(timestamps_path)
-
-    # Load all renderers
-    def load_renderer(class_path: str, kwargs: dict):
-        """Load renderer class and instantiate with kwargs."""
-        module_path, class_name = class_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        RendererClass = getattr(module, class_name)
-
-        # Resolve paths in kwargs
-        resolved_kwargs = kwargs.copy()
+        # Resolve file paths in kwargs
         for key in ["data_path", "calibration_path"]:
-            if key in resolved_kwargs:
-                resolved_kwargs[key] = ctx.resolve_path(resolved_kwargs[key])
+            if key in kwargs:
+                kwargs[key] = ctx.resolve_path(kwargs[key])
 
-        return RendererClass(**resolved_kwargs)
+        config["kwargs"] = kwargs
+        renderer_configs.append(config)
 
-    ctx.logger.info(f"Loading {len(ctx.config.renderers)} renderers")
-    renderers = []
-    for i, renderer_config in enumerate(ctx.config.renderers):
-        renderer_class = renderer_config["class"]
-        renderer_kwargs = renderer_config.get("kwargs", {})
-        renderer = load_renderer(renderer_class, renderer_kwargs)
-        renderers.append(renderer)
-        ctx.logger.info(f"  [{i+1}] {renderer_class}")
+    # Call repro module function
+    ctx.logger.info(f"Rendering frames from {frames_dir}")
 
-    ctx.logger.info(f"Rendering {len(frame_times)} frames...")
+    # Parse time range
+    start_time_ms = parse_time_value(ctx.config.start_time)
+    end_time_ms = parse_time_value(ctx.config.end_time)
 
-    rendered_count = 0
+    if start_time_ms is not None:
+        ctx.logger.info(f"Start time: {start_time_ms} ms")
+    if end_time_ms is not None:
+        ctx.logger.info(f"End time: {end_time_ms} ms")
 
-    for _, row in frame_times.iterrows():
-        frame_idx = int(row["frame_index"])
-        timestamp_ms = row["timestamp_ms"]
+    def progress_callback(count, total):
+        """Progress callback for logging."""
+        if count % 100 == 0:
+            ctx.logger.info(f"Rendered {count}/{total} frames...")
 
-        # Load frame
-        frame_path = frames_dir / ctx.config.frame_pattern.format(frame_idx)
-        if not frame_path.exists():
-            ctx.logger.warning(f"Frame not found: {frame_path}, skipping")
-            continue
-
-        frame = cv2.imread(str(frame_path))
-        if frame is None:
-            ctx.logger.warning(f"Failed to read frame: {frame_path}")
-            continue
-
-        # Apply all renderers sequentially
-        for renderer in renderers:
-            frame = renderer.render(frame, timestamp_ms)
-
-        # Save rendered frame
-        output_path = output_dir / ctx.config.frame_pattern.format(frame_idx)
-        cv2.imwrite(str(output_path), frame)
-
-        rendered_count += 1
-
-        if (rendered_count) % 100 == 0:
-            ctx.logger.info(f"Rendered {rendered_count} frames...")
-
-    ctx.logger.info(
-        f"Completed: rendered {rendered_count} frames to {output_dir}"
+    output_dir = render_all_frames(
+        frames_dir=frames_dir,
+        output_dir=output_dir,
+        timestamps_path=timestamps_path,
+        renderer_configs=renderer_configs,
+        frame_pattern=ctx.config.frame_pattern,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
+        progress_callback=progress_callback,
     )
+
+    ctx.logger.info(f"Completed: rendered frames to {output_dir}")
 
     # Store output dir for Video Composer
     ctx.remember("rendered_frames_dir", output_dir)

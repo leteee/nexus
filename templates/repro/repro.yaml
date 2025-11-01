@@ -13,21 +13,26 @@ pipeline:
       video_path: "input/vehicle.mp4"
       output_dir: "temp/frames"
       frame_pattern: "frame_{:06d}.png"
-      save_timestamps: true
 
   # Step 2: Render data onto frames using modular renderers
   - plugin: "Data Renderer"
     config:
+      # Time range control (Time is first-class: video timeline is primary)
+      # start_time: null  # Start time: null (default), timestamp_ms, or "2025-10-27 12:00:00"
+      # end_time: null    # End time: null (default), timestamp_ms, or "2025-10-27 12:01:00"
+      start_time: "2025-10-27 08:30:10"
+      end_time: "2025-10-27 08:30:30"
       frames_dir: "temp/frames"
       output_dir: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
-      timestamps_path: "input/vehicle_timeline.csv"  # Use custom timeline with absolute timestamps
+      timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
 
       # New format: Multiple renderers (each handles one data type)
       renderers:
         # Render vehicle speed (top-left corner)
         - class: "nexus.contrib.repro.renderers.SpeedRenderer"
           kwargs:
+            time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
             data_path: "input/speed.jsonl"
             position: [30, 60]
             tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
@@ -37,8 +42,9 @@ pipeline:
         # Render 3D target detections (projected to 2D)
         - class: "nexus.contrib.repro.renderers.TargetRenderer"
           kwargs:
+            time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
             data_path: "input/adb_targets.jsonl"
-            calibration_path: "camera_calibration.yaml"
+            calibration_path: "camera_calibration.json"
             tolerance_ms: 50.0  # Nearest matching: within 50ms
             box_color: [0, 255, 0]  # Green boxes
             show_panel: true

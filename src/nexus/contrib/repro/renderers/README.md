@@ -22,7 +22,7 @@ DataRenderer (抽象接口)
     ↓
 BaseDataRenderer (带匹配策略的基类)
     ↓
-SpeedRenderer / TargetRenderer / GPSRenderer (具体实现)
+SpeedRenderer / TargetRenderer / 自定义Renderer
 ```
 
 ### 2. 文件组织
@@ -34,8 +34,7 @@ src/nexus/contrib/repro/
     ├── __init__.py               # 导出所有渲染器
     ├── base.py                   # BaseDataRenderer 基类
     ├── speed_renderer.py         # 速度渲染器
-    ├── target_renderer.py        # 目标渲染器
-    └── example_gps_renderer.py   # GPS 示例（展示如何扩展）
+    └── target_renderer.py        # 目标渲染器
 ```
 
 ---
@@ -180,6 +179,7 @@ renderers:
 - `data_path`: 速度数据文件路径（JSONL）
 - `position`: 文字位置 `(x, y)`，默认 `(30, 60)`
 - `tolerance_ms`: 匹配容忍度，默认 `5000` ms（前向匹配）
+- `time_offset_ms`: 时间偏移（毫秒），默认 `0` ⭐ 新增
 - `font_scale`: 字体大小，默认 `1.2`
 - `color`: 颜色 BGR，默认绿色 `(0, 255, 0)`
 
@@ -190,6 +190,15 @@ renderers:
 
 **匹配策略**：Forward（前向匹配，速度"保持"直到下次更新）
 
+**时间偏移示例**：
+```python
+# 数据与视频完全同步
+SpeedRenderer(data_path="speed.jsonl", time_offset_ms=0)
+
+# 数据晚到100ms（补偿延迟）
+SpeedRenderer(data_path="speed.jsonl", time_offset_ms=100)
+```
+
 ---
 
 ### TargetRenderer
@@ -198,8 +207,9 @@ renderers:
 
 **参数**：
 - `data_path`: 目标数据文件路径（JSONL）
-- `calibration_path`: 相机标定文件路径（YAML）
+- `calibration_path`: 相机标定文件路径（JSON）⭐ 更新为JSON
 - `tolerance_ms`: 匹配容忍度，默认 `50` ms（最近匹配）
+- `time_offset_ms`: 时间偏移（毫秒），默认 `0` ⭐ 新增
 - `box_color`: 框颜色 BGR，默认绿色 `(0, 255, 0)`
 - `show_panel`: 是否显示信息面板，默认 `True`
 
@@ -221,23 +231,32 @@ renderers:
 }
 ```
 
-**标定格式**（YAML）：
-```yaml
-camera:
-  intrinsics:
-    fx: 1000.0
-    fy: 1000.0
-    cx: 960.0
-    cy: 540.0
-  extrinsics:
-    translation: {x: 0.0, y: 0.0, z: 1.5}
-    rotation: {roll: 0.0, pitch: 0.0, yaw: 0.0}
-  resolution:
-    width: 1920
-    height: 1080
+**标定格式**（JSON）⭐ 更新：
+```json
+{
+  "camera": {
+    "resolution": {"width": 640, "height": 360},
+    "intrinsics": {
+      "fx": 554.0,
+      "fy": 554.0,
+      "cx": 320.0,
+      "cy": 180.0,
+      "distortion": [0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    "extrinsics": {
+      "translation": {"x": 2.5, "y": 0.0, "z": 1.8},
+      "rotation": {"roll": 0.0, "pitch": -10.0, "yaw": 0.0}
+    }
+  }
+}
 ```
 
 **匹配策略**：Nearest（最近匹配）
+
+**坐标系统**：
+- 车辆坐标系: Z=前, X=右, Y=上
+- 相机坐标系: X=右, Y=下, Z=前
+- 投影: 使用 `cv2.projectPoints` 进行3D→2D转换
 
 ---
 
@@ -277,6 +296,91 @@ match_strategy="backward"
 
 ---
 
+## ⏰ 时间偏移 (time_offset_ms) ⭐ 新功能
+
+### 概念
+
+**时间偏移**允许调整数据时间线与视频时间线的相对位置，用于：
+- 补偿数据采集延迟
+- 同步不同来源的数据
+- 调试时间对齐问题
+
+### 工作原理
+
+```
+视频帧时间: 1000 ms
+time_offset_ms: +100 ms
+──────────────────────────────────
+搜索数据时间: 1000 + 100 = 1100 ms
+```
+
+**公式**: `search_time = frame_time + time_offset_ms`
+
+### 使用场景
+
+**场景1: 数据延迟（Data Delayed）**
+```python
+# 数据比视频晚到100ms
+# 视频1000ms的帧应该匹配数据1100ms的值
+SpeedRenderer(data_path="speed.jsonl", time_offset_ms=+100)
+```
+
+**场景2: 数据提前（Data Ahead）**
+```python
+# 数据比视频早到50ms
+# 视频1000ms的帧应该匹配数据950ms的值
+TargetRenderer(data_path="targets.jsonl", time_offset_ms=-50)
+```
+
+**场景3: 完全同步（Synchronized）**
+```python
+# 数据和视频完全同步
+GPSRenderer(data_path="gps.jsonl", time_offset_ms=0)  # 默认值
+```
+
+### YAML配置示例
+
+```yaml
+renderers:
+  # Speed data: 延迟0ms（同步）
+  - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+    kwargs:
+      data_path: "input/speed.jsonl"
+      time_offset_ms: 0
+
+  # Target data: 提前50ms（补偿处理延迟）
+  - class: "nexus.contrib.repro.renderers.TargetRenderer"
+    kwargs:
+      data_path: "input/targets.jsonl"
+      time_offset_ms: -50
+
+  # GPS data: 延迟100ms（补偿接收延迟）
+  - class: "custom.GPSRenderer"
+    kwargs:
+      data_path: "input/gps.jsonl"
+      time_offset_ms: 100
+```
+
+### 调试技巧
+
+1. **找到最佳偏移量**：
+   - 从 `time_offset_ms=0` 开始
+   - 观察数据与视频是否对齐
+   - 逐步调整（±50ms, ±100ms）
+
+2. **检查数据时间戳**：
+   ```python
+   # 打印数据时间范围
+   data = load_jsonl("data.jsonl")
+   print(f"Data range: {data[0]['timestamp_ms']} - {data[-1]['timestamp_ms']}")
+
+   # 打印视频时间范围
+   frame_times = load_frame_timestamps("timestamps.csv")
+   print(f"Video range: {frame_times['timestamp_ms'].min()} - {frame_times['timestamp_ms'].max()}")
+   ```
+
+---
+
 ## 完整工作流程
 
 ```
@@ -289,7 +393,7 @@ match_strategy="backward"
 [Data Renderer] 应用多个渲染器
     ├─ SpeedRenderer     → 叠加速度
     ├─ TargetRenderer    → 叠加目标框
-    └─ GPSRenderer       → 叠加 GPS
+    └─ CustomRenderer    → 自定义数据
     ↓
 渲染后的帧 (rendered_0000.png, ...)
     ↓
@@ -336,17 +440,6 @@ match_strategy="backward"
 - **相机坐标系**：X=右，Y=下，Z=前
 
 示例见 `TargetRenderer._project_target_to_image()`
-
----
-
-## 参考示例
-
-完整示例代码：`src/nexus/contrib/repro/renderers/example_gps_renderer.py`
-
-运行示例：
-```bash
-python -m nexus.contrib.repro.renderers.example_gps_renderer
-```
 
 ---
 

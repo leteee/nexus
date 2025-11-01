@@ -44,6 +44,7 @@ class SpeedRenderer(BaseDataRenderer):
         data_path: Path | str,
         position: Tuple[int, int] = (30, 60),
         tolerance_ms: float = 5000.0,
+        time_offset_ms: float = 0.0,
         font_scale: float = 1.2,
         color: Tuple[int, int, int] = (0, 255, 0),  # BGR: Green
         thickness: int = 3,
@@ -53,6 +54,7 @@ class SpeedRenderer(BaseDataRenderer):
             data_path: Path to speed JSONL file
             position: (x, y) position for text (top-left anchor)
             tolerance_ms: Forward matching tolerance (default 5000ms)
+            time_offset_ms: Time offset to apply to data timestamps (default 0ms)
             font_scale: Font size multiplier
             color: Text color in BGR format
             thickness: Text thickness
@@ -62,6 +64,7 @@ class SpeedRenderer(BaseDataRenderer):
             data_path=data_path,
             tolerance_ms=tolerance_ms,
             match_strategy="forward",
+            time_offset_ms=time_offset_ms,
         )
 
         self.position = position

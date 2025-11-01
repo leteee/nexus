@@ -1,9 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\projects\\nexus\\src\\nexus\\contrib\\repro'' -Recurse -File -Exclude ''__pycache__'' | Select-Object FullName\")",
-      "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\projects\\nexus\\cases\\repro'' -Recurse -Directory | Select-Object FullName\")",
-      "Bash(powershell -Command \"Get-Content ''D:\\projects\\nexus\\cases\\repro\\input\\adb_targets.jsonl'' | Select-Object -First 2\")"
+      "Bash(powershell -Command \"Get-Item ''D:\\projects\\nexus\\cases\\repro\\temp\\frames\\frame_timestamps.csv'' -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Get-Content ''D:\\projects\\nexus\\src\\nexus\\contrib\\repro\\types.py'' | Select-String -Pattern ''^def '' | Select-Object -ExpandProperty Line\")",
+      "Bash(python -c \"import cv2; import numpy as np; img = np.zeros((100, 100, 3), dtype=np.uint8); points = np.array([[80, 50], [150, 50], [150, 80], [80, 80]], np.int32); cv2.polylines(img, [points], True, (0, 255, 0), 2); print(''OK: OpenCV handles out-of-bounds coordinates'')\")",
+      "Bash(powershell -Command \"Remove-Item ''D:\\projects\\nexus\\cases\\repro\\camera_calibration.yaml'' -ErrorAction Stop; Write-Output ''Deleted camera_calibration.yaml''\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\projects\\nexus\\src\\nexus\\contrib\\repro'' -Recurse -File | Select-Object FullName | ForEach-Object { $_FullName.Replace(''D:\\projects\\nexus\\src\\nexus\\contrib\\repro\\'', '''') }\")",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

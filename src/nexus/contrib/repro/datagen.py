@@ -7,106 +7,16 @@ for testing video data replay scenarios.
 
 from __future__ import annotations
 
-import json
 import random
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import List, Tuple
 
-import cv2
 import numpy as np
 
-
-# =============================================================================
-# Utility Functions
-# =============================================================================
-
-
-def parse_time_string(time_str: str) -> float:
-    """
-    Parse time string to Unix timestamp in milliseconds.
-
-    Supports formats:
-    - "2025-10-27 00:00:00"
-    - "2025-10-27T00:00:00"
-    - ISO 8601 with timezone
-
-    Args:
-        time_str: Time string in standard format
-
-    Returns:
-        Unix timestamp in milliseconds
-
-    Example:
-        >>> parse_time_string("2025-10-27 00:00:00")
-        1759284000000.0
-    """
-    # Try common formats
-    formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S.%f",
-    ]
-
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(time_str, fmt)
-            return dt.timestamp() * 1000.0
-        except ValueError:
-            continue
-
-    # Try parsing with ISO format
-    try:
-        dt = datetime.fromisoformat(time_str)
-        return dt.timestamp() * 1000.0
-    except ValueError:
-        raise ValueError(
-            f"Unable to parse time string: {time_str}. "
-            f"Expected format: 'YYYY-MM-DD HH:MM:SS'"
-        )
-
-
-def get_video_metadata(video_path: Path) -> dict:
-    """
-    Extract metadata from video file.
-
-    Args:
-        video_path: Path to video file
-
-    Returns:
-        Dict with fps, total_frames, width, height, duration_s
-
-    Example:
-        >>> meta = get_video_metadata(Path("video.mp4"))
-        >>> print(f"FPS: {meta['fps']}, Duration: {meta['duration_s']}s")
-    """
-    video_path = Path(video_path)
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video not found: {video_path}")
-
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Failed to open video: {video_path}")
-
-    try:
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        duration_s = total_frames / fps if fps > 0 else 0.0
-
-        return {
-            "fps": fps,
-            "total_frames": total_frames,
-            "width": width,
-            "height": height,
-            "duration_s": duration_s,
-        }
-    finally:
-        cap.release()
+from .io import save_jsonl
+from .utils import parse_time_string, parse_time_value, get_video_metadata
 
 
 # =============================================================================
@@ -545,25 +455,3 @@ def generate_adb_target_data(
 
     return target_data
 
-
-# =============================================================================
-# Data Saving Utilities
-# =============================================================================
-
-
-def save_jsonl(data: List[dict], output_path: Path) -> None:
-    """
-    Save data to JSONL (JSON Lines) format.
-
-    Each line contains one complete JSON object.
-
-    Args:
-        data: List of data records
-        output_path: Output JSONL file path
-    """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        for record in data:
-            json.dump(record, f, ensure_ascii=False)
-            f.write("\n")

@@ -7,13 +7,13 @@ Renders bounding boxes and information panel.
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 from typing import List
 
 import cv2
 import numpy as np
-import yaml
 
 from .base import BaseDataRenderer
 
@@ -45,24 +45,30 @@ class TargetRenderer(BaseDataRenderer):
           ]
         }
 
-    Calibration format (YAML):
-        camera:
-          intrinsics:
-            fx: 1000.0
-            fy: 1000.0
-            cx: 960.0
-            cy: 540.0
-          extrinsics:
-            translation: {x: 0.0, y: 0.0, z: 1.5}
-            rotation: {roll: 0.0, pitch: 0.0, yaw: 0.0}
-          resolution:
-            width: 1920
-            height: 1080
+    Calibration format (JSON):
+        {
+          "camera": {
+            "intrinsics": {
+              "fx": 1000.0,
+              "fy": 1000.0,
+              "cx": 960.0,
+              "cy": 540.0
+            },
+            "extrinsics": {
+              "translation": {"x": 0.0, "y": 0.0, "z": 1.5},
+              "rotation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+            },
+            "resolution": {
+              "width": 1920,
+              "height": 1080
+            }
+          }
+        }
 
     Example:
         >>> renderer = TargetRenderer(
         ...     data_path="input/adb_targets.jsonl",
-        ...     calibration_path="camera_calibration.yaml",
+        ...     calibration_path="camera_calibration.json",
         ...     tolerance_ms=50.0,
         ... )
         >>> frame = cv2.imread("frame_0000.png")
@@ -74,6 +80,7 @@ class TargetRenderer(BaseDataRenderer):
         data_path: Path | str,
         calibration_path: Path | str,
         tolerance_ms: float = 50.0,
+        time_offset_ms: float = 0.0,
         box_color: tuple[int, int, int] = (0, 255, 0),  # Green
         box_thickness: int = 2,
         show_panel: bool = True,
@@ -83,6 +90,7 @@ class TargetRenderer(BaseDataRenderer):
             data_path: Path to targets JSONL file
             calibration_path: Path to camera calibration YAML file
             tolerance_ms: Matching tolerance (default 50ms, nearest strategy)
+            time_offset_ms: Time offset to apply to data timestamps (default 0ms)
             box_color: Bounding box color in BGR format
             box_thickness: Bounding box line thickness
             show_panel: Whether to show info panel in bottom-left
@@ -92,6 +100,7 @@ class TargetRenderer(BaseDataRenderer):
             data_path=data_path,
             tolerance_ms=tolerance_ms,
             match_strategy="nearest",
+            time_offset_ms=time_offset_ms,
         )
 
         self.calibration_path = Path(calibration_path)
@@ -101,7 +110,7 @@ class TargetRenderer(BaseDataRenderer):
 
         # Load camera calibration
         with open(self.calibration_path, 'r', encoding='utf-8') as f:
-            self.calib = yaml.safe_load(f)
+            self.calib = json.load(f)
 
         # Build projection matrix
         self._build_projection_matrix()
@@ -154,15 +163,25 @@ class TargetRenderer(BaseDataRenderer):
 
     def _project_target_to_image(self, target: dict) -> dict | None:
         """
-        Project 3D target in ADS coordinates to 2D image coordinates.
+        Project 3D target in vehicle coordinates to 2D image coordinates.
 
-        Coordinate system conversion:
-        - ADS: X=forward, Y=left, Z=up
+        Coordinate system:
+        - Vehicle: Z=forward, X=right, Y=up
         - Camera: X=right, Y=down, Z=forward
-        - Conversion: cam_X=-ADS_Y, cam_Y=-ADS_Z, cam_Z=ADS_X
+        - Conversion: cam_X=vehicle_X, cam_Y=-vehicle_Y, cam_Z=vehicle_Z
+
+        Target data format:
+        - distance_m: Forward distance along Z-axis
+        - angle_left/right: Horizontal angles (XZ plane, left is negative)
+        - angle_top/bottom: Vertical angles (YZ plane, top is positive)
+
+        Calculation:
+        - Z = distance_m
+        - X = distance_m * tan(angle_horizontal)
+        - Y = distance_m * tan(angle_vertical)
 
         Args:
-            target: Target dict with distance_m and angle edges
+            target: Target dict with distance_m and angle edges (in degrees)
 
         Returns:
             Dict with projected 2D corners, or None if out of view
@@ -173,34 +192,39 @@ class TargetRenderer(BaseDataRenderer):
         angle_top = math.radians(target["angle_top"])
         angle_bottom = math.radians(target["angle_bottom"])
 
-        # Convert edge angles to 3D corners in ADS coordinates
+        # Calculate 3D corners in vehicle coordinates
+        # Z is the same for all corners (forward distance)
+        z = distance
+
+        # Check if target is in front of vehicle (valid for projection)
+        if z <= 0:
+            return None  # Target behind vehicle, skip
+
+        # X coordinates from horizontal angles
+        x_left = distance * math.tan(angle_left)    # Left edge (negative)
+        x_right = distance * math.tan(angle_right)  # Right edge (positive)
+
+        # Y coordinates from vertical angles
+        y_top = distance * math.tan(angle_top)       # Top edge (positive)
+        y_bottom = distance * math.tan(angle_bottom) # Bottom edge (negative)
+
+        # Four corners in vehicle coordinates
         # Top-left
-        x_tl = distance * math.cos(angle_left)
-        y_tl = distance * math.sin(angle_left)
-        z_tl = distance * math.tan(angle_top)
-
+        vehicle_tl = [x_left, y_top, z]
         # Top-right
-        x_tr = distance * math.cos(angle_right)
-        y_tr = distance * math.sin(angle_right)
-        z_tr = distance * math.tan(angle_top)
-
-        # Bottom-left
-        x_bl = distance * math.cos(angle_left)
-        y_bl = distance * math.sin(angle_left)
-        z_bl = distance * math.tan(angle_bottom)
-
+        vehicle_tr = [x_right, y_top, z]
         # Bottom-right
-        x_br = distance * math.cos(angle_right)
-        y_br = distance * math.sin(angle_right)
-        z_br = distance * math.tan(angle_bottom)
+        vehicle_br = [x_right, y_bottom, z]
+        # Bottom-left
+        vehicle_bl = [x_left, y_bottom, z]
 
-        # Convert ADS to Camera coordinates
-        # cam_X = -ADS_Y, cam_Y = -ADS_Z, cam_Z = ADS_X
+        # Convert vehicle coordinates to camera coordinates
+        # cam_X = vehicle_X, cam_Y = -vehicle_Y, cam_Z = vehicle_Z
         corners_3d = np.array([
-            [-y_tl, -z_tl, x_tl],  # TL
-            [-y_tr, -z_tr, x_tr],  # TR
-            [-y_br, -z_br, x_br],  # BR
-            [-y_bl, -z_bl, x_bl],  # BL
+            [vehicle_tl[0], -vehicle_tl[1], vehicle_tl[2]],  # TL
+            [vehicle_tr[0], -vehicle_tr[1], vehicle_tr[2]],  # TR
+            [vehicle_br[0], -vehicle_br[1], vehicle_br[2]],  # BR
+            [vehicle_bl[0], -vehicle_bl[1], vehicle_bl[2]],  # BL
         ], dtype=np.float32)
 
         # Project to 2D using OpenCV
@@ -213,14 +237,8 @@ class TargetRenderer(BaseDataRenderer):
         )
 
         # Convert to list of tuples
+        # OpenCV will automatically clip coordinates to image bounds when drawing
         corners_2d = [(int(pt[0][0]), int(pt[0][1])) for pt in points_2d]
-
-        # Check if any point is outside image bounds (with margin)
-        margin = 100
-        for x, y in corners_2d:
-            if (x < -margin or y < -margin or
-                x > self.img_width + margin or y > self.img_height + margin):
-                return None
 
         return {
             "corners": corners_2d,

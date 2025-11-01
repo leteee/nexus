@@ -16,7 +16,8 @@ from typing import List, Literal
 
 import numpy as np
 
-from ..types import DataRenderer, load_jsonl
+from ..types import DataRenderer
+from ..io import load_jsonl
 
 
 class BaseDataRenderer(DataRenderer):
@@ -51,16 +52,22 @@ class BaseDataRenderer(DataRenderer):
         data_path: Path | str,
         tolerance_ms: float = 50.0,
         match_strategy: Literal["nearest", "forward", "backward"] = "nearest",
+        time_offset_ms: float = 0.0,
     ):
         """
         Args:
             data_path: Path to JSONL data file
             tolerance_ms: Matching tolerance in milliseconds
             match_strategy: Matching strategy - "nearest", "forward", or "backward"
+            time_offset_ms: Time offset to apply to data timestamps (in milliseconds)
+                          Positive: data is delayed (data later than video)
+                          Negative: data is ahead (data earlier than video)
+                          Example: time_offset_ms=100 means data at 1100ms matches video frame at 1000ms
         """
         self.data_path = Path(data_path)
         self.tolerance_ms = tolerance_ms
         self.match_strategy = match_strategy
+        self.time_offset_ms = time_offset_ms
         self.data = []
 
         # Load data if path exists
@@ -82,14 +89,23 @@ class BaseDataRenderer(DataRenderer):
         tolerance_ms: float | None = None,
     ) -> List[dict]:
         """
-        Match data using configured strategy.
+        Match data using configured strategy with time offset applied.
+
+        Time offset is applied to find data: searches for data at (timestamp_ms + time_offset_ms).
+        - time_offset_ms > 0: Look for later data (data delayed)
+        - time_offset_ms < 0: Look for earlier data (data ahead)
 
         Args:
-            timestamp_ms: Target timestamp in milliseconds
+            timestamp_ms: Target timestamp in milliseconds (video frame time)
             tolerance_ms: Override tolerance (uses self.tolerance_ms if None)
 
         Returns:
             List with single matching data dict, or empty list if no match
+
+        Example:
+            >>> # Video frame at 1000ms, time_offset_ms=100
+            >>> # Will search for data at 1100ms
+            >>> renderer.match_data(1000.0)  # Finds data near 1100ms
         """
         if tolerance_ms is None:
             tolerance_ms = self.tolerance_ms
@@ -97,12 +113,15 @@ class BaseDataRenderer(DataRenderer):
         if not self.data:
             return []
 
+        # Apply time offset: search for data at (timestamp_ms + offset)
+        adjusted_timestamp_ms = timestamp_ms + self.time_offset_ms
+
         if self.match_strategy == "nearest":
-            return self._match_nearest(timestamp_ms, tolerance_ms)
+            return self._match_nearest(adjusted_timestamp_ms, tolerance_ms)
         elif self.match_strategy == "forward":
-            return self._match_forward(timestamp_ms, tolerance_ms)
+            return self._match_forward(adjusted_timestamp_ms, tolerance_ms)
         elif self.match_strategy == "backward":
-            return self._match_backward(timestamp_ms, tolerance_ms)
+            return self._match_backward(adjusted_timestamp_ms, tolerance_ms)
         else:
             raise ValueError(f"Unknown match_strategy: {self.match_strategy}")
 
