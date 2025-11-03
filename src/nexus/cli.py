@@ -5,6 +5,8 @@ The CLI now focuses purely on plugin orchestration without the legacy
 DataSource/handler features.
 """
 
+from __future__ import annotations
+
 import builtins
 import logging
 import sys

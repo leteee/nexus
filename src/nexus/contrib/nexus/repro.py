@@ -4,6 +4,8 @@ Nexus plugin adapters for repro (data replay) module.
 Adapts video replay and data rendering logic to Nexus plugin interface.
 """
 
+from __future__ import annotations
+
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 

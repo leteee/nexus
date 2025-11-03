@@ -190,3 +190,6 @@ cases/**/*
 
 # User workspace (sideloaded packages)
 nexus_workspace/
+
+# Claude Code configuration (user-specific)
+.claude/

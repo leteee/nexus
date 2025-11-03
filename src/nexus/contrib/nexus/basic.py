@@ -4,6 +4,8 @@ Nexus plugin adapters for basic contrib package.
 Adapts basic data processing logic to Nexus plugin interface.
 """
 
+from __future__ import annotations
+
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 

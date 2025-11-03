@@ -29,7 +29,7 @@ nexus plugin "Data Generator" --case demo --config num_rows=500
 | Template | Description | Key plugins |
 |----------|-------------|-------------|
 | `quickstart` | Minimal single-step pipeline that generates synthetic data and optionally writes it to `data/` | `Data Generator` |
-| `basic/demo` | Four-step in-memory demo: generate ¡ú filter ¡ú aggregate ¡ú validate | `Data Generator`, `Data Filter`, `Data Aggregator`, `Data Validator` |
+| `basic/demo` | Four-step in-memory demo: generate â†’ filter â†’ aggregate â†’ validate | `Data Generator`, `Data Filter`, `Data Aggregator`, `Data Validator` |
 
 ## Writing Plugins
 

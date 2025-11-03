@@ -4,6 +4,8 @@ Context definitions for the Nexus framework.
 Provides lightweight immutable contexts used during pipeline execution.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from logging import Logger
 from pathlib import Path
