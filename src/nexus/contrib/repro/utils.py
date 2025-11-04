@@ -6,7 +6,7 @@ Provides common utilities like time parsing and video metadata extraction.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -17,28 +17,57 @@ import cv2
 # =============================================================================
 
 
-def parse_time_value(time_value: str | float | None) -> float | None:
+def parse_time_value(time_value: str | float | int | None) -> int | None:
     """
     Parse time value to Unix timestamp in milliseconds.
 
-    Supports multiple input formats:
-    - None: Returns None (no time constraint)
-    - str: Time string like "2025-10-27 00:00:00"
-    - float/int: Direct millisecond timestamp
+    This is the main entry point for parsing time values in the repro module.
+    Internally, all times are represented as Unix timestamps in milliseconds (INTEGER).
+
+    Supported input formats:
+        1. None: Returns None (no time constraint)
+        2. Number (int/float): Direct Unix timestamp in milliseconds
+        3. String: ISO 8601 formatted time string (see parse_time_string)
 
     Args:
         time_value: Time value in various formats
 
     Returns:
-        Unix timestamp in milliseconds, or None
+        Unix timestamp in milliseconds (integer), or None if input is None
 
-    Example:
+    Examples:
+        >>> # No time constraint
         >>> parse_time_value(None)
         None
-        >>> parse_time_value("2025-10-27 00:00:00")
-        1759284000000.0
-        >>> parse_time_value(1759284000000.0)
-        1759284000000.0
+
+        >>> # Direct Unix timestamp (most reliable, no parsing)
+        >>> parse_time_value(1761523200000)
+        1761523200000
+
+        >>> # ISO 8601 with timezone (recommended for strings)
+        >>> parse_time_value("2025-10-27T08:00:00+08:00")
+        1761523200000
+
+        >>> # ISO 8601 UTC
+        >>> parse_time_value("2025-10-27T00:00:00Z")
+        1761523200000
+
+        >>> # ISO 8601 without timezone (assumes UTC)
+        >>> parse_time_value("2025-10-27T00:00:00")
+        1761523200000
+
+    Best practices:
+        For configuration files, prefer:
+        1. Direct Unix timestamp: 1761523200000 (most reliable, no parsing)
+        2. ISO 8601 with timezone: "2025-10-27T08:00:00+08:00" (clear intent)
+        3. ISO 8601 UTC: "2025-10-27T00:00:00Z" (universal time)
+
+    Note:
+        Returns INTEGER milliseconds, following industry standards (JavaScript,
+        Java, databases). Millisecond precision is sufficient for video/sensor data.
+
+    See also:
+        parse_time_string(): For string parsing details
     """
     if time_value is None:
         return None
@@ -46,53 +75,73 @@ def parse_time_value(time_value: str | float | None) -> float | None:
     if isinstance(time_value, str):
         return parse_time_string(time_value)
 
-    # Assume it's already a timestamp
-    return float(time_value)
+    # Already a timestamp (int or float) - convert to int
+    return int(time_value)
 
 
-def parse_time_string(time_str: str) -> float:
+def parse_time_string(time_str: str) -> int:
     """
-    Parse time string to Unix timestamp in milliseconds.
+    Parse ISO 8601 time string to Unix timestamp in milliseconds.
 
-    Supports formats:
-    - "2025-10-27 00:00:00"
-    - "2025-10-27T00:00:00"
-    - ISO 8601 with timezone
+    Supported formats (ISO 8601 only):
+        - With timezone: "2025-10-27T08:00:00+08:00"
+        - UTC (Z suffix): "2025-10-27T00:00:00Z"
+        - Without timezone: "2025-10-27T00:00:00" (assumes UTC)
+        - With milliseconds: "2025-10-27T00:00:00.000+08:00"
+        - With microseconds: "2025-10-27T00:00:00.000000+08:00"
+
+    Timezone handling:
+        - If timezone is specified in the string, it will be used for conversion
+        - If no timezone is specified, UTC is assumed for cross-machine consistency
+        - All timestamps are converted to UTC before calculating Unix timestamp
 
     Args:
-        time_str: Time string in standard format
+        time_str: ISO 8601 formatted time string
 
     Returns:
-        Unix timestamp in milliseconds
+        Unix timestamp in milliseconds (integer, since 1970-01-01 00:00:00 UTC)
 
-    Example:
-        >>> parse_time_string("2025-10-27 00:00:00")
-        1759284000000.0
+    Raises:
+        ValueError: If time string format is not recognized
+
+    Examples:
+        >>> # With explicit timezone
+        >>> parse_time_string("2025-10-27T08:00:00+08:00")
+        1761523200000  # Beijing time converted to UTC
+
+        >>> # UTC with Z suffix
+        >>> parse_time_string("2025-10-27T00:00:00Z")
+        1761523200000
+
+        >>> # Without timezone (assumes UTC)
+        >>> parse_time_string("2025-10-27T00:00:00")
+        1761523200000
+
+    Note:
+        Returns INTEGER milliseconds, following industry standards (JavaScript,
+        Java, databases). For cross-machine reliability, prefer using formats
+        with explicit timezone or direct Unix timestamps.
     """
-    # Try common formats
-    formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S.%f",
-    ]
-
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(time_str, fmt)
-            return dt.timestamp() * 1000.0
-        except ValueError:
-            continue
-
-    # Try parsing with ISO format
+    # Try parsing as ISO 8601 (supports timezone-aware formats)
     try:
         dt = datetime.fromisoformat(time_str)
-        return dt.timestamp() * 1000.0
     except ValueError:
         raise ValueError(
-            f"Unable to parse time string: {time_str}. "
-            f"Expected format: 'YYYY-MM-DD HH:MM:SS'"
+            f"Unable to parse time string: '{time_str}'. "
+            f"Expected ISO 8601 format: 'YYYY-MM-DDTHH:MM:SS' with optional timezone.\n"
+            f"Examples:\n"
+            f"  - With timezone: '2025-10-27T08:00:00+08:00'\n"
+            f"  - UTC: '2025-10-27T00:00:00Z'\n"
+            f"  - Assume UTC: '2025-10-27T00:00:00'\n"
+            f"Or use direct Unix timestamp in milliseconds: 1761523200000"
         )
+
+    # If naive datetime (no timezone info), assume UTC for consistency
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    # Convert to Unix timestamp in milliseconds (integer)
+    return int(dt.timestamp() * 1000)
 
 
 # =============================================================================
