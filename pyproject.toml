@@ -5,23 +5,6 @@ build-backend = "hatchling.build"
 [project]
 name = "nexus"
 version = "0.2.0"
-description = "Modern data processing framework inspired by data_replay"
-readme = "README.md"
-license = { file = "LICENSE" }
-authors = [
-    { name = "light", email = "leiteng712@gmail.com" }
-]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
 requires-python = ">=3.9"
 dependencies = [
     "pandas>=1.5.0",
@@ -35,46 +18,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
     "mypy>=1.0.0",
-    "pre-commit>=3.0.0",
 ]
 
 [project.scripts]
 nexus = "nexus.cli:main"
 
-[project.urls]
-Homepage = "https://github.com/yourusername/nexus"
-Repository = "https://github.com/yourusername/nexus"
-Issues = "https://github.com/yourusername/nexus/issues"
-
-# Tool configurations following Vibecode best practices
-
-[tool.black]
-line-length = 88
-target-version = ['py39', 'py310', 'py311', 'py312']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["nexus"]
+# Tool configurations
 
 [tool.mypy]
 python_version = "3.9"

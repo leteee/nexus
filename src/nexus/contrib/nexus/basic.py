@@ -4,8 +4,9 @@ Nexus plugin adapters for basic contrib package.
 Adapts basic data processing logic to Nexus plugin interface.
 """
 
-from __future__ import annotations
+from typing import Any, Optional
 
+from nexus.core.context import PluginContext
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
@@ -30,7 +31,7 @@ class DataGeneratorConfig(PluginConfig):
     num_categories: int = 5
     noise_level: float = 0.1
     random_seed: int = 42
-    output_data: str | None = None
+    output_data: Optional[str] = None
 
 
 class SampleDataGeneratorConfig(PluginConfig):
@@ -39,9 +40,9 @@ class SampleDataGeneratorConfig(PluginConfig):
 
 
 @plugin(name="Data Generator", config=DataGeneratorConfig)
-def generate_synthetic_data(ctx):
+def generate_synthetic_data(ctx: PluginContext) -> Any:
     """Generate synthetic data and optionally persist to CSV."""
-    config = ctx.config
+    config: DataGeneratorConfig = ctx.config  # type: ignore
     frame = build_synthetic_dataframe(
         num_rows=config.num_rows,
         num_categories=config.num_categories,
@@ -60,9 +61,10 @@ def generate_synthetic_data(ctx):
 
 
 @plugin(name="Sample Data Generator", config=SampleDataGeneratorConfig)
-def generate_sample_dataset(ctx):
+def generate_sample_dataset(ctx: PluginContext) -> Any:
     """Produce domain-specific sample data."""
-    frame = build_sample_dataset(ctx.config.dataset_type, ctx.config.size)
+    config: SampleDataGeneratorConfig = ctx.config  # type: ignore
+    frame = build_sample_dataset(config.dataset_type, config.size)
     ctx.remember("last_result", frame)
     return frame
 
@@ -93,17 +95,18 @@ class DataValidatorConfig(PluginConfig):
 
 
 @plugin(name="Data Filter", config=DataFilterConfig)
-def filter_data(ctx):
+def filter_data(ctx: PluginContext) -> Any:
     frame = ctx.recall("last_result")
     if frame is None:
         raise RuntimeError("Data Filter requires data from a previous plugin")
 
+    config: DataFilterConfig = ctx.config  # type: ignore
     filtered = filter_dataframe(
         frame,
-        column=ctx.config.column,
-        operator=ctx.config.operator,
-        threshold=ctx.config.threshold,
-        remove_nulls=ctx.config.remove_nulls,
+        column=config.column,
+        operator=config.operator,
+        threshold=config.threshold,
+        remove_nulls=config.remove_nulls,
     )
 
     ctx.logger.info("Filter kept %s/%s rows", len(filtered), len(frame))
@@ -112,16 +115,17 @@ def filter_data(ctx):
 
 
 @plugin(name="Data Aggregator", config=DataAggregatorConfig)
-def aggregate_data(ctx):
+def aggregate_data(ctx: PluginContext) -> Any:
     frame = ctx.recall("last_result")
     if frame is None:
         raise RuntimeError("Data Aggregator requires data from a previous plugin")
 
+    config: DataAggregatorConfig = ctx.config  # type: ignore
     result = aggregate_dataframe(
         frame,
-        group_by=ctx.config.group_by,
-        agg_column=ctx.config.agg_column,
-        agg_function=ctx.config.agg_function,
+        group_by=config.group_by,
+        agg_column=config.agg_column,
+        agg_function=config.agg_function,
     )
 
     ctx.logger.info("Aggregated %s rows down to %s groups", len(frame), len(result))
@@ -130,17 +134,18 @@ def aggregate_data(ctx):
 
 
 @plugin(name="Data Validator", config=DataValidatorConfig)
-def validate_data(ctx):
+def validate_data(ctx: PluginContext) -> Any:
     frame = ctx.recall("last_result")
     if frame is None:
         raise RuntimeError("Data Validator requires data from a previous plugin")
 
+    config: DataValidatorConfig = ctx.config  # type: ignore
     report = build_validation_report(
         frame,
-        check_nulls=ctx.config.check_nulls,
-        check_duplicates=ctx.config.check_duplicates,
-        check_types=ctx.config.check_types,
-        required_columns=ctx.config.required_columns,
+        check_nulls=config.check_nulls,
+        check_duplicates=config.check_duplicates,
+        check_types=config.check_types,
+        required_columns=config.required_columns,
     )
 
     ctx.remember("last_result", report)

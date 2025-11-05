@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional, Union
 
 import cv2
 
@@ -17,7 +18,7 @@ import cv2
 # =============================================================================
 
 
-def parse_time_value(time_value: str | float | int | None) -> int | None:
+def parse_time_value(time_value: Union[str, float, int, None]) -> Optional[int]:
     """
     Parse time value to Unix timestamp in milliseconds.
 

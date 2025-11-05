@@ -11,7 +11,7 @@ import builtins
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import click
 
@@ -129,7 +129,7 @@ def cli(ctx: click.Context, version: bool) -> None:
 @click.option("--template", "-t", help="Template to use (optional)")
 @click.option("--config", "-C", multiple=True, help="Config overrides (key=value)")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
-def run(case: str, template: str | None, config: tuple[str, ...], verbose: bool) -> None:
+def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bool) -> None:
     setup_logging("DEBUG" if verbose else "INFO")
 
     project_root = find_project_root(Path.cwd())
@@ -216,7 +216,7 @@ def list_cmd(what: str) -> None:
 
 @cli.command()
 @click.option("--plugin", help="Show help for a specific plugin")
-def help(plugin: str | None) -> None:  # pylint: disable=redefined-builtin
+def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
     if not plugin:
         click.echo(cli.get_help(click.Context(cli)))
         return
@@ -277,7 +277,7 @@ def doc_cmd(output: str, force: bool) -> None:
 # Documentation helpers
 
 
-def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec) -> str:
+def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
     lines = [f"# {plugin_name}", ""]
     if plugin_spec.description:
         lines.extend([plugin_spec.description.strip(), ""])

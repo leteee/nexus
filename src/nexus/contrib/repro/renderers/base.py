@@ -12,7 +12,7 @@ Subclasses only need to implement render() method.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional, Union
 
 import numpy as np
 
@@ -49,7 +49,7 @@ class BaseDataRenderer(DataRenderer):
 
     def __init__(
         self,
-        data_path: Path | str,
+        data_path: Union[Path, str],
         tolerance_ms: float = 50.0,
         match_strategy: Literal["nearest", "forward", "backward"] = "nearest",
         time_offset_ms: float = 0.0,
@@ -68,7 +68,7 @@ class BaseDataRenderer(DataRenderer):
         self.tolerance_ms = tolerance_ms
         self.match_strategy = match_strategy
         self.time_offset_ms = time_offset_ms
-        self.data = []
+        self.data: List[dict] = []
 
         # Load data if path exists
         if self.data_path.exists():
@@ -86,7 +86,7 @@ class BaseDataRenderer(DataRenderer):
     def match_data(
         self,
         timestamp_ms: float,
-        tolerance_ms: float | None = None,
+        tolerance_ms: Optional[float] = None,
     ) -> List[dict]:
         """
         Match data using configured strategy with time offset applied.

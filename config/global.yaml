@@ -15,11 +15,11 @@ framework:
 
   # Cases root directories (searched in priority order)
   cases_roots:
-    - "cases"
+    - "workspace/cases"
 
   # Template root directories (searched in priority order)
   templates_roots:
-    - "templates"
+    - "workspace/templates"
 
   # Plugin discovery paths
   # Each path points to a package directory containing:

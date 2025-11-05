@@ -4,8 +4,9 @@ Nexus plugin adapters for repro (data replay) module.
 Adapts video replay and data rendering logic to Nexus plugin interface.
 """
 
-from __future__ import annotations
+from typing import Any, Union, Optional
 
+from nexus.core.context import PluginContext
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
@@ -43,11 +44,11 @@ class VideoComposerConfig(PluginConfig):
     frame_pattern: str = "frame_{:06d}.png"
     codec: str = "mp4v"
     start_frame: int = 0
-    end_frame: int | None = None
+    end_frame: Optional[int] = None
 
 
 @plugin(name="Video Splitter", config=VideoSplitterConfig)
-def split_video_to_frames(ctx):
+def split_video_to_frames(ctx: PluginContext) -> Any:
     """
     Extract all frames from video and save as images.
 
@@ -57,15 +58,16 @@ def split_video_to_frames(ctx):
     Note: Use a separate Timeline Generator plugin to create
     frame_timestamps.csv with real acquisition times.
     """
-    video_path = ctx.resolve_path(ctx.config.video_path)
-    output_dir = ctx.resolve_path(ctx.config.output_dir)
+    config: VideoSplitterConfig = ctx.config  # type: ignore
+    video_path = ctx.resolve_path(config.video_path)
+    output_dir = ctx.resolve_path(config.output_dir)
 
     ctx.logger.info(f"Extracting frames from {video_path}")
 
     metadata = extract_frames(
         video_path,
         output_dir,
-        frame_pattern=ctx.config.frame_pattern,
+        frame_pattern=config.frame_pattern,
     )
 
     ctx.logger.info(
@@ -80,26 +82,27 @@ def split_video_to_frames(ctx):
 
 
 @plugin(name="Video Composer", config=VideoComposerConfig)
-def compose_frames_to_video(ctx):
+def compose_frames_to_video(ctx: PluginContext) -> Any:
     """
     Compose video from sequence of frame images.
 
     Can use frames from Video Splitter or custom rendered frames.
     Supports frame range selection for creating clips.
     """
-    frames_dir = ctx.resolve_path(ctx.config.frames_dir)
-    output_path = ctx.resolve_path(ctx.config.output_path)
+    config: VideoComposerConfig = ctx.config  # type: ignore
+    frames_dir = ctx.resolve_path(config.frames_dir)
+    output_path = ctx.resolve_path(config.output_path)
 
     ctx.logger.info(f"Composing video from {frames_dir}")
 
     result_path = compose_video(
         frames_dir,
         output_path,
-        fps=ctx.config.fps,
-        frame_pattern=ctx.config.frame_pattern,
-        codec=ctx.config.codec,
-        start_frame=ctx.config.start_frame,
-        end_frame=ctx.config.end_frame,
+        fps=config.fps,
+        frame_pattern=config.frame_pattern,
+        codec=config.codec,
+        start_frame=config.start_frame,
+        end_frame=config.end_frame,
     )
 
     ctx.logger.info(f"Created video: {result_path}")
@@ -116,18 +119,18 @@ def compose_frames_to_video(ctx):
 
 class DataRendererConfig(PluginConfig):
     # Time range control (video timeline is the primary timeline)
-    start_time: str | float | None = None  # Start time: None, timestamp_ms, or time string
-    end_time: str | float | None = None    # End time: None, timestamp_ms, or time string
+    start_time: Union[str, float, None] = None  # Start time: None, timestamp_ms, or time string
+    end_time: Union[str, float, None] = None    # End time: None, timestamp_ms, or time string
 
     frames_dir: str = "frames"
     output_dir: str = "rendered_frames"
     frame_pattern: str = "frame_{:06d}.png"
-    timestamps_path: str | None = None  # Optional: custom timestamps CSV path
+    timestamps_path: Optional[str] = None  # Optional: custom timestamps CSV path
     renderers: list[dict]  # List of {"class": "...", "kwargs": {...}}
 
 
 @plugin(name="Data Renderer", config=DataRendererConfig)
-def render_data_on_frames(ctx):
+def render_data_on_frames(ctx: PluginContext) -> Any:
     """
     Apply multiple data renderers to all video frames.
 
@@ -157,42 +160,43 @@ def render_data_on_frames(ctx):
     """
     from pathlib import Path
 
+    config: DataRendererConfig = ctx.config  # type: ignore
     # Resolve paths
-    frames_dir = ctx.resolve_path(ctx.config.frames_dir)
-    output_dir = ctx.resolve_path(ctx.config.output_dir)
+    frames_dir = ctx.resolve_path(config.frames_dir)
+    output_dir = ctx.resolve_path(config.output_dir)
 
-    if ctx.config.timestamps_path:
-        timestamps_path = ctx.resolve_path(ctx.config.timestamps_path)
+    if config.timestamps_path:
+        timestamps_path = ctx.resolve_path(config.timestamps_path)
     else:
         timestamps_path = frames_dir / "frame_timestamps.csv"
 
     # Resolve paths in renderer kwargs
     renderer_configs = []
-    for renderer_config in ctx.config.renderers:
-        config = renderer_config.copy()
-        kwargs = config.get("kwargs", {}).copy()
+    for renderer_config in config.renderers:
+        rc = renderer_config.copy()
+        kwargs = rc.get("kwargs", {}).copy()
 
         # Resolve file paths in kwargs
         for key in ["data_path", "calibration_path"]:
             if key in kwargs:
                 kwargs[key] = ctx.resolve_path(kwargs[key])
 
-        config["kwargs"] = kwargs
-        renderer_configs.append(config)
+        rc["kwargs"] = kwargs
+        renderer_configs.append(rc)
 
     # Call repro module function
     ctx.logger.info(f"Rendering frames from {frames_dir}")
 
     # Parse time range
-    start_time_ms = parse_time_value(ctx.config.start_time)
-    end_time_ms = parse_time_value(ctx.config.end_time)
+    start_time_ms = parse_time_value(config.start_time)
+    end_time_ms = parse_time_value(config.end_time)
 
     if start_time_ms is not None:
         ctx.logger.info(f"Start time: {start_time_ms} ms")
     if end_time_ms is not None:
         ctx.logger.info(f"End time: {end_time_ms} ms")
 
-    def progress_callback(count, total):
+    def progress_callback(count: int, total: int) -> None:
         """Progress callback for logging."""
         if count % 100 == 0:
             ctx.logger.info(f"Rendered {count}/{total} frames...")
@@ -202,7 +206,7 @@ def render_data_on_frames(ctx):
         output_dir=output_dir,
         timestamps_path=timestamps_path,
         renderer_configs=renderer_configs,
-        frame_pattern=ctx.config.frame_pattern,
+        frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,
         progress_callback=progress_callback,
@@ -222,17 +226,17 @@ def render_data_on_frames(ctx):
 
 
 class TimelineGeneratorConfig(PluginConfig):
-    video_path: str | None = None  # Optional: auto-extract FPS and duration from video
-    fps: float | None = None  # Required if video_path not provided
-    total_frames: int | None = None  # Required if video_path not provided
+    video_path: Optional[str] = None  # Optional: auto-extract FPS and duration from video
+    fps: Optional[float] = None  # Required if video_path not provided
+    total_frames: Optional[int] = None  # Required if video_path not provided
     start_time: str = "2025-10-27 00:00:00"  # Time format (converted to timestamp)
     jitter_ms: float = 1.5
     output_csv: str = "output/timeline.csv"
-    random_seed: int | None = None
+    random_seed: Optional[int] = None
 
 
 @plugin(name="Timeline Generator", config=TimelineGeneratorConfig)
-def generate_timeline(ctx):
+def generate_timeline(ctx: PluginContext) -> Any:
     """
     Generate frame timeline with realistic timestamp jitter.
 
@@ -256,13 +260,14 @@ def generate_timeline(ctx):
         1,1759284000034.8
         ...
     """
+    config: TimelineGeneratorConfig = ctx.config  # type: ignore
     # Parse start time to timestamp
-    start_timestamp_ms = parse_time_string(ctx.config.start_time)
-    ctx.logger.info(f"Start time: {ctx.config.start_time} -> {start_timestamp_ms} ms")
+    start_timestamp_ms = parse_time_string(config.start_time)
+    ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
 
     # Get FPS and total_frames from video or config
-    if ctx.config.video_path:
-        video_path = ctx.resolve_path(ctx.config.video_path)
+    if config.video_path:
+        video_path = ctx.resolve_path(config.video_path)
         ctx.logger.info(f"Extracting metadata from video: {video_path}")
 
         video_meta = get_video_metadata(video_path)
@@ -274,23 +279,23 @@ def generate_timeline(ctx):
             f"(duration: {video_meta['duration_s']:.2f}s)"
         )
     else:
-        if ctx.config.fps is None or ctx.config.total_frames is None:
+        if config.fps is None or config.total_frames is None:
             raise ValueError(
                 "Either video_path or both fps and total_frames must be provided"
             )
-        fps = ctx.config.fps
-        total_frames = ctx.config.total_frames
+        fps = config.fps
+        total_frames = config.total_frames
         ctx.logger.info(f"Using manual config: {total_frames} frames at {fps} FPS")
 
     timeline = generate_timeline_with_jitter(
         fps=fps,
         total_frames=total_frames,
         start_timestamp_ms=start_timestamp_ms,
-        jitter_ms=ctx.config.jitter_ms,
-        random_seed=ctx.config.random_seed,
+        jitter_ms=config.jitter_ms,
+        random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(ctx.config.output_csv)
+    output_path = ctx.resolve_path(config.output_csv)
     save_timeline_csv(timeline, output_path)
 
     ctx.logger.info(f"Timeline saved to {output_path}")
@@ -307,19 +312,19 @@ def generate_timeline(ctx):
 
 
 class SpeedDataGeneratorConfig(PluginConfig):
-    start_time: str | None = None  # Time format like "2025-10-27 00:00:00"
-    video_path: str | None = None  # Optional: auto-extract duration from video
-    duration_s: float | None = None  # Required if video_path not provided
+    start_time: Optional[str] = None  # Time format like "2025-10-27 00:00:00"
+    video_path: Optional[str] = None  # Optional: auto-extract duration from video
+    duration_s: Optional[float] = None  # Required if video_path not provided
     max_interval_s: float = 5.0
     speed_change_threshold: float = 2.0
     output_jsonl: str = "output/speed.jsonl"
-    random_seed: int | None = None
+    random_seed: Optional[int] = None
     use_default_profile: bool = True
-    custom_profiles: list | None = None
+    custom_profiles: Optional[list] = None
 
 
 @plugin(name="Speed Data Generator", config=SpeedDataGeneratorConfig)
-def generate_speed_data(ctx):
+def generate_speed_data(ctx: PluginContext) -> Any:
     """
     Generate event-driven speed data.
 
@@ -347,10 +352,11 @@ def generate_speed_data(ctx):
         {"timestamp_ms": 1759284002150.5, "speed": 12.3}
         ...
     """
+    config: SpeedDataGeneratorConfig = ctx.config  # type: ignore
     # Get start timestamp from config or context
-    if ctx.config.start_time:
-        start_timestamp_ms = parse_time_string(ctx.config.start_time)
-        ctx.logger.info(f"Start time: {ctx.config.start_time} -> {start_timestamp_ms} ms")
+    if config.start_time:
+        start_timestamp_ms = parse_time_string(config.start_time)
+        ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
         ctx.logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
@@ -358,13 +364,13 @@ def generate_speed_data(ctx):
         raise ValueError("start_time must be provided or Timeline Generator must run first")
 
     # Get duration from video or config or context
-    if ctx.config.video_path:
-        video_path = ctx.resolve_path(ctx.config.video_path)
+    if config.video_path:
+        video_path = ctx.resolve_path(config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
         ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
-    elif ctx.config.duration_s is not None:
-        duration_s = ctx.config.duration_s
+    elif config.duration_s is not None:
+        duration_s = config.duration_s
         ctx.logger.info(f"Using configured duration: {duration_s}s")
     elif hasattr(ctx, 'recall') and ctx.recall("video_duration_s"):
         duration_s = ctx.recall("video_duration_s")
@@ -374,20 +380,20 @@ def generate_speed_data(ctx):
 
     ctx.logger.info(
         f"Generating speed data: {duration_s}s, "
-        f"event threshold: {ctx.config.speed_change_threshold} km/h, "
-        f"max interval: {ctx.config.max_interval_s}s"
+        f"event threshold: {config.speed_change_threshold} km/h, "
+        f"max interval: {config.max_interval_s}s"
     )
 
     speed_data = generate_speed_data_event_driven(
         start_timestamp_ms=start_timestamp_ms,
         duration_s=duration_s,
-        speed_profiles=None if ctx.config.use_default_profile else ctx.config.custom_profiles,
-        max_interval_s=ctx.config.max_interval_s,
-        speed_change_threshold=ctx.config.speed_change_threshold,
-        random_seed=ctx.config.random_seed,
+        speed_profiles=None if config.use_default_profile else config.custom_profiles,
+        max_interval_s=config.max_interval_s,
+        speed_change_threshold=config.speed_change_threshold,
+        random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(ctx.config.output_jsonl)
+    output_path = ctx.resolve_path(config.output_jsonl)
     save_jsonl(speed_data, output_path)
 
     ctx.logger.info(f"Generated {len(speed_data)} speed events")
@@ -401,19 +407,19 @@ def generate_speed_data(ctx):
 
 
 class ADBTargetGeneratorConfig(PluginConfig):
-    start_time: str | None = None  # Time format like "2025-10-27 00:00:00"
-    video_path: str | None = None  # Optional: auto-extract duration from video
-    duration_s: float | None = None  # Required if video_path not provided
+    start_time: Optional[str] = None  # Time format like "2025-10-27 00:00:00"
+    video_path: Optional[str] = None  # Optional: auto-extract duration from video
+    duration_s: Optional[float] = None  # Required if video_path not provided
     frequency_hz: float = 20.0
     timing_jitter_ms: float = 2.0  # Reception timing error
     num_targets: int = 3
     ego_speed_kmh: float = 60.0
     output_jsonl: str = "output/targets.jsonl"
-    random_seed: int | None = None
+    random_seed: Optional[int] = None
 
 
 @plugin(name="ADB Target Generator", config=ADBTargetGeneratorConfig)
-def generate_adb_targets(ctx):
+def generate_adb_targets(ctx: PluginContext) -> Any:
     """
     Generate ADB (Adaptive Driving Beam) target detection data.
 
@@ -455,10 +461,11 @@ def generate_adb_targets(ctx):
           ]
         }
     """
+    config: ADBTargetGeneratorConfig = ctx.config  # type: ignore
     # Get start timestamp from config or context
-    if ctx.config.start_time:
-        start_timestamp_ms = parse_time_string(ctx.config.start_time)
-        ctx.logger.info(f"Start time: {ctx.config.start_time} -> {start_timestamp_ms} ms")
+    if config.start_time:
+        start_timestamp_ms = parse_time_string(config.start_time)
+        ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
         ctx.logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
@@ -466,13 +473,13 @@ def generate_adb_targets(ctx):
         raise ValueError("start_time must be provided or Timeline Generator must run first")
 
     # Get duration from video or config or context
-    if ctx.config.video_path:
-        video_path = ctx.resolve_path(ctx.config.video_path)
+    if config.video_path:
+        video_path = ctx.resolve_path(config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
         ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
-    elif ctx.config.duration_s is not None:
-        duration_s = ctx.config.duration_s
+    elif config.duration_s is not None:
+        duration_s = config.duration_s
         ctx.logger.info(f"Using configured duration: {duration_s}s")
     elif hasattr(ctx, 'recall') and ctx.recall("video_duration_s"):
         duration_s = ctx.recall("video_duration_s")
@@ -481,21 +488,21 @@ def generate_adb_targets(ctx):
         raise ValueError("duration_s or video_path must be provided")
 
     ctx.logger.info(
-        f"Generating ADB target data: {duration_s}s at {ctx.config.frequency_hz}Hz, "
-        f"{ctx.config.num_targets} targets, timing jitter: ±{ctx.config.timing_jitter_ms}ms"
+        f"Generating ADB target data: {duration_s}s at {config.frequency_hz}Hz, "
+        f"{config.num_targets} targets, timing jitter: ±{config.timing_jitter_ms}ms"
     )
 
     target_data = generate_adb_target_data(
         start_timestamp_ms=start_timestamp_ms,
         duration_s=duration_s,
-        frequency_hz=ctx.config.frequency_hz,
-        num_targets=ctx.config.num_targets,
-        ego_speed_kmh=ctx.config.ego_speed_kmh,
-        timing_jitter_ms=ctx.config.timing_jitter_ms,
-        random_seed=ctx.config.random_seed,
+        frequency_hz=config.frequency_hz,
+        num_targets=config.num_targets,
+        ego_speed_kmh=config.ego_speed_kmh,
+        timing_jitter_ms=config.timing_jitter_ms,
+        random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(ctx.config.output_jsonl)
+    output_path = ctx.resolve_path(config.output_jsonl)
     save_jsonl(target_data, output_path)
 
     ctx.logger.info(f"Generated {len(target_data)} target frames")

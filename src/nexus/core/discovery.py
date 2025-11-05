@@ -9,7 +9,7 @@ import importlib
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from .config import load_global_configuration
 from .types import PluginConfig, PluginSpec
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 PLUGIN_REGISTRY: Dict[str, PluginSpec] = {}
 
 
-def plugin(*, name: str, config: Optional[type[PluginConfig]] = None, description: str = None):
+def plugin(*, name: str, config: Optional[type[PluginConfig]] = None, description: Optional[str] = None) -> Callable[[Callable], Callable]:
     """Decorator used by plugin authors to register their callable."""
 
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         if name in PLUGIN_REGISTRY:
             logger.debug("Plugin '%s' already registered; skipping duplicate", name)
             return func
@@ -60,8 +60,11 @@ def discover_from_path(path_str: str, project_root: Path) -> int:
     try:
         importlib.import_module(package_name)  # 先加载主包
         adapter_module = f"{package_name}.nexus"
-        if importlib.util.find_spec(adapter_module):
+        try:
             importlib.import_module(adapter_module)
+        except ImportError:
+            # Adapter module doesn't exist, that's OK
+            pass
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Failed to import '%s': %s", package_name, exc)
         return 0

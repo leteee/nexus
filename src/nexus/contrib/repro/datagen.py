@@ -11,7 +11,7 @@ import random
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -29,7 +29,7 @@ def generate_timeline_with_jitter(
     total_frames: int,
     start_timestamp_ms: float,
     jitter_ms: float = 1.5,
-    random_seed: int | None = None,
+    random_seed: Optional[int] = None,
 ) -> List[dict]:
     """
     Generate frame timeline with timestamp jitter to simulate real data collection.
@@ -63,7 +63,7 @@ def generate_timeline_with_jitter(
         np.random.seed(random_seed)
 
     frame_duration_ms = 1000.0 / fps
-    timeline = []
+    timeline: List[dict] = []
 
     for frame_idx in range(total_frames):
         # Calculate ideal timestamp
@@ -113,10 +113,10 @@ class SpeedProfile:
 def generate_speed_data_event_driven(
     start_timestamp_ms: float,
     duration_s: float,
-    speed_profiles: List[SpeedProfile] | None = None,
+    speed_profiles: Optional[List[SpeedProfile]] = None,
     max_interval_s: float = 5.0,
     speed_change_threshold: float = 2.0,
-    random_seed: int | None = None,
+    random_seed: Optional[int] = None,
 ) -> List[dict]:
     """
     Generate event-driven speed data.
@@ -165,7 +165,7 @@ def generate_speed_data_event_driven(
             SpeedProfile(7.0, 50, 50, "constant"),  # City speed
         ]
 
-    speed_data = []
+    speed_data: List[dict] = []
     current_time_s = 0.0
     last_recorded_time_s = 0.0
     last_recorded_speed = 0.0
@@ -282,7 +282,7 @@ def generate_adb_target_data(
     num_targets: int = 3,
     ego_speed_kmh: float = 60.0,
     timing_jitter_ms: float = 2.0,
-    random_seed: int | None = None,
+    random_seed: Optional[int] = None,
 ) -> List[dict]:
     """
     Generate ADB (Adaptive Driving Beam) target data at specified frequency.
@@ -353,7 +353,7 @@ def generate_adb_target_data(
     }
 
     # Initialize targets
-    targets = []
+    targets: List[dict] = []
     for i in range(num_targets):
         target_type = random.choice(list(TargetType))
         width, height = TARGET_DIMS[target_type]
@@ -382,7 +382,7 @@ def generate_adb_target_data(
 
     # Generate time series data
     dt = 1.0 / frequency_hz
-    target_data = []
+    target_data: List[dict] = []
     current_time_s = 0.0
 
     ego_speed_ms = ego_speed_kmh / 3.6  # Convert km/h to m/s
@@ -393,36 +393,36 @@ def generate_adb_target_data(
         timestamp_ms = start_timestamp_ms + (current_time_s * 1000.0) + jitter
 
         # Update each target's position based on physics
-        current_targets = []
+        current_targets: List[dict] = []
         for target in targets:
-            relative_speed_ms = target["relative_speed_kmh"] / 3.6
+            relative_speed_ms = float(target["relative_speed_kmh"]) / 3.6
 
             # Update distance (closing or opening)
             # Positive ego_speed means we're approaching, negative relative_speed means target is slower
-            target["distance_m"] -= (ego_speed_ms - relative_speed_ms) * dt
+            target["distance_m"] = float(target["distance_m"]) - (ego_speed_ms - relative_speed_ms) * dt
 
             # Add slight lateral movement (lane changes, pedestrian crossing)
             angle_drift = random.uniform(-0.1, 0.1)
-            target["angle_h"] += angle_drift
+            target["angle_h"] = float(target["angle_h"]) + angle_drift
 
             # Check if target is still in valid range and FOV
-            if (MIN_DISTANCE_M <= target["distance_m"] <= MAX_DISTANCE_M and
-                abs(target["angle_h"]) <= MAX_ANGLE_H and
-                abs(target["angle_v"]) <= MAX_ANGLE_V):
+            if (MIN_DISTANCE_M <= float(target["distance_m"]) <= MAX_DISTANCE_M and
+                abs(float(target["angle_h"])) <= MAX_ANGLE_H and
+                abs(float(target["angle_v"])) <= MAX_ANGLE_V):
 
                 # Calculate edge angles
                 angle_left, angle_right, angle_top, angle_bottom = calculate_edge_angles(
-                    center_h=target["angle_h"],
-                    center_v=target["angle_v"],
-                    distance_m=target["distance_m"],
-                    width_m=target["width_m"],
-                    height_m=target["height_m"],
+                    center_h=float(target["angle_h"]),
+                    center_v=float(target["angle_v"]),
+                    distance_m=float(target["distance_m"]),
+                    width_m=float(target["width_m"]),
+                    height_m=float(target["height_m"]),
                 )
 
                 current_targets.append({
                     "id": target["id"],
                     "type": target["type"],
-                    "distance_m": round(target["distance_m"], 1),
+                    "distance_m": round(float(target["distance_m"]), 1),
                     "angle_left": round(angle_left, 2),
                     "angle_right": round(angle_right, 2),
                     "angle_top": round(angle_top, 2),
@@ -433,7 +433,7 @@ def generate_adb_target_data(
                 new_type = random.choice(list(TargetType))
                 width, height = TARGET_DIMS[new_type]
 
-                target["id"] = max([t["id"] for t in targets]) + 1
+                target["id"] = max([int(t["id"]) for t in targets], default=0) + 1
                 target["type"] = new_type
                 target["distance_m"] = random.uniform(80.0, MAX_DISTANCE_M - 10)
                 target["angle_h"] = random.uniform(-MAX_ANGLE_H * 0.8, MAX_ANGLE_H * 0.8)

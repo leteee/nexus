@@ -85,8 +85,8 @@ class CaseManager:
     def __init__(
         self,
         project_root: Path,
-        cases_roots: List[str] = None,
-        templates_roots: List[str] = None,
+        cases_roots: Optional[List[str]] = None,
+        templates_roots: Optional[List[str]] = None,
     ):
         """
         Initialize CaseManager with configurable template discovery.
@@ -118,19 +118,14 @@ class CaseManager:
         """
         self.project_root = project_root
 
-        cases_roots = cases_roots or ["cases"]
-        if isinstance(cases_roots, (str, Path)):
-            cases_roots = [cases_roots]
-
-        templates_roots = templates_roots or ["templates"]
-        if isinstance(templates_roots, (str, Path)):
-            templates_roots = [templates_roots]
+        cases_roots_list = cases_roots or ["cases"]
+        templates_roots_list = templates_roots or ["templates"]
 
         self.cases_roots = [
-            self._resolve_path(path) for path in cases_roots
+            self._resolve_path(path) for path in cases_roots_list
         ]
         self.templates_roots = [
-            self._resolve_path(path) for path in templates_roots
+            self._resolve_path(path) for path in templates_roots_list
         ]
         self.cases_root = self.cases_roots[0]
 

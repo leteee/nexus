@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 GLOBAL_CONFIG_FILES = ("global.yaml", "local.yaml")
 
 
-def _iter_global_config_layers(project_root: Path):
+def _iter_global_config_layers(project_root: Path) -> Any:
     """Yield global-level configuration layers in precedence order."""
 
     config_dir = project_root / "config"

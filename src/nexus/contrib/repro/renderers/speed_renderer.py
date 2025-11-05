@@ -7,7 +7,7 @@ Renders speed data in top-left corner with configurable position and styling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Union
 
 import cv2
 import numpy as np
@@ -41,7 +41,7 @@ class SpeedRenderer(BaseDataRenderer):
 
     def __init__(
         self,
-        data_path: Path | str,
+        data_path: Union[Path, str],
         position: Tuple[int, int] = (30, 60),
         tolerance_ms: float = 5000.0,
         time_offset_ms: float = 0.0,

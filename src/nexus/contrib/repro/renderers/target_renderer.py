@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -77,11 +77,11 @@ class TargetRenderer(BaseDataRenderer):
 
     def __init__(
         self,
-        data_path: Path | str,
-        calibration_path: Path | str,
+        data_path: Union[Path, str],
+        calibration_path: Union[Path, str],
         tolerance_ms: float = 50.0,
         time_offset_ms: float = 0.0,
-        box_color: tuple[int, int, int] = (0, 255, 0),  # Green
+        box_color: Tuple[int, int, int] = (0, 255, 0),  # Green
         box_thickness: int = 2,
         show_panel: bool = True,
     ):
@@ -115,7 +115,7 @@ class TargetRenderer(BaseDataRenderer):
         # Build projection matrix
         self._build_projection_matrix()
 
-    def _build_projection_matrix(self):
+    def _build_projection_matrix(self) -> None:
         """Build camera projection matrix and rvec/tvec for cv2.projectPoints."""
         # Get intrinsics
         fx = self.calib['camera']['intrinsics']['fx']
@@ -161,7 +161,7 @@ class TargetRenderer(BaseDataRenderer):
         self.img_width = self.calib['camera']['resolution']['width']
         self.img_height = self.calib['camera']['resolution']['height']
 
-    def _project_target_to_image(self, target: dict) -> dict | None:
+    def _project_target_to_image(self, target: dict) -> Optional[dict]:
         """
         Project 3D target in vehicle coordinates to 2D image coordinates.
 
@@ -238,7 +238,7 @@ class TargetRenderer(BaseDataRenderer):
 
         # Convert to list of tuples
         # OpenCV will automatically clip coordinates to image bounds when drawing
-        corners_2d = [(int(pt[0][0]), int(pt[0][1])) for pt in points_2d]
+        corners_2d = [(int(pt[0][0]), int(pt[0][1])) for pt in points_2d]  # type: ignore
 
         return {
             "corners": corners_2d,

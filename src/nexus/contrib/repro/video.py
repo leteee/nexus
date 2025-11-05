@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Callable
 
 import cv2
 import numpy as np
@@ -204,7 +204,7 @@ def render_all_frames(
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
     end_time_ms: Optional[float] = None,
-    progress_callback: Optional[callable] = None,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Path:
     """
     Apply multiple data renderers to all video frames.

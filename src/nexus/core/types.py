@@ -5,7 +5,7 @@ Following data_replay's approach of clear type definitions with
 functional programming principles.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -32,14 +32,14 @@ class PluginSpec:
     def __init__(
         self,
         name: str,
-        func: callable,
+        func: Callable,
         config_model: Optional[type[PluginConfig]] = None,
         description: Optional[str] = None,
     ):
         self.name = name
         self.func = func
         self.config_model = config_model
-        self.description = description or func.__doc__
+        self.description = description or (func.__doc__ if func.__doc__ else "")
         self.metadata: Dict[str, Any] = {}
 
     def with_metadata(self, **kwargs: Any) -> "PluginSpec":

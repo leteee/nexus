@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from logging import Logger
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel
 
@@ -49,7 +49,7 @@ class PluginContext:
     config: Optional[BaseModel] = None
     shared_state: Dict[str, Any] = field(default_factory=dict)
 
-    def resolve_path(self, value: str | Path) -> Path:
+    def resolve_path(self, value: Union[str, Path]) -> Path:
         """Resolve a path relative to the case directory."""
         path = Path(value)
         if path.is_absolute():
