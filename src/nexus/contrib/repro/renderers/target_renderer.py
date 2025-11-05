@@ -117,49 +117,21 @@ class TargetRenderer(BaseDataRenderer):
 
     def _build_projection_matrix(self) -> None:
         """Build camera projection matrix and rvec/tvec for cv2.projectPoints."""
-        # Get intrinsics
-        fx = self.calib['camera']['intrinsics']['fx']
-        fy = self.calib['camera']['intrinsics']['fy']
-        cx = self.calib['camera']['intrinsics']['cx']
-        cy = self.calib['camera']['intrinsics']['cy']
+        # Load camera intrinsic matrix K (3x3)
+        self.K = np.array(self.calib['camera_matrix'], dtype=np.float32)
 
-        # Camera intrinsic matrix K
-        self.K = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1]
-        ], dtype=np.float32)
+        # Load distortion coefficients
+        self.dist_coeffs = np.array(self.calib['distortion_coefficients'], dtype=np.float32)
 
-        # Get extrinsics
-        tx = self.calib['camera']['extrinsics']['translation']['x']
-        ty = self.calib['camera']['extrinsics']['translation']['y']
-        tz = self.calib['camera']['extrinsics']['translation']['z']
+        # Load rotation vector (Rodrigues format, 3x1)
+        self.rvec = np.array(self.calib['rotation_vector'], dtype=np.float32).reshape(3, 1)
 
-        roll = math.radians(self.calib['camera']['extrinsics']['rotation']['roll'])
-        pitch = math.radians(self.calib['camera']['extrinsics']['rotation']['pitch'])
-        yaw = math.radians(self.calib['camera']['extrinsics']['rotation']['yaw'])
-
-        # Build rotation matrix (ZYX Euler convention)
-        cx, sx = math.cos(roll), math.sin(roll)
-        cy, sy = math.cos(pitch), math.sin(pitch)
-        cz, sz = math.cos(yaw), math.sin(yaw)
-
-        Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
-        Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
-        Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
-
-        R = Rz @ Ry @ Rx
-
-        # Translation vector
-        t = np.array([[tx], [ty], [tz]], dtype=np.float32)
-
-        # Convert to rotation vector for cv2.projectPoints
-        self.rvec, _ = cv2.Rodrigues(R.astype(np.float32))
-        self.tvec = t
+        # Load translation vector (3x1)
+        self.tvec = np.array(self.calib['translation_vector'], dtype=np.float32).reshape(3, 1)
 
         # Get image resolution
-        self.img_width = self.calib['camera']['resolution']['width']
-        self.img_height = self.calib['camera']['resolution']['height']
+        self.img_width = self.calib['image_width']
+        self.img_height = self.calib['image_height']
 
     def _project_target_to_image(self, target: dict) -> Optional[dict]:
         """
