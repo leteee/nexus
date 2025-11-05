@@ -75,7 +75,7 @@ frame = target_renderer.render(frame, timestamp_ms)
 pipeline:
   - plugin: "Video Splitter"
     config:
-      video_path: "input/vehicle.mp4"
+      video_path: "input/synthetic_driving.mp4"
       output_dir: "temp/frames"
 
   - plugin: "Data Renderer"
@@ -384,7 +384,7 @@ renderers:
 ## 完整工作流程
 
 ```
-视频文件 (vehicle.mp4)
+视频文件 (synthetic_driving.mp4)
     ↓
 [Video Splitter] 切分成帧 + 时间戳
     ↓

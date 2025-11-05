@@ -513,4 +513,92 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
     avg_targets = total_targets / len(target_data) if target_data else 0
     ctx.logger.info(f"Average targets per frame: {avg_targets:.1f}")
 
-    return output_path
+
+# =============================================================================
+# Synthetic Video Generation Plugin
+# =============================================================================
+
+
+class SyntheticVideoGeneratorConfig(PluginConfig):
+    output_path: str = "input/synthetic_driving.mp4"
+    duration_s: float = 60.0
+    fps: float = 30.0
+    width: int = 1920
+    height: int = 1080
+    speed_kmh: float = 60.0
+    random_seed: Optional[int] = None
+
+
+@plugin(name="Synthetic Video Generator", config=SyntheticVideoGeneratorConfig)
+def generate_synthetic_video(ctx: PluginContext) -> Any:
+    """
+    Generate synthetic video simulating forward driving view.
+
+    Creates a video with road lane markings and perspective projection
+    to simulate vehicle motion. Useful for testing without real video data.
+
+    Config:
+        output_path: Output video file path (default: "input/synthetic_driving.mp4")
+        duration_s: Video duration in seconds (default: 60.0)
+        fps: Frames per second (default: 30.0)
+        width: Video width in pixels (default: 1920)
+        height: Video height in pixels (default: 1080)
+        speed_kmh: Simulated vehicle speed (default: 60.0)
+        random_seed: Random seed for reproducibility (optional)
+
+    Generates:
+        - Video file with simulated forward driving view
+        - Road lane markings (dashed center line, solid edges)
+        - Perspective projection simulating camera view
+        - Moving pattern simulating vehicle motion
+
+    Context data saved:
+        - video_fps: Video FPS
+        - video_total_frames: Total number of frames
+        - video_duration_s: Video duration in seconds
+
+    Example:
+        pipeline:
+          - plugin: "Synthetic Video Generator"
+            config:
+              output_path: "input/synthetic_driving.mp4"
+              duration_s: 60.0
+              fps: 30.0
+              width: 1920
+              height: 1080
+              speed_kmh: 60.0
+              random_seed: 42
+    """
+    from nexus.contrib.repro.datagen import generate_driving_video
+
+    config: SyntheticVideoGeneratorConfig = ctx.config  # type: ignore
+    output_path = ctx.resolve_path(config.output_path)
+
+    ctx.logger.info(
+        f"Generating synthetic video: {config.duration_s}s at {config.fps} FPS, "
+        f"{config.width}x{config.height}, speed: {config.speed_kmh} km/h"
+    )
+
+    metadata = generate_driving_video(
+        output_path=output_path,
+        duration_s=config.duration_s,
+        fps=config.fps,
+        width=config.width,
+        height=config.height,
+        speed_kmh=config.speed_kmh,
+        random_seed=config.random_seed,
+    )
+
+    ctx.logger.info(f"Video saved to {output_path}")
+    ctx.logger.info(
+        f"Generated {metadata['total_frames']} frames "
+        f"({metadata['duration_s']}s at {metadata['fps']} FPS)"
+    )
+
+    # Save video metadata to context for downstream plugins
+    ctx.remember("video_fps", metadata["fps"])
+    ctx.remember("video_total_frames", metadata["total_frames"])
+    ctx.remember("video_duration_s", metadata["duration_s"])
+
+    return metadata
+

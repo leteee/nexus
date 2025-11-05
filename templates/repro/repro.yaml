@@ -10,7 +10,7 @@ pipeline:
   # Step 1: Extract frames from video
   - plugin: "Video Splitter"
     config:
-      video_path: "input/vehicle.mp4"
+      video_path: "input/synthetic_driving.mp4"
       output_dir: "temp/frames"
       frame_pattern: "frame_{:06d}.png"
 
@@ -44,7 +44,7 @@ pipeline:
           kwargs:
             time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
             data_path: "input/adb_targets.jsonl"
-            calibration_path: "camera_calibration.json"
+            calibration_path: "../../src/nexus/contrib/repro/camera_calibration.json"
             tolerance_ms: 50.0  # Nearest matching: within 50ms
             box_color: [0, 255, 0]  # Green boxes
             show_panel: true

@@ -1,17 +1,29 @@
 # Nexus Data Generation Template for Vehicle Data Replay
-# Generates synthetic timeline, speed, and ADB target data for testing
+# Generates synthetic video, timeline, speed, and ADB target data for testing
 
 case_info:
   name: "Vehicle Data Generation"
-  description: "Generate synthetic timeline, speed, and ADB target data from video"
-  version: "2.0.0"
+  description: "Generate synthetic video and data (timeline, speed, ADB targets)"
+  version: "3.0.0"
 
 pipeline:
+  # Step 0: Generate synthetic driving video (NEW!)
+  # Creates a 1-minute 1920x1080 video simulating forward driving
+  - plugin: "Synthetic Video Generator"
+    config:
+      output_path: "input/synthetic_driving.mp4"
+      duration_s: 60.0                    # 1 minute video
+      fps: 30.0                           # 30 FPS
+      width: 1920                         # Full HD width
+      height: 1080                        # Full HD height
+      speed_kmh: 60.0                     # Simulated vehicle speed
+      random_seed: 42                     # For reproducibility
+
   # Step 1: Generate timeline with realistic jitter
   # Automatically extracts FPS and frame count from video
   - plugin: "Timeline Generator"
     config:
-      video_path: "input/vehicle.mp4"    # Video file to analyze
+      video_path: "input/synthetic_driving.mp4"    # Video file to analyze
       start_time: "2025-10-27 08:30:00"  # Human-readable time format
       jitter_ms: 1.5                      # ±1.5ms random jitter to simulate real capture
       output_csv: "input/vehicle_timeline.csv"
@@ -23,7 +35,7 @@ pipeline:
   - plugin: "Speed Data Generator"
     config:
       # start_time automatically inherited from Timeline Generator
-      duration_s: 45.0                    # Generate 45s of speed data (independent of video)
+      duration_s: 60.0                    # Generate 60s of speed data (matches video)
       max_interval_s: 5.0                 # Send at least every 5 seconds
       speed_change_threshold: 2.0         # Record if speed changes by 2+ km/h
       output_jsonl: "input/speed.jsonl"
@@ -36,7 +48,7 @@ pipeline:
   - plugin: "ADB Target Generator"
     config:
       # start_time automatically inherited from Timeline Generator
-      duration_s: 45.0                    # Generate 45s of target data (independent of video)
+      duration_s: 60.0                    # Generate 60s of target data (matches video)
       frequency_hz: 20.0                  # Fixed 20Hz data rate
       timing_jitter_ms: 2.0               # ±2ms reception timing error
       num_targets: 3                      # 2-3 concurrent targets
@@ -46,28 +58,34 @@ pipeline:
 
 # Configuration Notes:
 #
+# 0. Synthetic Video Generation (NEW!):
+#    - Generates 1920x1080 @ 30 FPS video
+#    - Simulates forward driving with lane markings
+#    - Perspective projection for realistic view
+#    - No need for external video file
+#
 # 1. Video Input:
 #    - Timeline Generator extracts FPS and duration automatically
-#    - Example: 30 FPS, 900 frames = 30 seconds
+#    - Example: 30 FPS, 1800 frames = 60 seconds
 #
 # 2. Time Format:
 #    - Use human-readable: "2025-10-27 08:30:00"
 #    - Automatically converted to Unix timestamp (ms)
 #
-# 3. Independent Data Generation:
-#    - Speed and ADB data can exceed video duration
-#    - Simulates real sensors that run independently
-#    - Example: 30s video, 45s sensor data
+# 3. Data Generation:
+#    - All data now matches video duration (60s)
+#    - Speed and ADB data synchronized with video timeline
 #
 # 4. Data Frequencies:
-#    - Timeline: Matches video FPS (e.g., 30 FPS)
+#    - Timeline: Matches video FPS (30 FPS)
 #    - Speed: Event-driven (change + 5s minimum)
 #    - ADB: Fixed 20Hz with ±2ms jitter
 #
 # Expected Output Files:
-# - output/vehicle_timeline.csv: Frame timestamps with ±1.5ms jitter
-# - output/speed.jsonl: Event-driven speed data
-# - output/adb_targets.jsonl: 20Hz ADB target detections
+# - input/synthetic_driving.mp4: Synthetic driving video (1920x1080 @ 30 FPS, 60s)
+# - input/vehicle_timeline.csv: Frame timestamps with ±1.5ms jitter
+# - input/speed.jsonl: Event-driven speed data
+# - input/adb_targets.jsonl: 20Hz ADB target detections
 #
 # Usage:
 #   nexus run -c repro -t repro_datagen
@@ -108,4 +126,5 @@ pipeline:
 #       "angle_bottom": -0.7
 #     }
 #   ]}
+
 

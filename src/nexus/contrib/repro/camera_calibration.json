@@ -1,0 +1,46 @@
+{
+  "_format": "OpenCV-compatible camera calibration format",
+  "_coordinate_system": "Vehicle: Z=forward, X=right, Y=up",
+  "_description": "Roof-mounted forward-facing camera calibration for 1920x1080 video",
+  "camera_name": "roof_forward_camera",
+  "image_width": 1920,
+  "image_height": 1080,
+  "camera_matrix": [
+    [
+      1152.0,
+      0.0,
+      960.0
+    ],
+    [
+      0.0,
+      1152.0,
+      540.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "_camera_matrix_comment": "3x3 intrinsic matrix [[fx, 0, cx], [0, fy, cy], [0, 0, 1]]. fx/fy=1152 pixels for ~60° horizontal FOV at 1920px width, cx/cy is principal point (image center)",
+  "distortion_coefficients": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "_distortion_comment": "Distortion coefficients [k1, k2, p1, p2, k3] for radial and tangential distortion. Zero for pinhole model",
+  "rotation_vector": [
+    -0.17453293,
+    0.0,
+    0.0
+  ],
+  "_rotation_vector_comment": "Rodrigues rotation vector [rx, ry, rz] in radians. Represents camera orientation relative to vehicle frame. This is pitch=-10° (looking slightly down)",
+  "translation_vector": [
+    2.5,
+    0.0,
+    1.8
+  ],
+  "_translation_vector_comment": "Camera position [x, y, z] in meters relative to vehicle origin (rear axle center). x=right, y=up, z=forward"
+}

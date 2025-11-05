@@ -109,7 +109,7 @@ pipeline:
   # Step 1: 视频切帧
   - plugin: "Video Splitter"
     config:
-      video_path: "input/vehicle.mp4"
+      video_path: "input/synthetic_driving.mp4"
       output_dir: "temp/frames"
 
   # Step 2: 数据渲染

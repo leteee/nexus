@@ -13,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import cv2
 import numpy as np
 
 from .io import save_jsonl
@@ -454,4 +455,246 @@ def generate_adb_target_data(
         current_time_s += dt
 
     return target_data
+
+
+# =============================================================================
+# Synthetic Video Generation
+# =============================================================================
+
+
+def generate_driving_video(
+    output_path: Path,
+    *,
+    duration_s: float = 60.0,
+    fps: float = 30.0,
+    width: int = 1920,
+    height: int = 1080,
+    speed_kmh: float = 60.0,
+    random_seed: Optional[int] = None,
+) -> dict:
+    """
+    Generate synthetic video simulating forward driving view.
+
+    Creates a video with:
+    - Road lane markings (dashed center line, solid edges)
+    - Perspective projection to simulate camera view
+    - Moving pattern to simulate vehicle motion
+    - Optional random variations
+
+    Args:
+        output_path: Output video file path (e.g., "output.mp4")
+        duration_s: Video duration in seconds
+        fps: Frames per second
+        width: Video width in pixels
+        height: Video height in pixels
+        speed_kmh: Simulated vehicle speed in km/h
+        random_seed: Random seed for reproducibility
+
+    Returns:
+        Dict with video metadata (total_frames, fps, width, height, duration_s)
+
+    Example:
+        >>> metadata = generate_driving_video(
+        ...     Path("driving.mp4"),
+        ...     duration_s=60.0,
+        ...     fps=30.0,
+        ...     width=1920,
+        ...     height=1080,
+        ...     speed_kmh=60.0
+        ... )
+    """
+    if random_seed is not None:
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Calculate video parameters
+    total_frames = int(duration_s * fps)
+
+    # Speed in meters per second
+    speed_ms = speed_kmh / 3.6
+
+    # Distance traveled per frame (in meters)
+    distance_per_frame = speed_ms / fps
+
+    # Create video writer
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # type: ignore
+    writer = cv2.VideoWriter(
+        str(output_path),
+        fourcc,
+        fps,
+        (width, height),
+    )
+
+    if not writer.isOpened():
+        raise RuntimeError(f"Failed to create video writer: {output_path}")
+
+    try:
+        # Parameters for road rendering
+        horizon_y = int(height * 0.4)  # Horizon line at 40% from top
+        vanishing_x = width // 2  # Vanishing point X (center)
+
+        # Lane parameters (in world space, meters)
+        lane_width = 3.5  # Standard lane width
+        dash_length = 3.0  # Dash length
+        dash_gap = 6.0  # Gap between dashes
+
+        # Camera pitch angle (degrees, looking slightly down)
+        pitch_deg = -10.0
+
+        # Accumulated distance traveled
+        distance_traveled = 0.0
+
+        for frame_idx in range(total_frames):
+            # Create black frame
+            frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+            # Fill with dark gray road
+            frame[:] = (40, 40, 40)
+
+            # Draw sky (gradient)
+            sky_color_top = (180, 120, 60)  # Bluish
+            sky_color_horizon = (200, 160, 100)  # Lighter at horizon
+            for y in range(horizon_y):
+                alpha = y / horizon_y
+                color = tuple(int(sky_color_top[i] * (1 - alpha) +
+                                 sky_color_horizon[i] * alpha) for i in range(3))
+                frame[y, :] = color
+
+            # Draw road surface (darker below horizon)
+            frame[horizon_y:, :] = (35, 35, 35)
+
+            # Draw lane markings
+            _draw_lane_markings(
+                frame,
+                horizon_y=horizon_y,
+                vanishing_x=vanishing_x,
+                distance_traveled=distance_traveled,
+                lane_width=lane_width,
+                dash_length=dash_length,
+                dash_gap=dash_gap,
+            )
+
+            writer.write(frame)
+
+            # Update distance
+            distance_traveled += distance_per_frame
+
+            # Progress logging
+            if (frame_idx + 1) % 300 == 0:
+                progress = (frame_idx + 1) / total_frames * 100
+                print(f"Generated {frame_idx + 1}/{total_frames} frames ({progress:.1f}%)...")
+
+        print(f"Completed: generated {total_frames} frames ({duration_s}s at {fps} FPS)")
+        print(f"Video saved to: {output_path}")
+
+        return {
+            "total_frames": total_frames,
+            "fps": fps,
+            "width": width,
+            "height": height,
+            "duration_s": duration_s,
+            "output_path": str(output_path),
+        }
+
+    finally:
+        writer.release()
+
+
+def _draw_lane_markings(
+    frame: np.ndarray,
+    horizon_y: int,
+    vanishing_x: int,
+    distance_traveled: float,
+    lane_width: float,
+    dash_length: float,
+    dash_gap: float,
+) -> None:
+    """
+    Draw road lane markings with perspective projection.
+
+    Args:
+        frame: Image frame to draw on
+        horizon_y: Y coordinate of horizon line
+        vanishing_x: X coordinate of vanishing point
+        distance_traveled: Total distance traveled (meters)
+        lane_width: Lane width in meters
+        dash_length: Center dash length in meters
+        dash_gap: Gap between center dashes in meters
+    """
+    height, width = frame.shape[:2]
+
+    # Camera parameters for perspective projection
+    # Simulates a camera at 1.5m height, looking at road
+    camera_height = 1.5  # meters
+    focal_length_pixels = width * 0.6  # Approximate focal length
+
+    # Draw markings from near to far
+    # Start from bottom of image (nearest point) to horizon (farthest)
+
+    # Maximum distance to render (meters ahead)
+    max_distance = 100.0
+
+    # Draw at multiple distance intervals
+    for distance in np.linspace(5, max_distance, 100):
+        # Adjust distance by how far we've traveled (for motion effect)
+        adjusted_distance = distance - (distance_traveled % (dash_length + dash_gap))
+
+        if adjusted_distance <= 0:
+            continue
+
+        # Project 3D world point to 2D image
+        # Perspective projection: y_screen = horizon_y + (camera_height * focal / distance)
+        y_screen = int(horizon_y + (camera_height * focal_length_pixels / adjusted_distance))
+
+        if y_screen >= height or y_screen < horizon_y:
+            continue
+
+        # Calculate lane edge positions in image
+        # x_offset = (lane_width_world * focal) / distance
+        lane_offset_pixels = int((lane_width * focal_length_pixels) / adjusted_distance)
+
+        # Left lane edge (solid white line)
+        left_edge_x = vanishing_x - lane_offset_pixels
+        if 0 <= left_edge_x < width:
+            cv2.circle(frame, (left_edge_x, y_screen), 2, (200, 200, 200), -1)
+
+        # Right lane edge (solid white line)
+        right_edge_x = vanishing_x + lane_offset_pixels
+        if 0 <= right_edge_x < width:
+            cv2.circle(frame, (right_edge_x, y_screen), 2, (200, 200, 200), -1)
+
+        # Center dashed line (yellow)
+        # Check if we're in a dash or gap
+        dash_cycle = dash_length + dash_gap
+        position_in_cycle = (distance_traveled + adjusted_distance) % dash_cycle
+
+        if position_in_cycle < dash_length:
+            # Draw center dash
+            cv2.circle(frame, (vanishing_x, y_screen), 2, (0, 200, 200), -1)
+
+    # Draw thicker lines for nearby road edges (more visible)
+    for y in range(horizon_y, height, 5):
+        # Calculate distance for this y position (inverse projection)
+        if y == horizon_y:
+            continue
+        distance = (camera_height * focal_length_pixels) / (y - horizon_y)
+
+        if distance > max_distance or distance < 1:
+            continue
+
+        lane_offset_pixels = int((lane_width * focal_length_pixels) / distance)
+
+        # Thicker edge lines for better visibility
+        thickness = max(1, 3 - int(distance / 30))
+
+        left_edge_x = vanishing_x - lane_offset_pixels
+        if 0 <= left_edge_x < width:
+            cv2.line(frame, (left_edge_x, y), (left_edge_x, y), (220, 220, 220), thickness)
+
+        right_edge_x = vanishing_x + lane_offset_pixels
+        if 0 <= right_edge_x < width:
+            cv2.line(frame, (right_edge_x, y), (right_edge_x, y), (220, 220, 220), thickness)
 
