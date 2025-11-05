@@ -183,10 +183,9 @@ docs/api/
 # Local configuration (user-specific overrides)
 config/local.yaml
 
-# Cases: ignore all generated files, keep case.yaml
-cases/**/*
-!cases/*/
-!cases/*/case.yaml
+# Cases: ignore all generated files and user data
+cases/
+workspace/cases/
 
 # User workspace (sideloaded packages)
 nexus_workspace/
