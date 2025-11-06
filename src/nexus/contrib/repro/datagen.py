@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from .io import save_jsonl
 from .utils import parse_time_string, parse_time_value, get_video_metadata
@@ -550,45 +551,44 @@ def generate_driving_video(
         # Accumulated distance traveled
         distance_traveled = 0.0
 
-        for frame_idx in range(total_frames):
-            # Create black frame
-            frame = np.zeros((height, width, 3), dtype=np.uint8)
+        with tqdm(total=total_frames, desc="Generating driving video", unit="frame") as pbar:
+            for frame_idx in range(total_frames):
+                # Create black frame
+                frame = np.zeros((height, width, 3), dtype=np.uint8)
 
-            # Fill with dark gray road
-            frame[:] = (40, 40, 40)
+                # Fill with dark gray road
+                frame[:] = (40, 40, 40)
 
-            # Draw sky (gradient)
-            sky_color_top = (180, 120, 60)  # Bluish
-            sky_color_horizon = (200, 160, 100)  # Lighter at horizon
-            for y in range(horizon_y):
-                alpha = y / horizon_y
-                color = tuple(int(sky_color_top[i] * (1 - alpha) +
-                                 sky_color_horizon[i] * alpha) for i in range(3))
-                frame[y, :] = color
+                # Draw sky (gradient)
+                sky_color_top = (180, 120, 60)  # Bluish
+                sky_color_horizon = (200, 160, 100)  # Lighter at horizon
+                for y in range(horizon_y):
+                    alpha = y / horizon_y
+                    color = tuple(int(sky_color_top[i] * (1 - alpha) +
+                                     sky_color_horizon[i] * alpha) for i in range(3))
+                    frame[y, :] = color
 
-            # Draw road surface (darker below horizon)
-            frame[horizon_y:, :] = (35, 35, 35)
+                # Draw road surface (darker below horizon)
+                frame[horizon_y:, :] = (35, 35, 35)
 
-            # Draw lane markings
-            _draw_lane_markings(
-                frame,
-                horizon_y=horizon_y,
-                vanishing_x=vanishing_x,
-                distance_traveled=distance_traveled,
-                lane_width=lane_width,
-                dash_length=dash_length,
-                dash_gap=dash_gap,
-            )
+                # Draw lane markings
+                _draw_lane_markings(
+                    frame,
+                    horizon_y=horizon_y,
+                    vanishing_x=vanishing_x,
+                    distance_traveled=distance_traveled,
+                    lane_width=lane_width,
+                    dash_length=dash_length,
+                    dash_gap=dash_gap,
+                )
 
-            writer.write(frame)
+                writer.write(frame)
 
-            # Update distance
-            distance_traveled += distance_per_frame
+                # Update distance
+                distance_traveled += distance_per_frame
 
-            # Progress logging
-            if (frame_idx + 1) % 300 == 0:
-                progress = (frame_idx + 1) / total_frames * 100
-                print(f"Generated {frame_idx + 1}/{total_frames} frames ({progress:.1f}%)...")
+                # Update progress bar
+                pbar.update(1)
 
         print(f"Completed: generated {total_frames} frames ({duration_s}s at {fps} FPS)")
         print(f"Video saved to: {output_path}")

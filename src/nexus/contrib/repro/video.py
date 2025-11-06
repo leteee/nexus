@@ -14,6 +14,7 @@ from typing import Optional, List, Any, Callable
 import cv2
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from .types import VideoMetadata
 from .io import load_frame_timestamps
@@ -72,19 +73,18 @@ def extract_frames(
 
         frame_idx = 0
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        with tqdm(total=total_frames, desc="Extracting frames", unit="frame") as pbar:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-            # Save frame
-            frame_path = output_dir / frame_pattern.format(frame_idx)
-            cv2.imwrite(str(frame_path), frame)
+                # Save frame
+                frame_path = output_dir / frame_pattern.format(frame_idx)
+                cv2.imwrite(str(frame_path), frame)
 
-            if (frame_idx + 1) % 100 == 0:
-                logger.info(f"Extracted {frame_idx + 1} frames...")
-
-            frame_idx += 1
+                frame_idx += 1
+                pbar.update(1)
 
         logger.info(f"Completed: extracted {frame_idx} frames to {output_dir}")
 
@@ -177,16 +177,15 @@ def compose_video(
         raise RuntimeError(f"Failed to create video writer: {output_path}")
 
     try:
-        for idx, frame_path in enumerate(frame_files):
-            frame = cv2.imread(str(frame_path))
-            if frame is None:
-                logger.warning(f"Failed to read frame: {frame_path}, skipping")
-                continue
+        with tqdm(total=len(frame_files), desc="Composing video", unit="frame") as pbar:
+            for idx, frame_path in enumerate(frame_files):
+                frame = cv2.imread(str(frame_path))
+                if frame is None:
+                    logger.warning(f"Failed to read frame: {frame_path}, skipping")
+                    continue
 
-            writer.write(frame)
-
-            if (idx + 1) % 100 == 0:
-                logger.info(f"Composed {idx + 1} frames...")
+                writer.write(frame)
+                pbar.update(1)
 
         logger.info(f"Completed: created video at {output_path}")
         return output_path
@@ -312,36 +311,37 @@ def render_all_frames(
     rendered_count = 0
     total_frames = len(frame_times)
 
-    for _, row in frame_times.iterrows():
-        frame_idx = int(row["frame_index"])
-        timestamp_ms = row["timestamp_ms"]
+    with tqdm(total=total_frames, desc="Rendering frames", unit="frame", disable=progress_callback is not None) as pbar:
+        for _, row in frame_times.iterrows():
+            frame_idx = int(row["frame_index"])
+            timestamp_ms = row["timestamp_ms"]
 
-        # Load frame
-        frame_path = frames_dir / frame_pattern.format(frame_idx)
-        if not frame_path.exists():
-            logger.warning(f"Frame not found: {frame_path}, skipping")
-            continue
+            # Load frame
+            frame_path = frames_dir / frame_pattern.format(frame_idx)
+            if not frame_path.exists():
+                logger.warning(f"Frame not found: {frame_path}, skipping")
+                continue
 
-        frame = cv2.imread(str(frame_path))
-        if frame is None:
-            logger.warning(f"Failed to read frame: {frame_path}")
-            continue
+            frame = cv2.imread(str(frame_path))
+            if frame is None:
+                logger.warning(f"Failed to read frame: {frame_path}")
+                continue
 
-        # Apply all renderers sequentially
-        for renderer in renderers:
-            frame = renderer.render(frame, timestamp_ms)
+            # Apply all renderers sequentially
+            for renderer in renderers:
+                frame = renderer.render(frame, timestamp_ms)
 
-        # Save rendered frame
-        output_path = output_dir / frame_pattern.format(frame_idx)
-        cv2.imwrite(str(output_path), frame)
+            # Save rendered frame
+            output_path = output_dir / frame_pattern.format(frame_idx)
+            cv2.imwrite(str(output_path), frame)
 
-        rendered_count += 1
+            rendered_count += 1
 
-        # Progress reporting
-        if progress_callback:
-            progress_callback(rendered_count, total_frames)
-        elif rendered_count % 100 == 0:
-            logger.info(f"Rendered {rendered_count}/{total_frames} frames...")
+            # Progress reporting
+            if progress_callback:
+                progress_callback(rendered_count, total_frames)
+            else:
+                pbar.update(1)
 
     logger.info(f"Completed: rendered {rendered_count} frames to {output_dir}")
 
