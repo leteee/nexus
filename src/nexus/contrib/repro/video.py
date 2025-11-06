@@ -22,6 +22,94 @@ from .io import load_frame_timestamps
 logger = logging.getLogger(__name__)
 
 
+def _draw_frame_info(
+    frame: np.ndarray,
+    frame_idx: int,
+    timestamp_ms: int,
+) -> np.ndarray:
+    """
+    Draw frame information overlay (frame ID + timestamp) in top-right corner.
+
+    Args:
+        frame: Video frame to annotate
+        frame_idx: Frame index number
+        timestamp_ms: Frame timestamp in milliseconds
+
+    Returns:
+        Frame with info overlay
+    """
+    # Format timestamp as readable string
+    # Convert ms to seconds with 3 decimal places
+    timestamp_s = timestamp_ms / 1000.0
+
+    # Prepare text lines
+    text_lines = [
+        f"Frame: {frame_idx}",
+        f"Time: {timestamp_s:.3f}s",
+        f"TS: {timestamp_ms}ms",
+    ]
+
+    # Text settings
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 1
+    color = (0, 255, 255)  # Yellow
+    bg_color = (0, 0, 0)  # Black background
+    padding = 8
+    line_height = 20
+
+    # Calculate panel dimensions
+    text_widths = []
+    for line in text_lines:
+        (w, h), _ = cv2.getTextSize(line, font, font_scale, thickness)
+        text_widths.append(w)
+
+    panel_width = max(text_widths) + padding * 2
+    panel_height = len(text_lines) * line_height + padding * 2
+
+    # Position in top-right corner
+    frame_height, frame_width = frame.shape[:2]
+    panel_x = frame_width - panel_width - 10
+    panel_y = 10
+
+    # Draw semi-transparent background
+    overlay = frame.copy()
+    cv2.rectangle(
+        overlay,
+        (panel_x, panel_y),
+        (panel_x + panel_width, panel_y + panel_height),
+        bg_color,
+        -1,
+    )
+    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+
+    # Draw border
+    cv2.rectangle(
+        frame,
+        (panel_x, panel_y),
+        (panel_x + panel_width, panel_y + panel_height),
+        (100, 100, 100),
+        1,
+    )
+
+    # Draw text lines
+    text_y = panel_y + padding + 15
+    for line in text_lines:
+        cv2.putText(
+            frame,
+            line,
+            (panel_x + padding, text_y),
+            font,
+            font_scale,
+            color,
+            thickness,
+            cv2.LINE_AA,
+        )
+        text_y += line_height
+
+    return frame
+
+
 def extract_frames(
     video_path: Path,
     output_dir: Path,
@@ -203,6 +291,7 @@ def render_all_frames(
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
     end_time_ms: Optional[float] = None,
+    show_frame_info: bool = True,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Path:
     """
@@ -228,6 +317,7 @@ def render_all_frames(
         frame_pattern: Frame filename pattern
         start_time_ms: Optional start time (None=from beginning)
         end_time_ms: Optional end time (None=to end)
+        show_frame_info: Show frame ID and timestamp overlay (default: True)
         progress_callback: Optional callback(count, total) for progress tracking
 
     Returns:
@@ -330,6 +420,10 @@ def render_all_frames(
             # Apply all renderers sequentially
             for renderer in renderers:
                 frame = renderer.render(frame, timestamp_ms)
+
+            # Draw frame info overlay (frame ID + timestamp)
+            if show_frame_info:
+                frame = _draw_frame_info(frame, frame_idx, timestamp_ms)
 
             # Save rendered frame
             output_path = output_dir / frame_pattern.format(frame_idx)

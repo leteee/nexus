@@ -126,6 +126,7 @@ class DataRendererConfig(PluginConfig):
     output_dir: str = "rendered_frames"
     frame_pattern: str = "frame_{:06d}.png"
     timestamps_path: Optional[str] = None  # Optional: custom timestamps CSV path
+    show_frame_info: bool = True  # Show frame ID and timestamp overlay
     renderers: list[dict]  # List of {"class": "...", "kwargs": {...}}
 
 
@@ -156,6 +157,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         output_dir: Directory for rendered frames
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
+        show_frame_info: Show frame ID and timestamp overlay (default: True)
         renderers: List of renderer configurations
     """
     from pathlib import Path
@@ -209,6 +211,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,
+        show_frame_info=config.show_frame_info,
         progress_callback=progress_callback,
     )
 
