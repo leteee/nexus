@@ -13,8 +13,10 @@ import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
+from nexus.core.execution_units import register_unit
 
 
+@register_unit("speed", unit_type="renderer")
 class SpeedRenderer(BaseDataRenderer):
     """
     Render vehicle speed on video frames.

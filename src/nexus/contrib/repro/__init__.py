@@ -6,34 +6,42 @@ Provides utilities for replaying time-series data synchronized with video:
 - Time-based data matching
 - Abstract rendering interface for data visualization
 - Modular renderers for different data types
+- Unified execution unit framework for renderers
 
 Main components:
     - types: DataRenderer base class, data structures, utility functions
-    - video: extract_frames(), compose_video()
+    - video: extract_frames(), compose_video(), render_all_frames()
     - datagen: Timeline/speed/ADB data generators
     - renderers: SpeedRenderer, TargetRenderer, BaseDataRenderer
+    - Execution units: Unified framework for renderer registration and execution
 
 Example:
-    >>> from nexus.contrib.repro.renderers import SpeedRenderer, TargetRenderer
-    >>> from nexus.contrib.repro.video import extract_frames, compose_video
+    >>> from nexus.contrib.repro import render_all_frames
+    >>> from nexus.core.execution_units import list_units
     >>>
-    >>> # Extract frames
-    >>> metadata = extract_frames("input.mp4", "frames/")
+    >>> # List available renderers
+    >>> renderers = list_units("renderer")
+    >>> print(f"Available: {list(renderers.keys())}")
     >>>
-    >>> # Setup renderers
-    >>> speed = SpeedRenderer("speed.jsonl", position=(30, 60))
-    >>> target = TargetRenderer("targets.jsonl", "calibration.yaml")
+    >>> # Use registered renderers by name
+    >>> renderer_configs = [
+    ...     {"name": "speed", "kwargs": {"data_path": "speed.jsonl"}},
+    ...     {"name": "target", "kwargs": {"data_path": "targets.jsonl"}}
+    ... ]
+    >>> render_all_frames("frames/", "output/", "timestamps.csv", renderer_configs)
     >>>
-    >>> # Render frames
-    >>> for frame_path in frame_paths:
-    ...     frame = cv2.imread(frame_path)
-    ...     frame = speed.render(frame, timestamp_ms)
-    ...     frame = target.render(frame, timestamp_ms)
-    ...     cv2.imwrite(output_path, frame)
+    >>> # Create custom renderer
+    >>> from nexus.core.execution_units import register_unit
+    >>> from nexus.contrib.repro.renderers import BaseDataRenderer
     >>>
-    >>> # Compose video
-    >>> compose_video("rendered_frames/", "output.mp4", fps=30.0)
+    >>> @register_unit("my_custom", unit_type="renderer")
+    >>> class MyCustomRenderer(BaseDataRenderer):
+    ...     def render(self, frame, timestamp_ms):
+    ...         return frame
 """
+
+# Ensure standard execution unit types are registered (plugin, renderer)
+from nexus.core import standard_runners
 
 # Core types
 from .types import (
@@ -67,6 +75,14 @@ from .datagen import (
     SpeedProfile,
 )
 
+# Import renderers to trigger registration with execution unit framework
+# This ensures all built-in renderers are registered when module is imported
+from .renderers import (
+    BaseDataRenderer,
+    SpeedRenderer,
+    TargetRenderer,
+)
+
 __all__ = [
     # Types
     "DataRenderer",
@@ -89,5 +105,10 @@ __all__ = [
     "generate_adb_target_data",
     "save_timeline_csv",
     "SpeedProfile",
+    # Renderers
+    "BaseDataRenderer",
+    "SpeedRenderer",
+    "TargetRenderer",
 ]
+
 

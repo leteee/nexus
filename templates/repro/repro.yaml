@@ -27,10 +27,11 @@ pipeline:
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
 
-      # New format: Multiple renderers (each handles one data type)
+      # Renderers using unified execution unit framework
+      # Use short registered names instead of full class paths
       renderers:
         # Render vehicle speed (top-left corner)
-        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+        - name: "speed"  # Registered renderer name
           kwargs:
             time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
             data_path: "input/speed.jsonl"
@@ -40,7 +41,7 @@ pipeline:
             color: [0, 255, 0]  # Green
 
         # Render 3D target detections (projected to 2D)
-        - class: "nexus.contrib.repro.renderers.TargetRenderer"
+        - name: "target"  # Registered renderer name
           kwargs:
             time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
             data_path: "input/adb_targets.jsonl"
@@ -60,16 +61,17 @@ pipeline:
 
 # Architecture Notes:
 #
-# 1. Modular Renderers:
+# 1. Modular Renderers (Unified Execution Unit Framework):
 #    - Each renderer handles ONE data type
+#    - Registered with @register_unit("name", unit_type="renderer")
 #    - SpeedRenderer: Vehicle speed with forward matching
 #    - TargetRenderer: 3D object detection with projection
 #
 # 2. Easy to Extend:
 #    - Add new data type: Create a renderer class
 #    - Inherit from BaseDataRenderer
-#    - Implement render(frame, timestamp_ms)
-#    - Add to renderers list above
+#    - Register with @register_unit("your_name", unit_type="renderer")
+#    - Add to renderers list using "name" key
 #
 # 3. Matching Strategies:
 #    - Forward: Use most recent data ≤ timestamp (good for speed, GPS)
@@ -80,16 +82,27 @@ pipeline:
 #    Video → Frames → [Renderer 1] → [Renderer 2] → ... → Rendered Frames → Video
 #    Each renderer applies its visualization sequentially
 #
-# Example: Adding GPS Renderer
+# Example: Adding Custom Renderer
 #
+# # 1. Define and register renderer:
+# from nexus.core.execution_units import register_unit
+# from nexus.contrib.repro.renderers import BaseDataRenderer
+#
+# @register_unit("gps", unit_type="renderer")
+# class GPSRenderer(BaseDataRenderer):
+#     def render(self, frame, timestamp_ms):
+#         # Draw GPS data
+#         return frame
+#
+# # 2. Add to config:
 # renderers:
-#   - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#   - name: "speed"
 #     kwargs: { ... }
 #
-#   - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#   - name: "target"
 #     kwargs: { ... }
 #
-#   - class: "myproject.GPSRenderer"  # Custom renderer
+#   - name: "gps"  # Your custom renderer
 #     kwargs:
 #       data_path: "input/gps.jsonl"
 #       position: [20, 100]

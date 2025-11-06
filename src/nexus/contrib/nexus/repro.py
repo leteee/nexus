@@ -127,7 +127,7 @@ class DataRendererConfig(PluginConfig):
     frame_pattern: str = "frame_{:06d}.png"
     timestamps_path: Optional[str] = None  # Optional: custom timestamps CSV path
     show_frame_info: bool = True  # Show frame ID and timestamp overlay
-    renderers: list[dict]  # List of {"class": "...", "kwargs": {...}}
+    renderers: list[dict]  # List of {"name": "...", "kwargs": {...}} or {"class": "...", "kwargs": {...}}
 
 
 @plugin(name="Data Renderer", config=DataRendererConfig)
@@ -135,22 +135,29 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     """
     Apply multiple data renderers to all video frames.
 
-    This plugin adapts the repro.render_all_frames() function to Nexus.
-    The actual rendering logic is implemented in the repro module.
+    Uses the unified execution unit framework to manage renderers.
+    Renderers are automatically instantiated and cached.
 
-    Config format:
+    Config format (recommended - use registered names):
         renderers:
-          - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+          - name: "speed"  # Short registered name
             kwargs:
               data_path: "input/speed.jsonl"
               position: [30, 60]
               tolerance_ms: 5000
 
-          - class: "nexus.contrib.repro.renderers.TargetRenderer"
+          - name: "target"
             kwargs:
               data_path: "input/adb_targets.jsonl"
               calibration_path: "camera_calibration.yaml"
               tolerance_ms: 50
+
+    Legacy format (still supported):
+        renderers:
+          - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+            kwargs:
+              data_path: "input/speed.jsonl"
+              ...
 
     Config:
         frames_dir: Directory containing extracted frames
@@ -158,7 +165,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
         show_frame_info: Show frame ID and timestamp overlay (default: True)
-        renderers: List of renderer configurations
+        renderers: List of renderer configurations (use "name" for registered renderers)
     """
     from pathlib import Path
 

@@ -6,7 +6,6 @@ Provides functions to split videos into frames and compose frames back into vide
 
 from __future__ import annotations
 
-import importlib
 import logging
 from pathlib import Path
 from typing import Optional, List, Any, Callable
@@ -18,6 +17,7 @@ from tqdm import tqdm
 
 from .types import VideoMetadata
 from .io import load_frame_timestamps
+from nexus.core.execution_units import execute_unit, get_unit
 
 logger = logging.getLogger(__name__)
 
@@ -297,23 +297,18 @@ def render_all_frames(
     """
     Apply multiple data renderers to all video frames.
 
-    This is the core rendering function that handles:
-    1. Loading frame timestamps
-    2. Filtering by time range (if specified)
-    3. Instantiating renderer classes from configs
-    4. Iterating through frames
-    5. Applying renderers sequentially
-    6. Saving rendered frames
-
-    Time is first-class: Video timeline is the primary timeline.
-    All data lines sync to video timeline.
+    Uses the unified execution unit framework to load and execute renderers.
+    All renderers are automatically instantiated and cached by the framework.
 
     Args:
         frames_dir: Directory containing extracted frames
         output_dir: Directory for rendered frames
         timestamps_path: Path to frame timestamps CSV
         renderer_configs: List of renderer configurations
-            Format: [{"class": "module.ClassName", "kwargs": {...}}, ...]
+            Format: [{"name": "renderer_name", "kwargs": {...}}, ...]
+            - "name": Registered renderer name (e.g., "speed", "target")
+            - "kwargs": Dictionary of renderer constructor arguments
+            Alternative: use "class" instead of "name" for compatibility
         frame_pattern: Frame filename pattern
         start_time_ms: Optional start time (None=from beginning)
         end_time_ms: Optional end time (None=to end)
@@ -324,20 +319,22 @@ def render_all_frames(
         Path to output directory
 
     Example:
+        >>> # Using registered renderer names (recommended)
         >>> renderer_configs = [
         ...     {
-        ...         "class": "nexus.contrib.repro.renderers.SpeedRenderer",
+        ...         "name": "speed",  # Registered name
         ...         "kwargs": {
         ...             "data_path": Path("speed.jsonl"),
         ...             "position": (30, 60),
-        ...             "time_offset_ms": 0  # No time offset
+        ...             "time_offset_ms": 0
         ...         }
         ...     },
         ...     {
-        ...         "class": "nexus.contrib.repro.renderers.TargetRenderer",
+        ...         "name": "target",
         ...         "kwargs": {
         ...             "data_path": Path("targets.jsonl"),
-        ...             "time_offset_ms": -50  # Data 50ms ahead
+        ...             "calibration_path": Path("calib.yaml"),
+        ...             "time_offset_ms": -50
         ...         }
         ...     }
         ... ]
@@ -346,8 +343,8 @@ def render_all_frames(
         ...     Path("rendered/"),
         ...     Path("timestamps.csv"),
         ...     renderer_configs,
-        ...     start_time_ms=1000.0,  # Start at 1 second
-        ...     end_time_ms=5000.0     # End at 5 seconds
+        ...     start_time_ms=1000.0,
+        ...     end_time_ms=5000.0
         ... )
     """
     frames_dir = Path(frames_dir)
@@ -379,22 +376,27 @@ def render_all_frames(
         logger.warning("No frames in specified time range")
         return output_dir
 
-    # Load and instantiate all renderers
-    def load_renderer(class_path: str, kwargs: dict) -> Any:
-        """Dynamically load renderer class and instantiate."""
-        module_path, class_name = class_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        RendererClass = getattr(module, class_name)
-        return RendererClass(**kwargs)
-
-    logger.info(f"Loading {len(renderer_configs)} renderers")
-    renderers = []
+    # Validate and prepare renderer configurations
+    logger.info(f"Preparing {len(renderer_configs)} renderers")
+    validated_configs = []
     for i, config in enumerate(renderer_configs):
-        renderer_class = config["class"]
+        # Extract renderer name
+        renderer_name = config.get("name") or config.get("class")
+        if not renderer_name:
+            raise ValueError(
+                f"Renderer config must have 'name' or 'class' key: {config}"
+            )
+
+        # Get renderer spec to validate it exists
+        spec = get_unit(renderer_name, "renderer")
         renderer_kwargs = config.get("kwargs", {})
-        renderer = load_renderer(renderer_class, renderer_kwargs)
-        renderers.append(renderer)
-        logger.info(f"  [{i+1}] {renderer_class}")
+
+        validated_configs.append({
+            "name": renderer_name,
+            "kwargs": renderer_kwargs
+        })
+
+        logger.info(f"  [{i+1}] {renderer_name} -> {spec.implementation.__name__}")
 
     # Render all frames
     logger.info(f"Rendering {len(frame_times)} frames...")
@@ -404,7 +406,7 @@ def render_all_frames(
     with tqdm(total=total_frames, desc="Rendering frames", unit="frame", disable=progress_callback is not None) as pbar:
         for _, row in frame_times.iterrows():
             frame_idx = int(row["frame_index"])
-            timestamp_ms = row["timestamp_ms"]
+            timestamp_ms = int(row["timestamp_ms"])
 
             # Load frame
             frame_path = frames_dir / frame_pattern.format(frame_idx)
@@ -417,9 +419,15 @@ def render_all_frames(
                 logger.warning(f"Failed to read frame: {frame_path}")
                 continue
 
-            # Apply all renderers sequentially
-            for renderer in renderers:
-                frame = renderer.render(frame, timestamp_ms)
+            # Apply all renderers sequentially using execution unit framework
+            for renderer_config in validated_configs:
+                frame = execute_unit(
+                    name=renderer_config["name"],
+                    unit_type="renderer",
+                    frame=frame,
+                    timestamp_ms=timestamp_ms,
+                    config=renderer_config["kwargs"]
+                )
 
             # Draw frame info overlay (frame ID + timestamp)
             if show_frame_info:

@@ -16,8 +16,10 @@ import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
+from nexus.core.execution_units import register_unit
 
 
+@register_unit("target", unit_type="renderer")
 class TargetRenderer(BaseDataRenderer):
     """
     Render 3D target detections projected to 2D image.
