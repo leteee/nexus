@@ -18,10 +18,10 @@ nexus list cases
 
 # Run a template-driven pipeline
 nexus run --case quickstart --template quickstart
-nexus run --case demo --template basic/demo
+nexus run --case my_repro --template repro/repro
 
 # Execute a single plugin
-nexus plugin "Data Generator" --case demo --config num_rows=500
+nexus plugin "Data Generator" --case mycase --config num_rows=500
 ```
 
 ### Built-in templates
@@ -29,7 +29,8 @@ nexus plugin "Data Generator" --case demo --config num_rows=500
 | Template | Description | Key plugins |
 |----------|-------------|-------------|
 | `quickstart` | Minimal single-step pipeline that generates synthetic data and optionally writes it to `data/` | `Data Generator` |
-| `basic/demo` | Four-step in-memory demo: generate → filter → aggregate → validate | `Data Generator`, `Data Filter`, `Data Aggregator`, `Data Validator` |
+| `repro/repro` | Multi-step video data replay pipeline: extract frames → render overlays → compose video | `Frame Extractor`, `Speed Renderer`, `Target Renderer`, `Video Composer` |
+| `repro/repro_datagen` | Complete synthetic data generation for testing: generate video → timeline → speed → targets | `Synthetic Video Generator`, `Timeline Generator`, `Speed Generator`, `Target Generator` |
 
 ## Writing Plugins
 
@@ -78,7 +79,7 @@ pipeline:
       threshold: 100
 ```
 
-Run it with `nexus run --case demo --template quickstart` or copy the YAML into `cases/demo/case.yaml`.
+Run it with `nexus run --case mycase --template quickstart` or copy the YAML into `cases/mycase/case.yaml`.
 
 ## Sideloading Plugins
 
@@ -96,7 +97,7 @@ This means sidecar modules can run independently, yet seamlessly provide plugins
 from pathlib import Path
 import nexus
 
-case_path = "demo"
+case_path = "mycase"
 manager, _ = nexus._build_case_manager(Path.cwd())
 config_path, case_config = manager.get_case_config(case_path)
 engine = nexus.create_engine(case_path)

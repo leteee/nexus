@@ -14,11 +14,6 @@ from nexus.contrib.basic.generation import (
     build_sample_dataset,
     build_synthetic_dataframe,
 )
-from nexus.contrib.basic.processing import (
-    aggregate_dataframe,
-    build_validation_report,
-    filter_dataframe,
-)
 
 
 # =============================================================================
@@ -67,86 +62,3 @@ def generate_sample_dataset(ctx: PluginContext) -> Any:
     frame = build_sample_dataset(config.dataset_type, config.size)
     ctx.remember("last_result", frame)
     return frame
-
-
-# =============================================================================
-# Data Processing Plugins
-# =============================================================================
-
-
-class DataFilterConfig(PluginConfig):
-    column: str = "value"
-    operator: str = ">"
-    threshold: float = 0.0
-    remove_nulls: bool = True
-
-
-class DataAggregatorConfig(PluginConfig):
-    group_by: str = "category"
-    agg_column: str = "value"
-    agg_function: str = "mean"
-
-
-class DataValidatorConfig(PluginConfig):
-    check_nulls: bool = True
-    check_duplicates: bool = True
-    check_types: bool = True
-    required_columns: list[str] = []
-
-
-@plugin(name="Data Filter", config=DataFilterConfig)
-def filter_data(ctx: PluginContext) -> Any:
-    frame = ctx.recall("last_result")
-    if frame is None:
-        raise RuntimeError("Data Filter requires data from a previous plugin")
-
-    config: DataFilterConfig = ctx.config  # type: ignore
-    filtered = filter_dataframe(
-        frame,
-        column=config.column,
-        operator=config.operator,
-        threshold=config.threshold,
-        remove_nulls=config.remove_nulls,
-    )
-
-    ctx.logger.info("Filter kept %s/%s rows", len(filtered), len(frame))
-    ctx.remember("last_result", filtered)
-    return filtered
-
-
-@plugin(name="Data Aggregator", config=DataAggregatorConfig)
-def aggregate_data(ctx: PluginContext) -> Any:
-    frame = ctx.recall("last_result")
-    if frame is None:
-        raise RuntimeError("Data Aggregator requires data from a previous plugin")
-
-    config: DataAggregatorConfig = ctx.config  # type: ignore
-    result = aggregate_dataframe(
-        frame,
-        group_by=config.group_by,
-        agg_column=config.agg_column,
-        agg_function=config.agg_function,
-    )
-
-    ctx.logger.info("Aggregated %s rows down to %s groups", len(frame), len(result))
-    ctx.remember("last_result", result)
-    return result
-
-
-@plugin(name="Data Validator", config=DataValidatorConfig)
-def validate_data(ctx: PluginContext) -> Any:
-    frame = ctx.recall("last_result")
-    if frame is None:
-        raise RuntimeError("Data Validator requires data from a previous plugin")
-
-    config: DataValidatorConfig = ctx.config  # type: ignore
-    report = build_validation_report(
-        frame,
-        check_nulls=config.check_nulls,
-        check_duplicates=config.check_duplicates,
-        check_types=config.check_types,
-        required_columns=config.required_columns,
-    )
-
-    ctx.remember("last_result", report)
-    return report

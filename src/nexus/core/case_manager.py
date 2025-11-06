@@ -258,7 +258,7 @@ class CaseManager:
 
             template_name (Optional[str], optional): Template name to use.
                 Can be with or without .yaml extension.
-                Examples: "quickstart", "demo", "basic/etl", "advanced/ml-pipeline"
+                Examples: "quickstart", "repro/repro", "repro/repro_datagen"
                 If specified, case.yaml is ignored. Defaults to None.
 
         Returns:
@@ -278,12 +278,12 @@ class CaseManager:
             ... )
             >>>
             >>> # Template mode: Load template, ignore case.yaml
-            >>> path, config = manager.get_case_config("analysis", "demo")
-            >>> print(path)  # /project/templates/demo.yaml
+            >>> path, config = manager.get_case_config("analysis", "quickstart")
+            >>> print(path)  # /project/templates/quickstart.yaml
             >>>
             >>> # Nested template mode: Use hierarchical path
-            >>> path, config = manager.get_case_config("analysis", "basic/etl")
-            >>> print(path)  # /project/templates/basic/etl.yaml
+            >>> path, config = manager.get_case_config("analysis", "repro/repro")
+            >>> print(path)  # /project/templates/repro/repro.yaml
             >>>
             >>> # Case mode: Load case.yaml
             >>> path, config = manager.get_case_config("analysis")
@@ -459,8 +459,7 @@ class CaseManager:
         Example:
             >>> # Templates in flat and nested structure
             >>> manager.list_available_templates()
-            ['demo', 'quickstart', 'basic/etl', 'basic/validation',
-             'advanced/ml-pipeline', 'advanced/parallel-processing']
+            ['quickstart', 'repro/repro', 'repro/repro_datagen']
         """
         templates = []
         seen = set()

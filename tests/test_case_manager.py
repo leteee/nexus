@@ -33,9 +33,9 @@ class TestCaseManager:
                 },
                 "pipeline": [
                     {
-                        "plugin": "Data Generator",
-                        "config": {"num_rows": 1000},
-                        "outputs": [{"name": "generated_data"}],
+                        "plugin": "Synthetic Video Generator",
+                        "config": {"duration_s": 10.0, "fps": 30.0},
+                        "outputs": [{"name": "video_metadata"}],
                     }
                 ],
             }
@@ -49,9 +49,9 @@ class TestCaseManager:
                 },
                 "pipeline": [
                     {
-                        "plugin": "Data Aggregator",
-                        "config": {"group_by": "category"},
-                        "outputs": [{"name": "aggregated_data"}],
+                        "plugin": "Timeline Generator",
+                        "config": {"fps": 30.0, "total_frames": 900},
+                        "outputs": [{"name": "timeline_data"}],
                     }
                 ],
             }
@@ -73,8 +73,8 @@ class TestCaseManager:
                 },
                 "pipeline": [
                     {
-                        "plugin": "Data Validator",
-                        "outputs": [{"name": "validation_report"}],
+                        "plugin": "Video Splitter",
+                        "outputs": [{"name": "frame_metadata"}],
                     }
                 ],
             }
