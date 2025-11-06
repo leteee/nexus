@@ -80,7 +80,7 @@ class TargetRenderer(BaseDataRenderer):
         data_path: Union[Path, str],
         calibration_path: Union[Path, str],
         tolerance_ms: float = 50.0,
-        time_offset_ms: float = 0.0,
+        time_offset_ms: int = 0,
         box_color: Tuple[int, int, int] = (0, 255, 0),  # Green
         box_thickness: int = 2,
         show_panel: bool = True,
@@ -90,7 +90,7 @@ class TargetRenderer(BaseDataRenderer):
             data_path: Path to targets JSONL file
             calibration_path: Path to camera calibration YAML file
             tolerance_ms: Matching tolerance (default 50ms, nearest strategy)
-            time_offset_ms: Time offset to apply to data timestamps (default 0ms)
+            time_offset_ms: Time offset to apply to data timestamps (int, default 0ms)
             box_color: Bounding box color in BGR format
             box_thickness: Bounding box line thickness
             show_panel: Whether to show info panel in bottom-left
@@ -328,7 +328,7 @@ class TargetRenderer(BaseDataRenderer):
 
         return frame
 
-    def render(self, frame: np.ndarray, timestamp_ms: float) -> np.ndarray:
+    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
         Render 3D targets on frame.
 

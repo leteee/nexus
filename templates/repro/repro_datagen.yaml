@@ -25,7 +25,7 @@ pipeline:
     config:
       video_path: "input/synthetic_driving.mp4"    # Video file to analyze
       start_time: "2025-10-27 08:30:00"  # Human-readable time format
-      jitter_ms: 1.5                      # ±1.5ms random jitter to simulate real capture
+      jitter_ms: 2                        # ±2ms random jitter (integer)
       output_csv: "input/vehicle_timeline.csv"
       random_seed: 42                     # For reproducibility
 
@@ -50,7 +50,7 @@ pipeline:
       # start_time automatically inherited from Timeline Generator
       duration_s: 60.0                    # Generate 60s of target data (matches video)
       frequency_hz: 20.0                  # Fixed 20Hz data rate
-      timing_jitter_ms: 2.0               # ±2ms reception timing error
+      timing_jitter_ms: 2                 # ±2ms reception timing error (integer)
       num_targets: 3                      # 2-3 concurrent targets
       ego_speed_kmh: 60.0                 # Our vehicle speed
       output_jsonl: "input/adb_targets.jsonl"

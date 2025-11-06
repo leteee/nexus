@@ -70,15 +70,15 @@ class DataRenderer(ABC):
     @abstractmethod
     def match_data(
         self,
-        timestamp_ms: float,
+        timestamp_ms: int,
         tolerance_ms: float = 50.0,
     ) -> List[dict]:
         """
         Find data points matching the given timestamp.
 
         Args:
-            timestamp_ms: Target timestamp in milliseconds
-            tolerance_ms: Maximum acceptable time difference
+            timestamp_ms: Target timestamp in milliseconds (int)
+            tolerance_ms: Maximum acceptable time difference (ms)
 
         Returns:
             List of matching data dictionaries
@@ -95,7 +95,7 @@ class DataRenderer(ABC):
     def render(
         self,
         frame: np.ndarray,
-        timestamp_ms: float,
+        timestamp_ms: int,
     ) -> np.ndarray:
         """
         Render data visualization onto frame.
@@ -105,7 +105,7 @@ class DataRenderer(ABC):
 
         Args:
             frame: Video frame as numpy array (H, W, C) in BGR format
-            timestamp_ms: Frame timestamp in milliseconds
+            timestamp_ms: Frame timestamp in milliseconds (int)
 
         Returns:
             Frame with data rendered (modified in-place or copied)

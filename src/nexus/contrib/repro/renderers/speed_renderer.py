@@ -44,7 +44,7 @@ class SpeedRenderer(BaseDataRenderer):
         data_path: Union[Path, str],
         position: Tuple[int, int] = (30, 60),
         tolerance_ms: float = 5000.0,
-        time_offset_ms: float = 0.0,
+        time_offset_ms: int = 0,
         font_scale: float = 1.2,
         color: Tuple[int, int, int] = (0, 255, 0),  # BGR: Green
         thickness: int = 3,
@@ -54,7 +54,7 @@ class SpeedRenderer(BaseDataRenderer):
             data_path: Path to speed JSONL file
             position: (x, y) position for text (top-left anchor)
             tolerance_ms: Forward matching tolerance (default 5000ms)
-            time_offset_ms: Time offset to apply to data timestamps (default 0ms)
+            time_offset_ms: Time offset to apply to data timestamps (int, default 0ms)
             font_scale: Font size multiplier
             color: Text color in BGR format
             thickness: Text thickness
@@ -72,7 +72,7 @@ class SpeedRenderer(BaseDataRenderer):
         self.color = color
         self.thickness = thickness
 
-    def render(self, frame: np.ndarray, timestamp_ms: float) -> np.ndarray:
+    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
         Render speed on frame.
 

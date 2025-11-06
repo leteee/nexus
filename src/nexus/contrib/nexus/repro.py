@@ -230,7 +230,7 @@ class TimelineGeneratorConfig(PluginConfig):
     fps: Optional[float] = None  # Required if video_path not provided
     total_frames: Optional[int] = None  # Required if video_path not provided
     start_time: str = "2025-10-27 00:00:00"  # Time format (converted to timestamp)
-    jitter_ms: float = 1.5
+    jitter_ms: int = 2  # Integer milliseconds for realistic jitter
     output_csv: str = "output/timeline.csv"
     random_seed: Optional[int] = None
 
@@ -411,7 +411,7 @@ class ADBTargetGeneratorConfig(PluginConfig):
     video_path: Optional[str] = None  # Optional: auto-extract duration from video
     duration_s: Optional[float] = None  # Required if video_path not provided
     frequency_hz: float = 20.0
-    timing_jitter_ms: float = 2.0  # Reception timing error
+    timing_jitter_ms: int = 2  # Integer milliseconds for realistic timing variation
     num_targets: int = 3
     ego_speed_kmh: float = 60.0
     output_jsonl: str = "output/targets.jsonl"

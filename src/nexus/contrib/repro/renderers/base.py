@@ -52,14 +52,14 @@ class BaseDataRenderer(DataRenderer):
         data_path: Union[Path, str],
         tolerance_ms: float = 50.0,
         match_strategy: Literal["nearest", "forward", "backward"] = "nearest",
-        time_offset_ms: float = 0.0,
+        time_offset_ms: int = 0,
     ):
         """
         Args:
             data_path: Path to JSONL data file
             tolerance_ms: Matching tolerance in milliseconds
             match_strategy: Matching strategy - "nearest", "forward", or "backward"
-            time_offset_ms: Time offset to apply to data timestamps (in milliseconds)
+            time_offset_ms: Time offset to apply to data timestamps (int milliseconds)
                           Positive: data is delayed (data later than video)
                           Negative: data is ahead (data earlier than video)
                           Example: time_offset_ms=100 means data at 1100ms matches video frame at 1000ms
@@ -85,7 +85,7 @@ class BaseDataRenderer(DataRenderer):
 
     def match_data(
         self,
-        timestamp_ms: float,
+        timestamp_ms: int,
         tolerance_ms: Optional[float] = None,
     ) -> List[dict]:
         """
@@ -96,7 +96,7 @@ class BaseDataRenderer(DataRenderer):
         - time_offset_ms < 0: Look for earlier data (data ahead)
 
         Args:
-            timestamp_ms: Target timestamp in milliseconds (video frame time)
+            timestamp_ms: Target timestamp in milliseconds (video frame time, int)
             tolerance_ms: Override tolerance (uses self.tolerance_ms if None)
 
         Returns:
@@ -105,7 +105,7 @@ class BaseDataRenderer(DataRenderer):
         Example:
             >>> # Video frame at 1000ms, time_offset_ms=100
             >>> # Will search for data at 1100ms
-            >>> renderer.match_data(1000.0)  # Finds data near 1100ms
+            >>> renderer.match_data(1000)  # Finds data near 1100ms
         """
         if tolerance_ms is None:
             tolerance_ms = self.tolerance_ms
@@ -125,12 +125,12 @@ class BaseDataRenderer(DataRenderer):
         else:
             raise ValueError(f"Unknown match_strategy: {self.match_strategy}")
 
-    def _match_nearest(self, timestamp_ms: float, tolerance_ms: float) -> List[dict]:
+    def _match_nearest(self, timestamp_ms: int, tolerance_ms: float) -> List[dict]:
         """
         Find nearest data point within tolerance.
 
         Args:
-            timestamp_ms: Target timestamp
+            timestamp_ms: Target timestamp (int)
             tolerance_ms: Maximum acceptable time difference
 
         Returns:
@@ -147,14 +147,14 @@ class BaseDataRenderer(DataRenderer):
 
         return []
 
-    def _match_forward(self, timestamp_ms: float, tolerance_ms: float) -> List[dict]:
+    def _match_forward(self, timestamp_ms: int, tolerance_ms: float) -> List[dict]:
         """
         Forward match: Find most recent data BEFORE or AT timestamp.
 
         Useful for data that should "hold" until next update (e.g., speed).
 
         Args:
-            timestamp_ms: Target timestamp
+            timestamp_ms: Target timestamp (int)
             tolerance_ms: Maximum time since last data point
 
         Returns:
@@ -179,7 +179,7 @@ class BaseDataRenderer(DataRenderer):
 
         return []
 
-    def _match_backward(self, timestamp_ms: float, tolerance_ms: float) -> List[dict]:
+    def _match_backward(self, timestamp_ms: int, tolerance_ms: float) -> List[dict]:
         """
         Backward match: Find earliest data AFTER or AT timestamp.
 
