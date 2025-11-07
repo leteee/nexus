@@ -59,30 +59,6 @@ plugins:
     num_categories: 3     # Number of categories in categorical columns
     noise_level: 0.1      # Amount of noise to add (0.0 to 1.0)
 
-  "Sample Data Generator":
-    dataset_type: "customers"  # customers, sales, products, etc.
-    size: "medium"            # small, medium, large
-
-  # Data Validation Plugins
-  "Data Validator":
-    check_nulls: true           # Check for null values
-    check_duplicates: true      # Check for duplicate rows
-    check_types: true           # Check data types
-    required_columns: []        # List of required columns
-
-  # Data Filter Plugin
-  "Data Filter":
-    column: "value"             # Column to filter on
-    operator: ">"               # >, <, >=, <=, ==, !=
-    threshold: 0.0              # Threshold value
-    remove_nulls: true          # Remove null values before filtering
-
-  # Data Aggregator Plugin
-  "Data Aggregator":
-    group_by: "category"        # Column to group by
-    agg_column: "value"         # Column to aggregate
-    agg_function: "mean"        # mean, sum, count, min, max, std
-
 # ========================================================================
 # Configuration Best Practices
 # ========================================================================

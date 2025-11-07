@@ -1,13 +1,12 @@
 # Nexus Plugins
 
-Documented 11 plugin(s).
+Documented 10 plugin(s).
 
 - [ADB Target Generator](plugins/adb_target_generator.md)
 - [Advanced Calculator](plugins/advanced_calculator.md)
 - [Data Generator](plugins/data_generator.md)
 - [Data Renderer](plugins/data_renderer.md)
 - [My Test Plugin](plugins/my_test_plugin.md)
-- [Sample Data Generator](plugins/sample_data_generator.md)
 - [Speed Data Generator](plugins/speed_data_generator.md)
 - [Synthetic Video Generator](plugins/synthetic_video_generator.md)
 - [Timeline Generator](plugins/timeline_generator.md)

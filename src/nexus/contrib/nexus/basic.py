@@ -12,10 +12,7 @@ from nexus.core.context import PluginContext
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
-from nexus.contrib.basic.generation import (
-    build_sample_dataset,
-    build_synthetic_dataframe,
-)
+from nexus.contrib.basic.generation import build_synthetic_dataframe
 
 
 # =============================================================================
@@ -54,19 +51,6 @@ class DataGeneratorConfig(PluginConfig):
     )
 
 
-class SampleDataGeneratorConfig(PluginConfig):
-    """Configuration for domain-specific sample data generation."""
-
-    dataset_type: str = Field(
-        default="sales",
-        description="Type of sample dataset to generate (e.g., 'sales', 'customer', 'product')"
-    )
-    size: str = Field(
-        default="small",
-        description="Dataset size category ('small', 'medium', 'large')"
-    )
-
-
 @plugin(name="Data Generator", config=DataGeneratorConfig)
 def generate_synthetic_data(ctx: PluginContext) -> Any:
     """
@@ -100,29 +84,3 @@ def generate_synthetic_data(ctx: PluginContext) -> Any:
     ctx.remember("last_result", frame)
     return frame
 
-
-@plugin(name="Sample Data Generator", config=SampleDataGeneratorConfig)
-def generate_sample_dataset(ctx: PluginContext) -> Any:
-    """
-    Generate domain-specific sample datasets.
-
-    Creates realistic sample data for common business domains.
-    Useful for demonstrations, testing, and prototyping.
-
-    Supported dataset types:
-    - sales: Sales transaction data with products, dates, quantities
-    - customer: Customer information with demographics
-    - product: Product catalog with pricing and categories
-
-    Size categories determine the number of rows:
-    - small: ~100 rows
-    - medium: ~1000 rows
-    - large: ~10000 rows
-
-    Returns:
-        pandas.DataFrame with domain-specific sample data.
-    """
-    config: SampleDataGeneratorConfig = ctx.config  # type: ignore
-    frame = build_sample_dataset(config.dataset_type, config.size)
-    ctx.remember("last_result", frame)
-    return frame
