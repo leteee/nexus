@@ -6,6 +6,8 @@ Adapts video replay and data rendering logic to Nexus plugin interface.
 
 from typing import Any, Union, Optional
 
+from pydantic import Field
+
 from nexus.core.context import PluginContext
 from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
@@ -32,19 +34,55 @@ from nexus.contrib.repro.datagen import (
 
 
 class VideoSplitterConfig(PluginConfig):
-    video_path: str
-    output_dir: str = "frames"
-    frame_pattern: str = "frame_{:06d}.png"
+    """Configuration for video frame extraction."""
+
+    video_path: str = Field(
+        description="Path to input video file (MP4, AVI, MOV supported)"
+    )
+    output_dir: str = Field(
+        default="frames",
+        description="Output directory for extracted frame images"
+    )
+    frame_pattern: str = Field(
+        default="frame_{:06d}.png",
+        description="Frame filename pattern with zero-padded numbering (Python format string)"
+    )
 
 
 class VideoComposerConfig(PluginConfig):
-    frames_dir: str = "frames"
-    output_path: str = "output.mp4"
-    fps: float = 30.0
-    frame_pattern: str = "frame_{:06d}.png"
-    codec: str = "mp4v"
-    start_frame: int = 0
-    end_frame: Optional[int] = None
+    """Configuration for composing video from frame images."""
+
+    frames_dir: str = Field(
+        default="frames",
+        description="Directory containing input frame images"
+    )
+    output_path: str = Field(
+        default="output.mp4",
+        description="Output video file path"
+    )
+    fps: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=120.0,
+        description="Video frame rate in frames per second"
+    )
+    frame_pattern: str = Field(
+        default="frame_{:06d}.png",
+        description="Frame filename pattern to match input files"
+    )
+    codec: str = Field(
+        default="mp4v",
+        description="Video codec for encoding (mp4v, avc1, etc.)"
+    )
+    start_frame: int = Field(
+        default=0,
+        ge=0,
+        description="First frame index to include (0-based)"
+    )
+    end_frame: Optional[int] = Field(
+        default=None,
+        description="Last frame index to include (None for all frames)"
+    )
 
 
 @plugin(name="Video Splitter", config=VideoSplitterConfig)
@@ -118,16 +156,39 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
 
 
 class DataRendererConfig(PluginConfig):
-    # Time range control (video timeline is the primary timeline)
-    start_time: Union[str, float, None] = None  # Start time: None, timestamp_ms, or time string
-    end_time: Union[str, float, None] = None    # End time: None, timestamp_ms, or time string
+    """Configuration for rendering data overlays on video frames."""
 
-    frames_dir: str = "frames"
-    output_dir: str = "rendered_frames"
-    frame_pattern: str = "frame_{:06d}.png"
-    timestamps_path: Optional[str] = None  # Optional: custom timestamps CSV path
-    show_frame_info: bool = True  # Show frame ID and timestamp overlay
-    renderers: list[dict]  # List of {"name": "...", "kwargs": {...}} or {"class": "...", "kwargs": {...}}
+    start_time: Union[str, float, None] = Field(
+        default=None,
+        description="Start time for rendering (None=beginning, timestamp_ms as float, or time string like '2025-10-27 12:00:00')"
+    )
+    end_time: Union[str, float, None] = Field(
+        default=None,
+        description="End time for rendering (None=end, timestamp_ms as float, or time string)"
+    )
+    frames_dir: str = Field(
+        default="frames",
+        description="Directory containing extracted video frames"
+    )
+    output_dir: str = Field(
+        default="rendered_frames",
+        description="Output directory for frames with rendered data overlays"
+    )
+    frame_pattern: str = Field(
+        default="frame_{:06d}.png",
+        description="Frame filename pattern to match input files"
+    )
+    timestamps_path: Optional[str] = Field(
+        default=None,
+        description="Path to custom frame timestamps CSV (None to use frames_dir/frame_timestamps.csv)"
+    )
+    show_frame_info: bool = Field(
+        default=True,
+        description="Show frame ID and timestamp overlay on rendered frames"
+    )
+    renderers: list[dict] = Field(
+        description="List of renderer configurations with 'name' (registered name) or 'class' (full class path) and 'kwargs'"
+    )
 
 
 @plugin(name="Data Renderer", config=DataRendererConfig)
@@ -236,13 +297,41 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
 
 
 class TimelineGeneratorConfig(PluginConfig):
-    video_path: Optional[str] = None  # Optional: auto-extract FPS and duration from video
-    fps: Optional[float] = None  # Required if video_path not provided
-    total_frames: Optional[int] = None  # Required if video_path not provided
-    start_time: str = "2025-10-27 00:00:00"  # Time format (converted to timestamp)
-    jitter_ms: int = 2  # Integer milliseconds for realistic jitter
-    output_csv: str = "output/timeline.csv"
-    random_seed: Optional[int] = None
+    """Configuration for generating frame timeline with realistic timestamp jitter."""
+
+    video_path: Optional[str] = Field(
+        default=None,
+        description="Video file path to auto-extract FPS and duration (alternative to manual fps/total_frames)"
+    )
+    fps: Optional[float] = Field(
+        default=None,
+        ge=1.0,
+        le=120.0,
+        description="Video frame rate in FPS (required if video_path not provided)"
+    )
+    total_frames: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Number of frames to generate (required if video_path not provided)"
+    )
+    start_time: str = Field(
+        default="2025-10-27 00:00:00",
+        description="Starting timestamp in 'YYYY-MM-DD HH:MM:SS' format"
+    )
+    jitter_ms: int = Field(
+        default=2,
+        ge=0,
+        le=100,
+        description="Maximum random timing jitter in milliseconds (±jitter_ms)"
+    )
+    output_csv: str = Field(
+        default="output/timeline.csv",
+        description="Output CSV file path for frame timestamps"
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible jitter generation"
+    )
 
 
 @plugin(name="Timeline Generator", config=TimelineGeneratorConfig)
@@ -322,15 +411,48 @@ def generate_timeline(ctx: PluginContext) -> Any:
 
 
 class SpeedDataGeneratorConfig(PluginConfig):
-    start_time: Optional[str] = None  # Time format like "2025-10-27 00:00:00"
-    video_path: Optional[str] = None  # Optional: auto-extract duration from video
-    duration_s: Optional[float] = None  # Required if video_path not provided
-    max_interval_s: float = 5.0
-    speed_change_threshold: float = 2.0
-    output_jsonl: str = "output/speed.jsonl"
-    random_seed: Optional[int] = None
-    use_default_profile: bool = True
-    custom_profiles: Optional[list] = None
+    """Configuration for generating event-driven speed data."""
+
+    start_time: Optional[str] = Field(
+        default=None,
+        description="Starting timestamp in 'YYYY-MM-DD HH:MM:SS' format (None to use Timeline Generator context)"
+    )
+    video_path: Optional[str] = Field(
+        default=None,
+        description="Video file path to auto-extract duration (alternative to manual duration_s)"
+    )
+    duration_s: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Data generation duration in seconds (required if video_path not provided)"
+    )
+    max_interval_s: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=60.0,
+        description="Maximum interval without sending data in seconds"
+    )
+    speed_change_threshold: float = Field(
+        default=2.0,
+        ge=0.0,
+        description="Minimum speed change in km/h to trigger event"
+    )
+    output_jsonl: str = Field(
+        default="output/speed.jsonl",
+        description="Output JSONL file path for speed data"
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible data generation"
+    )
+    use_default_profile: bool = Field(
+        default=True,
+        description="Use default realistic driving speed profile"
+    )
+    custom_profiles: Optional[list] = Field(
+        default=None,
+        description="Custom speed profiles (list of speed segments, used if use_default_profile=False)"
+    )
 
 
 @plugin(name="Speed Data Generator", config=SpeedDataGeneratorConfig)
@@ -417,15 +539,53 @@ def generate_speed_data(ctx: PluginContext) -> Any:
 
 
 class ADBTargetGeneratorConfig(PluginConfig):
-    start_time: Optional[str] = None  # Time format like "2025-10-27 00:00:00"
-    video_path: Optional[str] = None  # Optional: auto-extract duration from video
-    duration_s: Optional[float] = None  # Required if video_path not provided
-    frequency_hz: float = 20.0
-    timing_jitter_ms: int = 2  # Integer milliseconds for realistic timing variation
-    num_targets: int = 3
-    ego_speed_kmh: float = 60.0
-    output_jsonl: str = "output/targets.jsonl"
-    random_seed: Optional[int] = None
+    """Configuration for generating ADB (Adaptive Driving Beam) target detection data."""
+
+    start_time: Optional[str] = Field(
+        default=None,
+        description="Starting timestamp in 'YYYY-MM-DD HH:MM:SS' format (None to use Timeline Generator context)"
+    )
+    video_path: Optional[str] = Field(
+        default=None,
+        description="Video file path to auto-extract duration (alternative to manual duration_s)"
+    )
+    duration_s: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Data generation duration in seconds (required if video_path not provided)"
+    )
+    frequency_hz: float = Field(
+        default=20.0,
+        ge=1.0,
+        le=100.0,
+        description="Target data generation frequency in Hz"
+    )
+    timing_jitter_ms: int = Field(
+        default=2,
+        ge=0,
+        le=100,
+        description="Random timing jitter in milliseconds for realistic reception timing (±jitter_ms)"
+    )
+    num_targets: int = Field(
+        default=3,
+        ge=0,
+        le=20,
+        description="Number of concurrent targets in the scene"
+    )
+    ego_speed_kmh: float = Field(
+        default=60.0,
+        ge=0.0,
+        le=200.0,
+        description="Ego vehicle speed in km/h"
+    )
+    output_jsonl: str = Field(
+        default="output/targets.jsonl",
+        description="Output JSONL file path for target data"
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible data generation"
+    )
 
 
 @plugin(name="ADB Target Generator", config=ADBTargetGeneratorConfig)
@@ -530,13 +690,46 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
 
 
 class SyntheticVideoGeneratorConfig(PluginConfig):
-    output_path: str = "input/synthetic_driving.mp4"
-    duration_s: float = 60.0
-    fps: float = 30.0
-    width: int = 1920
-    height: int = 1080
-    speed_kmh: float = 60.0
-    random_seed: Optional[int] = None
+    """Configuration for generating synthetic driving video."""
+
+    output_path: str = Field(
+        default="input/synthetic_driving.mp4",
+        description="Output video file path"
+    )
+    duration_s: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=3600.0,
+        description="Video duration in seconds"
+    )
+    fps: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=120.0,
+        description="Video frame rate in frames per second"
+    )
+    width: int = Field(
+        default=1920,
+        ge=320,
+        le=7680,
+        description="Video width in pixels"
+    )
+    height: int = Field(
+        default=1080,
+        ge=240,
+        le=4320,
+        description="Video height in pixels"
+    )
+    speed_kmh: float = Field(
+        default=60.0,
+        ge=0.0,
+        le=200.0,
+        description="Simulated vehicle speed in km/h"
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible video generation"
+    )
 
 
 @plugin(name="Synthetic Video Generator", config=SyntheticVideoGeneratorConfig)

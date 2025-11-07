@@ -217,6 +217,7 @@ def list_cmd(what: str) -> None:
 @cli.command()
 @click.option("--plugin", help="Show help for a specific plugin")
 def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
+    """Show help information for commands or plugins."""
     if not plugin:
         click.echo(cli.get_help(click.Context(cli)))
         return
@@ -225,6 +226,7 @@ def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
     _discover(project_root)
 
     from .core.discovery import get_plugin
+    from pydantic_core import PydanticUndefined
 
     try:
         spec = get_plugin(plugin)
@@ -233,14 +235,35 @@ def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
         sys.exit(1)
 
     click.echo(f"Plugin: {plugin}")
+    click.echo("")
     if spec.description:
         click.echo(spec.description)
+        click.echo("")
+
     if spec.config_model:
         click.echo("Configuration fields:")
         for field_name, field_info in spec.config_model.model_fields.items():
-            default = field_info.default if field_info.default is not None else "<required>"
+            # Get default value
+            default = field_info.default
+            if default is PydanticUndefined:
+                default_str = "<required>"
+            elif default is None:
+                default_str = "None"
+            else:
+                default_str = str(default)
+
+            # Get field type
             field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-            click.echo(f"  - {field_name} ({field_type}): {default}")
+
+            # Get description
+            description = field_info.description or ""
+
+            # Format output
+            if description:
+                click.echo(f"  - {field_name} ({field_type}): {default_str}")
+                click.echo(f"    {description}")
+            else:
+                click.echo(f"  - {field_name} ({field_type}): {default_str}")
 
 
 @cli.command(name="doc")
@@ -278,22 +301,119 @@ def doc_cmd(output: str, force: bool) -> None:
 
 
 def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
-    lines = [f"# {plugin_name}", ""]
-    if plugin_spec.description:
-        lines.extend([plugin_spec.description.strip(), ""])
+    """Generate markdown documentation for a plugin with enhanced formatting."""
+    from pydantic_core import PydanticUndefined
 
+    lines = [f"# {plugin_name}", ""]
+
+    # Overview section
+    if plugin_spec.description:
+        lines.extend(["## Overview", "", plugin_spec.description.strip(), ""])
+
+    # Configuration section
     lines.append("## Configuration")
     lines.append("")
 
     if plugin_spec.config_model:
+        # YAML example
+        lines.append("### Example Configuration")
+        lines.append("")
+        lines.append("```yaml")
+        lines.append("pipeline:")
+        lines.append(f'  - plugin: "{plugin_name}"')
+        lines.append("    config:")
+
         for field_name, field_info in plugin_spec.config_model.model_fields.items():
-            default = field_info.default if field_info.default is not None else "<required>"
+            # Get default value for YAML
+            default = field_info.default
+            if default is PydanticUndefined:
+                value_str = "# REQUIRED"
+            elif default is None:
+                value_str = "null"
+            elif isinstance(default, str):
+                value_str = f'"{default}"'
+            elif isinstance(default, bool):
+                value_str = str(default).lower()
+            elif isinstance(default, (int, float)):
+                value_str = str(default)
+            elif isinstance(default, list):
+                value_str = "[]"
+            elif isinstance(default, dict):
+                value_str = "{}"
+            else:
+                value_str = str(default)
+
+            # Get field type
             field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-            lines.append(f"- **{field_name}** (*{field_type}*): {default}")
+            field_type = field_type.replace("typing.", "")
+
+            # Get description
+            description = field_info.description or ""
+
+            # Build inline comment
+            if description:
+                comment = f"  # {field_type}: {description}"
+            else:
+                comment = f"  # {field_type}"
+
+            lines.append(f"      {field_name}: {value_str}{comment}")
+
+        lines.append("```")
+        lines.append("")
+
+        # Field reference table
+        lines.append("### Field Reference")
+        lines.append("")
+        lines.append("| Field | Type | Default | Description |")
+        lines.append("|-------|------|---------|-------------|")
+
+        for field_name, field_info in plugin_spec.config_model.model_fields.items():
+            # Get default value for table
+            default = field_info.default
+            if default is PydanticUndefined:
+                default_str = "*required*"
+            elif default is None:
+                default_str = "`null`"
+            elif isinstance(default, str):
+                default_str = f'`"{default}"`'
+            elif isinstance(default, bool):
+                default_str = f"`{str(default).lower()}`"
+            else:
+                default_str = f"`{default}`"
+
+            # Get field type
+            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
+            field_type = field_type.replace("typing.", "")
+
+            # Get description
+            description = field_info.description or ""
+
+            lines.append(f"| `{field_name}` | `{field_type}` | {default_str} | {description} |")
+
+        lines.append("")
     else:
         lines.append("This plugin has no configuration options.")
+        lines.append("")
 
+    # CLI Usage section
+    lines.append("## CLI Usage")
     lines.append("")
+    lines.append("```bash")
+    lines.append("# Run with default configuration")
+    lines.append(f'nexus plugin "{plugin_name}" --case mycase')
+    lines.append("")
+    if plugin_spec.config_model:
+        lines.append("# Run with custom configuration")
+        lines.append(f'nexus plugin "{plugin_name}" --case mycase \\')
+        example_fields = list(plugin_spec.config_model.model_fields.keys())[:2]
+        for i, field in enumerate(example_fields):
+            if i < len(example_fields) - 1:
+                lines.append(f"  -C {field}=value \\")
+            else:
+                lines.append(f"  -C {field}=value")
+    lines.append("```")
+    lines.append("")
+
     return "\n".join(lines)
 
 
