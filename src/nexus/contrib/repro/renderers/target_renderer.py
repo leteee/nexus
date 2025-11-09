@@ -10,16 +10,21 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
-from nexus.core.execution_units import register_unit
+
+if TYPE_CHECKING:
+    from .. import render
+else:
+    # Import at runtime to avoid circular dependency
+    from .. import render
 
 
-@register_unit("target", unit_type="renderer")
+@render("target")
 class TargetRenderer(BaseDataRenderer):
     """
     Render 3D target detections projected to 2D image.
@@ -224,22 +229,30 @@ class TargetRenderer(BaseDataRenderer):
         frame: np.ndarray,
         proj_target: dict,
     ) -> np.ndarray:
-        """Draw bounding box for projected target."""
+        """Draw axis-aligned bounding box for projected target."""
         corners = proj_target["corners"]
         target = proj_target["target"]
 
-        # Draw polygon
-        pts = np.array(corners, np.int32).reshape((-1, 1, 2))
-        cv2.polylines(
+        # Calculate axis-aligned bounding box (AABB) from projected corners
+        # This ensures only horizontal and vertical lines (no diagonal edges)
+        x_coords = [pt[0] for pt in corners]
+        y_coords = [pt[1] for pt in corners]
+
+        x_min = min(x_coords)
+        x_max = max(x_coords)
+        y_min = min(y_coords)
+        y_max = max(y_coords)
+
+        # Draw axis-aligned rectangle
+        cv2.rectangle(
             frame,
-            [pts],
-            isClosed=True,
+            (x_min, y_min),
+            (x_max, y_max),
             color=self.box_color,
             thickness=self.box_thickness,
         )
 
         # Draw target ID above box
-        top_left = corners[0]
         label = f"ID:{target['id']}"
 
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -249,7 +262,7 @@ class TargetRenderer(BaseDataRenderer):
         cv2.putText(
             frame,
             label,
-            (top_left[0], max(top_left[1] - 5, 15)),
+            (x_min, max(y_min - 5, 15)),
             font,
             font_scale,
             (0, 255, 255),  # Yellow

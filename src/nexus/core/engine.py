@@ -1,8 +1,8 @@
 """
 Pipeline execution engine focused on plugin orchestration.
 
-The engine loads pipeline definitions, resolves configuration, and executes
-plugins sequentially while sharing in-memory state between steps.
+The engine loads pipeline definitions, resolves configuration references,
+and executes plugins sequentially while sharing in-memory state between steps.
 """
 
 import logging
@@ -15,6 +15,7 @@ from .config import (
     load_global_configuration,
     load_yaml,
 )
+from .config_resolver import resolve_config, ConfigResolutionError
 from .context import NexusContext
 from .discovery import PLUGIN_REGISTRY, discover_all_plugins, get_plugin
 
@@ -36,10 +37,16 @@ class PipelineEngine:
         case_config: Dict[str, Any],
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Execute all steps defined in a case configuration."""
+        """
+        Execute all steps defined in a case configuration.
 
+        Resolves configuration references (@defaults.xxx) before executing plugins.
+        """
         config_overrides = config_overrides or {}
         global_config = load_global_configuration(self.project_root)
+
+        # Merge defaults from global and case configs
+        defaults = self._merge_defaults(global_config, case_config)
 
         config_context = create_configuration_context(
             global_config=global_config,
@@ -69,6 +76,14 @@ class PipelineEngine:
             plugin_name: str = step["plugin"]
             step_config: Dict[str, Any] = step.get("config", {})
 
+            # Resolve configuration references
+            try:
+                step_config = resolve_config(step_config, defaults)
+            except ConfigResolutionError as e:
+                raise ValueError(
+                    f"Failed to resolve config for plugin '{plugin_name}' at step {idx}: {e}"
+                ) from e
+
             plugin_spec = get_plugin(plugin_name)
             plugin_cfg = self._build_plugin_config(
                 plugin_spec.name,
@@ -94,8 +109,11 @@ class PipelineEngine:
         plugin_name: str,
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """Execute a single plugin with optional configuration overrides."""
+        """
+        Execute a single plugin with optional configuration overrides.
 
+        Resolves configuration references (@defaults.xxx) before executing.
+        """
         config_overrides = config_overrides or {}
         global_config = load_global_configuration(self.project_root)
 
@@ -103,6 +121,17 @@ class PipelineEngine:
         case_config_path = self.case_dir / "case.yaml"
         if case_config_path.exists():
             case_config = load_yaml(case_config_path)
+
+        # Merge defaults from global and case configs
+        defaults = self._merge_defaults(global_config, case_config)
+
+        # Resolve configuration references
+        try:
+            config_overrides = resolve_config(config_overrides, defaults)
+        except ConfigResolutionError as e:
+            raise ValueError(
+                f"Failed to resolve config for plugin '{plugin_name}': {e}"
+            ) from e
 
         config_context = create_configuration_context(
             global_config=global_config,
@@ -136,6 +165,30 @@ class PipelineEngine:
 
     # ------------------------------------------------------------------
     # Helpers
+
+    def _merge_defaults(
+        self,
+        global_config: Dict[str, Any],
+        case_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Merge defaults from global and case configurations.
+
+        Case defaults override global defaults.
+
+        Args:
+            global_config: Global configuration
+            case_config: Case configuration
+
+        Returns:
+            Merged defaults dictionary
+        """
+        global_defaults = global_config.get("defaults", {})
+        case_defaults = case_config.get("defaults", {})
+
+        # Case defaults override global defaults
+        merged = {**global_defaults, **case_defaults}
+        return merged
 
     def _build_plugin_config(
         self,

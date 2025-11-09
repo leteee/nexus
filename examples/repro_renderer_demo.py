@@ -1,5 +1,5 @@
 """
-示例：使用统一执行单元框架渲染视频帧
+示例：使用 repro 模块渲染视频帧
 
 展示如何：
 1. 列出所有注册的 renderer
@@ -8,14 +8,13 @@
 """
 
 from pathlib import Path
-from nexus.contrib.repro import render_all_frames
-from nexus.core.execution_units import list_units, register_unit
+from nexus.contrib.repro import render_all_frames, list_renderers, render, get_renderer
 from nexus.contrib.repro.renderers import BaseDataRenderer
 import numpy as np
 
 
 # ============================================================================
-# 示例 1: 列出所有已注册的 renderer
+# 示例 1: 列��所有已注册的 renderer
 # ============================================================================
 
 def example_list_renderers():
@@ -24,14 +23,14 @@ def example_list_renderers():
     print("示例 1: 列出所有已注册的 renderer")
     print("=" * 70)
 
-    renderers = list_units("renderer")
+    renderers = list_renderers()
 
     print(f"\n已注册的 renderer ({len(renderers)}):")
-    for name, spec in renderers.items():
-        impl_name = spec.implementation.__name__
-        desc = spec.description.split('\n')[0] if spec.description else "No description"
-        print(f"  - {name}: {impl_name}")
-        print(f"    {desc[:70]}")
+    for name, renderer_cls in renderers.items():
+        print(f"  - {name}: {renderer_cls.__name__}")
+        if renderer_cls.__doc__:
+            doc_first_line = renderer_cls.__doc__.strip().split('\n')[0]
+            print(f"    {doc_first_line[:70]}")
 
     print()
 
@@ -46,7 +45,7 @@ def example_using_renderers():
     print("示例 2: 使用已注册的 renderer 渲染视频帧")
     print("=" * 70)
 
-    # 配置 renderers（使用名称而非完整类路径）
+    # 配置 renderers（使用注册名称）
     renderer_configs = [
         {
             "name": "speed",  # 注册名称
@@ -94,14 +93,14 @@ def example_using_renderers():
 # 示例 3: 创建自定义 renderer
 # ============================================================================
 
-@register_unit("watermark", unit_type="renderer")
+@render("watermark")
 class WatermarkRenderer(BaseDataRenderer):
     """
     在帧上添加水印。
 
     这是一个自定义 renderer 示例，展示如何：
     - 继承 BaseDataRenderer
-    - 使用 @register_unit 装饰器注册
+    - 使用 @render 装饰器注册
     - 实现 render() 方法
     """
 
@@ -146,13 +145,13 @@ def example_custom_renderer():
     print("  功能: 在视频帧上添加水印文本")
 
     # 查看是否成功注册
-    renderers = list_units("renderer")
-    if "watermark" in renderers:
-        spec = renderers["watermark"]
+    try:
+        watermark_cls = get_renderer("watermark")
         print(f"\n✓ 验证注册成功:")
-        print(f"  名称: {spec.name}")
-        print(f"  类型: {spec.unit_type}")
-        print(f"  实现: {spec.implementation.__name__}")
+        print(f"  名称: watermark")
+        print(f"  实现: {watermark_cls.__name__}")
+    except KeyError as e:
+        print(f"\n✗ 注册失败: {e}")
 
     # 演示如何使用
     print("\n使用方式:")
@@ -201,10 +200,10 @@ def example_combined_renderers():
     """)
 
     print("\n关键特性:")
-    print("  - 所有 renderer 由统一执行单元框架管理")
-    print("  - 自动实例化和缓存（同一 renderer 只实例化一次）")
-    print("  - 类型安全（注册时验证接口）")
+    print("  - 所有 renderer 使用简单的装饰器注册")
+    print("  - 每个 renderer 实例化一次，重用于所有帧")
     print("  - 简洁配置（使用名称而非完整导入路径）")
+    print("  - 无复杂的框架依赖")
 
 
 # ============================================================================
@@ -214,7 +213,7 @@ def example_combined_renderers():
 if __name__ == "__main__":
     print("\n")
     print("╔" + "=" * 68 + "╗")
-    print("║" + " " * 12 + "Repro Renderer - 统一执行单元框架示例" + " " * 12 + "║")
+    print("║" + " " * 18 + "Repro Renderer 示例" + " " * 18 + "║")
     print("╚" + "=" * 68 + "╝")
     print()
 
@@ -226,10 +225,9 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("所有示例演示完成！")
     print("=" * 70)
-    print("\n核心改进:")
-    print("  ✓ 使用统一执行单元框架管理 renderer")
-    print("  ✓ 简洁的注册方式：@register_unit('name', unit_type='renderer')")
+    print("\n核心特性:")
+    print("  ✓ 简洁的注册方式：@render('name')")
     print("  ✓ 简洁的配置方式：{'name': 'speed', 'kwargs': {...}}")
-    print("  ✓ 自动实例化和缓存")
-    print("  ✓ 类型验证和错误提示")
+    print("  ✓ 自动实例化和重用")
+    print("  ✓ 无复杂框架依赖")
     print()

@@ -151,66 +151,6 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
 
 
 # =============================================================================
-# Path Resolution Utilities
-# =============================================================================
-
-
-def resolve_path_params(params: dict, resolve_fn: Any) -> dict:
-    """
-    Recursively resolve all parameters ending with '_path' to absolute paths.
-
-    Automatically detects and resolves path parameters without manual listing.
-    Supports nested dictionaries and lists.
-
-    Args:
-        params: Dictionary of parameters to process
-        resolve_fn: Path resolution function (e.g., ctx.resolve_path)
-
-    Returns:
-        Dictionary with all _path parameters resolved to absolute paths
-
-    Example:
-        >>> params = {
-        ...     "data_path": "input/data.json",
-        ...     "config": {
-        ...         "calibration_path": "calib.yaml"
-        ...     },
-        ...     "threshold": 0.5
-        ... }
-        >>> resolve_path_params(params, ctx.resolve_path)
-        {
-            "data_path": Path("/abs/path/to/input/data.json"),
-            "config": {
-                "calibration_path": Path("/abs/path/to/calib.yaml")
-            },
-            "threshold": 0.5
-        }
-    """
-    if not isinstance(params, dict):
-        return params
-
-    resolved = {}
-    for key, value in params.items():
-        if key.endswith("_path") and isinstance(value, (str, type(None))):
-            # Resolve path parameters
-            resolved[key] = resolve_fn(value) if value is not None else None
-        elif isinstance(value, dict):
-            # Recursively resolve nested dictionaries
-            resolved[key] = resolve_path_params(value, resolve_fn)
-        elif isinstance(value, list):
-            # Recursively resolve lists of dictionaries
-            resolved[key] = [
-                resolve_path_params(item, resolve_fn) if isinstance(item, dict) else item
-                for item in value
-            ]
-        else:
-            # Keep other values unchanged
-            resolved[key] = value
-
-    return resolved
-
-
-# =============================================================================
 # Data Rendering Plugin
 # =============================================================================
 
@@ -256,25 +196,32 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     """
     Apply multiple data renderers to all video frames.
 
-    Uses the unified execution unit framework to manage renderers.
-    Renderers are automatically instantiated and cached.
+    Uses the repro module's simple renderer registry to manage renderers.
+    Renderers are automatically instantiated and reused for all frames.
 
-    Path resolution:
+    Path Resolution Convention:
         All parameters ending with '_path' in renderer kwargs are automatically
         resolved to absolute paths relative to the case directory.
 
-    Config format (recommended - use registered names):
+        Example:
+            data_path: "input/speed.jsonl"  -> /abs/case/path/input/speed.jsonl
+            calibration_path: "calib.yaml"  -> /abs/case/path/calib.yaml
+
+        To disable auto-resolution for a specific field, use:
+            Field(..., json_schema_extra={"skip_path_resolve": True})
+
+    Config format (use registered names):
         renderers:
           - name: "speed"  # Short registered name
             kwargs:
-              data_path: "input/speed.jsonl"
+              data_path: "input/speed.jsonl"       # Auto-resolved
               position: [30, 60]
               tolerance_ms: 5000
 
           - name: "target"
             kwargs:
-              data_path: "input/adb_targets.jsonl"
-              calibration_path: "camera_calibration.yaml"
+              data_path: "input/adb_targets.jsonl"      # Auto-resolved
+              calibration_path: "camera_calibration.yaml"  # Auto-resolved
               tolerance_ms: 50
 
     Config:
@@ -296,14 +243,14 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     else:
         timestamps_path = frames_dir / "frame_timestamps.csv"
 
-    # Resolve paths in renderer kwargs automatically
+    # Resolve paths in renderer kwargs automatically using '*_path' convention
     renderer_configs = []
     for renderer_config in config.renderers:
         rc = renderer_config.copy()
         kwargs = rc.get("kwargs", {})
 
-        # Automatically resolve all _path parameters
-        resolved_kwargs = resolve_path_params(kwargs, ctx.resolve_path)
+        # Automatically resolve all *_path parameters
+        resolved_kwargs = ctx.auto_resolve_paths(kwargs)
 
         rc["kwargs"] = resolved_kwargs
         renderer_configs.append(rc)

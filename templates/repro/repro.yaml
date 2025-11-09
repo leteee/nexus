@@ -1,10 +1,46 @@
 # Nexus Video Data Replay Template
 # Demonstrates overlaying time-series data onto video frames
+# with shared configuration using @defaults references
 
 case_info:
   name: "Vehicle Data Replay"
   description: "Extract frames, render speed and ADB target data overlay, compose output video"
-  version: "3.0.0"
+  version: "4.0.0"
+
+# =============================================================================
+# Shared Defaults
+# =============================================================================
+# Define reusable configuration blocks here
+# Reference them in pipeline using @defaults.xxx syntax
+
+defaults:
+  # Common renderer settings
+  renderer_base:
+    time_offset_ms: 0
+    tolerance_ms: 50.0
+
+  # Speed renderer configuration
+  speed_renderer:
+    position: [30, 60]
+    tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
+    font_scale: 1.2
+    color: [0, 255, 0]    # Green
+    thickness: 3
+
+  # Target renderer configuration
+  target_renderer:
+    tolerance_ms: 50.0    # Nearest matching: within 50ms
+    box_color: [0, 255, 0]  # Green boxes
+    box_thickness: 2
+    show_panel: true
+
+  # Camera calibration path
+  camera:
+    calibration_path: "../../src/nexus/contrib/repro/camera_calibration.json"
+
+# =============================================================================
+# Pipeline
+# =============================================================================
 
 pipeline:
   # Step 1: Extract frames from video
@@ -17,37 +53,31 @@ pipeline:
   # Step 2: Render data onto frames using modular renderers
   - plugin: "Data Renderer"
     config:
-      # Time range control (Time is first-class: video timeline is primary)
-      # start_time: null  # Start time: null (default), timestamp_ms, or "2025-10-27 12:00:00"
-      # end_time: null    # End time: null (default), timestamp_ms, or "2025-10-27 12:01:00"
+      # Time range control
       start_time: "2025-10-27 08:30:10"
       end_time: "2025-10-27 08:30:30"
       frames_dir: "temp/frames"
       output_dir: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
+      show_frame_info: true
 
-      # Renderers using unified execution unit framework
-      # Use short registered names instead of full class paths
+      # Renderers with shared configuration
       renderers:
-        # Render vehicle speed (top-left corner)
-        - name: "speed"  # Registered renderer name
+        # Render vehicle speed using shared config
+        - name: "speed"
           kwargs:
-            time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
-            data_path: "input/speed.jsonl"
-            position: [30, 60]
-            tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
-            font_scale: 1.2
-            color: [0, 255, 0]  # Green
+            _extends: "@defaults.speed_renderer"  # Inherit speed_renderer defaults
+            data_path: "input/speed.jsonl"        # Add data_path
+            time_offset_ms: 0                     # Can override defaults
 
-        # Render 3D target detections (projected to 2D)
-        - name: "target"  # Registered renderer name
+        # Render 3D target detections using shared config
+        - name: "target"
           kwargs:
-            time_offset_ms: 0  # Time offset: adjust data timeline (0=no offset)
+            _extends: "@defaults.target_renderer"                # Inherit target_renderer defaults
             data_path: "input/adb_targets.jsonl"
-            calibration_path: "../../src/nexus/contrib/repro/camera_calibration.json"
-            tolerance_ms: 50.0  # Nearest matching: within 50ms
-            box_color: [0, 255, 0]  # Green boxes
+            calibration_path: "@defaults.camera.calibration_path"  # Reference nested value
+            time_offset_ms: 0
             show_panel: true
 
   # Step 3: Compose rendered frames back to video
@@ -61,16 +91,16 @@ pipeline:
 
 # Architecture Notes:
 #
-# 1. Modular Renderers (Unified Execution Unit Framework):
+# 1. Modular Renderers (Simple Registration):
 #    - Each renderer handles ONE data type
-#    - Registered with @register_unit("name", unit_type="renderer")
+#    - Registered with @render("name") decorator
 #    - SpeedRenderer: Vehicle speed with forward matching
 #    - TargetRenderer: 3D object detection with projection
 #
 # 2. Easy to Extend:
 #    - Add new data type: Create a renderer class
 #    - Inherit from BaseDataRenderer
-#    - Register with @register_unit("your_name", unit_type="renderer")
+#    - Register with @render("your_name") decorator
 #    - Add to renderers list using "name" key
 #
 # 3. Matching Strategies:
@@ -85,10 +115,9 @@ pipeline:
 # Example: Adding Custom Renderer
 #
 # # 1. Define and register renderer:
-# from nexus.core.execution_units import register_unit
-# from nexus.contrib.repro.renderers import BaseDataRenderer
+# from nexus.contrib.repro import render, BaseDataRenderer
 #
-# @register_unit("gps", unit_type="renderer")
+# @render("gps")
 # class GPSRenderer(BaseDataRenderer):
 #     def render(self, frame, timestamp_ms):
 #         # Draw GPS data
