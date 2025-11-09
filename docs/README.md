@@ -1,239 +1,81 @@
-# Nexus Documentation
-
-Welcome to Nexus - A modern, functional data processing framework.
-
----
-
-## 📚 Documentation Guide
-
-### Quick Start Path
-
-**New to Nexus?** Follow this path:
-1. **[Main README](../README.md)** - Installation & quick start
-2. **[User Guide](user-guide.md)** - Complete usage guide
-3. **[Example Cases](../cases/README.md)** - Ready-to-run examples
-
----
-
-## 📖 Core Documentation
-
-### 📘 [User Guide](user-guide.md)
-**Complete usage documentation**
-
-**What's inside**:
-- Quick start tutorial
-- All CLI commands with examples
-- Configuration system
-- Built-in plugins reference
-- Creating custom plugins
-- Best practices & tips
-
-**When to read**: You're learning Nexus or need command/feature reference.
-
-**Length**: ~685 lines (comprehensive but focused)
-
----
-
-### 📗 [Architecture](architecture.md)
-**Framework design and internals**
-
-**What's inside**:
-- Design philosophy and principles
-- Component architecture
-- Plugin system internals
-- Data management design
-- Performance considerations
-- Security design
-
-**When to read**: You want to extend Nexus or contribute to development.
-
-**Length**: ~470 lines (technical depth)
-
----
-
-### 📙 [Execution Flows](execution-flows.md)
-**Visual execution flow documentation**
-
-**What's inside**:
-- Pipeline execution diagrams
-- Single plugin execution flow
-- Configuration resolution flow
-- Data flow diagrams
-- Error handling flows
-
-**When to read**: You need to understand how Nexus works internally or debug issues.
-
-**Length**: ~556 lines (visual diagrams)
-
----
-
-### 📕 [Example Cases](../cases/README.md)
-**Ready-to-run examples**
-
-**What's inside**:
-- **quickstart** - Minimal single-plugin example
-- **demo** - Comprehensive 4-step pipeline (Generate → Filter → Aggregate → Validate)
-
-**When to read**: You want working examples to learn from.
-
----
-
-### 📓 [API Documentation](api/README.md)
-**Auto-generated plugin and handler docs**
-
-**What's inside**:
-- 5 plugin specifications
-- 6 handler specifications
-- Configuration schemas
-- Usage examples
-
-**When to read**: You need detailed plugin/handler reference.
-
-**How to generate**: Run `nexus doc --force`
-
----
-
-### 📔 [Documentation Design](documentation-design.md)
-**Documentation generation design and best practices**
-
-**What's inside**:
-- Documentation design principles (DRY, YAGNI, Practical First)
-- Plugin API documentation format and evolution
-- Implementation details of `nexus doc` command
-- CLI help system design decisions
-- Best practices for maintaining documentation
-
-**When to read**: You're working on documentation generation or want to understand design decisions.
-
-**Length**: ~560 lines (comprehensive meta-documentation)
-
----
-
-## 🎯 By Task
-
-### Running Pipelines
-- [User Guide → nexus run](user-guide.md#nexus-run)
-- [Example Cases](../cases/README.md)
-
-### Running Single Plugins
-- [User Guide → nexus plugin](user-guide.md#nexus-plugin)
-- [User Guide → Built-in Plugins](user-guide.md#built-in-plugins)
-
-### Configuration
-- [User Guide → Configuration System](user-guide.md#configuration-system)
-- [User Guide → Configuration Overrides](user-guide.md#configuration-overrides)
-
-### Creating Plugins
-- [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins)
-- [Architecture → Plugin System](architecture.md#3-plugin-system)
-
-### Understanding Framework
-- [Architecture](architecture.md)
-- [Execution Flows](execution-flows.md)
-
----
-
-## 🚀 Learning Paths
-
-### "I want to use Nexus"
-1. Read [Main README](../README.md)
-2. Run [Example Cases](../cases/README.md)
-3. Reference [User Guide](user-guide.md)
-
-### "I want to build custom pipelines"
-1. Read [User Guide → CLI Commands](user-guide.md#cli-commands)
-2. Study [User Guide → Pipeline Definition](user-guide.md#pipeline-definition)
-3. Try [Example Cases → demo](../cases/README.md#demo)
-
-### "I want to create plugins"
-1. Read [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins)
-2. Study [Architecture → Plugin System](architecture.md#3-plugin-system)
-3. Review [Built-in Plugins](user-guide.md#built-in-plugins) for examples
-
-### "I want to understand internals"
-1. Read [Architecture](architecture.md)
-2. Study [Execution Flows](execution-flows.md)
-3. Explore source code in `src/nexus/`
-
-### "I want to contribute"
-1. Read [Architecture](architecture.md)
-2. Study [Execution Flows](execution-flows.md)
-3. Check [Main README → Development](../README.md#development)
-
----
-
-## 📈 Documentation Structure
-
-```
-nexus/
-├── README.md                    # Installation & quick start
-├── docs/
-│   ├── README.md               # This file - Documentation index
-│   ├── user-guide.md           # Complete usage guide
-│   ├── architecture.md         # Framework design & internals
-│   ├── execution-flows.md      # Visual flow diagrams
-│   ├── documentation-design.md # Documentation generation design
-│   └── api/                    # Auto-generated API docs
-│       ├── README.md
-│       ├── plugins/            # Plugin documentation
-│       └── handlers/           # Handler documentation
-└── cases/
-    ├── README.md               # Example cases index
-    ├── quickstart/             # Minimal example
-    └── demo/                   # Comprehensive pipeline
-```
-
----
-
-## 📋 Documentation Principles
-
-### 1. **No Redundancy**
-Each document has a single, well-defined purpose. No overlap or duplication.
-
-### 2. **Progressive Disclosure**
-Start simple (User Guide), dive deep when needed (Architecture).
-
-### 3. **Task-Oriented**
-Organized by what you want to accomplish, not implementation details.
-
-### 4. **Practical Examples**
-Every concept includes working code examples.
-
-### 5. **Visual When Helpful**
-Diagrams and flowcharts make complex concepts clear (Execution Flows).
-
-### 6. **Auto-Generated Documentation**
-API documentation is auto-generated using `nexus doc` command following DRY principles.
-See [Documentation Design](documentation-design.md) for design rationale and best practices.
-
----
-
-## 🆘 Quick Reference
-
-| I need... | Go to... |
-|-----------|----------|
-| Install Nexus | [Main README](../README.md) |
-| Learn CLI commands | [User Guide → CLI Commands](user-guide.md#cli-commands) |
-| See examples | [Example Cases](../cases/README.md) |
-| Plugin reference | [User Guide → Built-in Plugins](user-guide.md#built-in-plugins) |
-| Create custom plugin | [User Guide → Creating Custom Plugins](user-guide.md#creating-custom-plugins) |
-| Understand config | [User Guide → Configuration System](user-guide.md#configuration-system) |
-| Framework internals | [Architecture](architecture.md) |
-| Execution flow | [Execution Flows](execution-flows.md) |
-| API reference | [API Documentation](api/README.md) |
-| Documentation design | [Documentation Design](documentation-design.md) |
-
----
-
-## 📊 Documentation Stats
-
-- **Total lines**: ~2,543 (includes new documentation-design.md)
-- **Core documents**: 5 (user-guide, architecture, execution-flows, documentation-design, README)
-- **Example cases**: 2 (quickstart, demo)
-- **Plugins documented**: 5
-- **Handlers documented**: 6
-
----
-
-**Last Updated**: 2025-01-10
-**Version**: 1.1.0
+# Nexus 文档
+
+> 轻量级Python插件编排框架
+
+## 📚 文档导航
+
+### 快速开始
+- [快速开始指南](getting-started.md) - 5分钟上手Nexus
+
+### 核心框架
+- [核心概览](core/overview.md) - Nexus核心架构和设计理念
+- [插件系统](core/plugins.md) - 插件注册、发现和执行
+- [配置系统](core/configuration.md) - 配置层次、引用和合并
+- [执行上下文](core/context.md) - PluginContext和NexusContext
+- [高级特性](core/advanced.md) - 路径解析、配置引用等高级功能
+
+### Repro模块（视频数据回放）
+- [Repro概览](repro/README.md) - 视频数据回放模块介绍
+- [快速开始](repro/quick-start.md) - 使用repro的第一个示例
+- [渲染器系统](repro/renderers.md) - 数据渲染器的设计和使用
+- [视频处理](repro/video-processing.md) - 视频分割、合成和渲染
+- [数据生成](repro/data-generation.md) - 合成数据生成工具
+- [API参考](repro/api-reference.md) - 完整API文档
+
+### 开发指南
+- [编写插件](guides/writing-plugins.md) - 如何编写Nexus插件
+- [编写渲染器](guides/writing-renderers.md) - 如何编写自定义渲染器
+- [配置最佳实践](guides/configuration-best-practices.md) - 配置系统的最佳实践
+
+### 参考手册
+- [CLI命令参考](reference/cli.md) - 命令行接口完整参考
+- [API文档](api/README.md) - 自动生成的插件API文档
+
+## 🎯 文档特点
+
+### 清晰分层
+- **核心框架**：Nexus插件系统、配置管理、执行引擎
+- **Repro模块**：独立的视频数据回放模块，有自己的渲染器系统
+- **开发指南**：面向开发者的实践指南
+
+### 独立性
+每个模块的文档都是自包含的：
+- Nexus核心文档专注于插件编排和配置系统
+- Repro文档专注于视频处理和数据可视化
+- 可以单独学习使用任一模块
+
+### 实用性
+- 所有示例都可以直接运行
+- 包含完整的配置示例
+- 提供常见问题解决方案
+
+## 📖 推荐阅读路径
+
+### 新用户
+1. [快速开始](getting-started.md)
+2. [核心概览](core/overview.md)
+3. [插件系统](core/plugins.md)
+
+### 插件开发者
+1. [编写插件](guides/writing-plugins.md)
+2. [配置系统](core/configuration.md)
+3. [配置最佳实践](guides/configuration-best-practices.md)
+
+### Repro用户
+1. [Repro快速开始](repro/quick-start.md)
+2. [渲染器系统](repro/renderers.md)
+3. [编写渲染器](guides/writing-renderers.md)
+
+### 高级用户
+1. [高级特性](core/advanced.md)
+2. [执行上下文](core/context.md)
+3. [API参考](repro/api-reference.md)
+
+## 🔄 文档更新
+
+本文档基于Nexus最新代码重新编写，重点突出：
+- 简单的插件注册机制（@plugin装饰器）
+- 清晰的配置系统（4层配置+引用机制）
+- 独立的repro渲染器框架（@render装饰器）
+
+最后更新：2025-11-09
