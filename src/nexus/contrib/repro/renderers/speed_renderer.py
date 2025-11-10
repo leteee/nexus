@@ -7,7 +7,7 @@ Renders speed data in top-left corner with configurable position and styling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional, Any
 
 import cv2
 import numpy as np
@@ -31,6 +31,7 @@ class SpeedRenderer(BaseDataRenderer):
 
     Example:
         >>> renderer = SpeedRenderer(
+        ...     ctx=ctx,  # Pass PluginContext
         ...     data_path="input/speed.jsonl",
         ...     position=(30, 60),
         ...     tolerance_ms=5000.0,  # Hold speed for up to 5s
@@ -41,6 +42,7 @@ class SpeedRenderer(BaseDataRenderer):
 
     def __init__(
         self,
+        ctx: Any,
         data_path: Union[Path, str],
         position: Tuple[int, int] = (30, 60),
         tolerance_ms: float = 5000.0,
@@ -51,16 +53,18 @@ class SpeedRenderer(BaseDataRenderer):
     ):
         """
         Args:
+            ctx: Context object providing logger, path resolution, shared state access
             data_path: Path to speed JSONL file
             position: (x, y) position for text (top-left anchor)
             tolerance_ms: Forward matching tolerance (default 5000ms)
-            time_offset_ms: Time offset to apply to data timestamps (int, default 0ms)
+            time_offset_ms: Time offset to correct data timestamp bias (int, default 0ms)
             font_scale: Font size multiplier
             color: Text color in BGR format
             thickness: Text thickness
         """
         # Use forward matching for speed (holds value)
         super().__init__(
+            ctx=ctx,
             data_path=data_path,
             tolerance_ms=tolerance_ms,
             match_strategy="forward",
@@ -83,14 +87,20 @@ class SpeedRenderer(BaseDataRenderer):
         Returns:
             Frame with speed rendered
         """
+        # Log rendering start
+        self.ctx.logger.debug(f"Rendering speed at timestamp {timestamp_ms}ms")
+
         # Match speed data
         matched = self.match_data(timestamp_ms)
 
         # Prepare text
         if not matched or "speed" not in matched[0]:
             speed_str = "N/A"
+            self.ctx.logger.debug(f"No speed data found for timestamp {timestamp_ms}ms")
         else:
-            speed_str = f"{matched[0]['speed']:.1f} km/h"
+            speed_value = matched[0]['speed']
+            speed_str = f"{speed_value:.1f} km/h"
+            self.ctx.logger.debug(f"Matched speed data: {speed_value:.1f} km/h at {matched[0].get('timestamp_ms', 'N/A')}ms")
 
         text = f"Speed: {speed_str}"
 

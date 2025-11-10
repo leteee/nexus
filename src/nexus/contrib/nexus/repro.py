@@ -282,6 +282,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         end_time_ms=end_time_ms,
         show_frame_info=config.show_frame_info,
         progress_callback=progress_callback,
+        ctx=ctx,  # Pass context to renderers
     )
 
     ctx.logger.info(f"Completed: rendered frames to {output_dir}")

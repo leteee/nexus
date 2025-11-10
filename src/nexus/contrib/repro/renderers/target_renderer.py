@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Any
 
 import cv2
 import numpy as np
@@ -67,6 +67,7 @@ class TargetRenderer(BaseDataRenderer):
 
     Example:
         >>> renderer = TargetRenderer(
+        ...     ctx=ctx,  # Pass PluginContext
         ...     data_path="input/adb_targets.jsonl",
         ...     calibration_path="camera_calibration.json",
         ...     tolerance_ms=50.0,
@@ -77,6 +78,7 @@ class TargetRenderer(BaseDataRenderer):
 
     def __init__(
         self,
+        ctx: Any,
         data_path: Union[Path, str],
         calibration_path: Union[Path, str],
         tolerance_ms: float = 50.0,
@@ -87,16 +89,18 @@ class TargetRenderer(BaseDataRenderer):
     ):
         """
         Args:
+            ctx: Context object providing logger, path resolution, shared state access
             data_path: Path to targets JSONL file
             calibration_path: Path to camera calibration YAML file
             tolerance_ms: Matching tolerance (default 50ms, nearest strategy)
-            time_offset_ms: Time offset to apply to data timestamps (int, default 0ms)
+            time_offset_ms: Time offset to correct data timestamp bias (int, default 0ms)
             box_color: Bounding box color in BGR format
             box_thickness: Bounding box line thickness
             show_panel: Whether to show info panel in bottom-left
         """
         # Use nearest matching for targets
         super().__init__(
+            ctx=ctx,
             data_path=data_path,
             tolerance_ms=tolerance_ms,
             match_strategy="nearest",
@@ -347,17 +351,24 @@ class TargetRenderer(BaseDataRenderer):
         Returns:
             Frame with targets rendered
         """
+        # Log rendering start
+        self.ctx.logger.debug(f"Rendering targets at timestamp {timestamp_ms}ms")
+
         # Match target data
         matched = self.match_data(timestamp_ms)
 
         if not matched:
+            self.ctx.logger.debug(f"No target data found for timestamp {timestamp_ms}ms")
             return frame
 
         # Get targets list from matched data
         targets = matched[0].get("targets", [])
 
         if not targets:
+            self.ctx.logger.debug(f"Matched data has no targets at timestamp {timestamp_ms}ms")
             return frame
+
+        self.ctx.logger.debug(f"Rendering {len(targets)} targets from data at {matched[0].get('timestamp_ms', 'N/A')}ms")
 
         # Project and draw each target
         projected_targets = []
@@ -366,6 +377,10 @@ class TargetRenderer(BaseDataRenderer):
             if proj is not None:
                 frame = self._draw_target_box(frame, proj)
                 projected_targets.append(target)
+            else:
+                self.ctx.logger.debug(f"Target {target.get('id', 'N/A')} could not be projected (out of view or behind camera)")
+
+        self.ctx.logger.debug(f"Successfully rendered {len(projected_targets)}/{len(targets)} targets")
 
         # Draw info panel if enabled
         if self.show_panel:

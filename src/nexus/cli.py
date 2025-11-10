@@ -300,6 +300,118 @@ def doc_cmd(output: str, force: bool) -> None:
 # Documentation helpers
 
 
+def _generate_yaml_value_from_schema(schema: dict, indent: int = 0) -> list[str]:
+    """
+    Generate YAML representation from JSON schema recursively.
+
+    Args:
+        schema: JSON schema dict from Pydantic
+        indent: Current indentation level
+
+    Returns:
+        List of YAML lines
+    """
+    lines = []
+    schema_type = schema.get("type")
+
+    # Handle arrays
+    if schema_type == "array":
+        items_schema = schema.get("items", {})
+        items_type = items_schema.get("type")
+
+        if items_type == "object":
+            # Array of objects - show example structure
+            lines.append("")
+            properties = items_schema.get("properties", {})
+            if properties:
+                # Has defined properties - show full structure
+                indent_str = "  " * (indent + 1)
+                lines.append(f"{indent_str}- # Example item")
+                for prop_name, prop_schema in properties.items():
+                    prop_lines = _generate_yaml_value_from_schema(prop_schema, indent + 2)
+                    if len(prop_lines) == 1 and not prop_lines[0].startswith("\n"):
+                        # Simple value
+                        lines.append(f"{indent_str}  {prop_name}: {prop_lines[0]}")
+                    else:
+                        # Complex value
+                        lines.append(f"{indent_str}  {prop_name}:{prop_lines[0]}")
+                        lines.extend(prop_lines[1:])
+            else:
+                # No properties defined - generic dict
+                # Show a more useful example with common keys
+                indent_str = "  " * (indent + 1)
+                lines.append(f"{indent_str}- # Example item (dict)")
+                lines.append(f"{indent_str}  key1: \"value1\"")
+                lines.append(f"{indent_str}  key2: \"value2\"")
+        elif items_type == "string":
+            # Array of strings
+            lines.append("")
+            indent_str = "  " * (indent + 1)
+            lines.append(f"{indent_str}- \"item1\"")
+            lines.append(f"{indent_str}- \"item2\"")
+        elif items_type == "number" or items_type == "integer":
+            # Array of numbers
+            lines.append("")
+            indent_str = "  " * (indent + 1)
+            lines.append(f"{indent_str}- 1")
+            lines.append(f"{indent_str}- 2")
+        else:
+            # Array of primitives or unknown
+            lines.append(" []")
+
+    # Handle objects
+    elif schema_type == "object":
+        properties = schema.get("properties", {})
+        if properties:
+            lines.append("")
+            indent_str = "  " * (indent + 1)
+            for prop_name, prop_schema in properties.items():
+                prop_lines = _generate_yaml_value_from_schema(prop_schema, indent + 1)
+                if len(prop_lines) == 1 and not prop_lines[0].startswith("\n"):
+                    # Simple value
+                    lines.append(f"{indent_str}{prop_name}: {prop_lines[0]}")
+                else:
+                    # Complex value
+                    lines.append(f"{indent_str}{prop_name}:{prop_lines[0]}")
+                    lines.extend(prop_lines[1:])
+        else:
+            lines.append(" {}")
+
+    # Handle primitives
+    elif schema_type == "string":
+        default = schema.get("default")
+        if default:
+            lines.append(f'"{default}"')
+        else:
+            lines.append('"value"')
+
+    elif schema_type == "number" or schema_type == "integer":
+        default = schema.get("default")
+        if default is not None:
+            lines.append(str(default))
+        else:
+            lines.append("0")
+
+    elif schema_type == "boolean":
+        default = schema.get("default")
+        if default is not None:
+            lines.append(str(default).lower())
+        else:
+            lines.append("false")
+
+    elif schema_type == "null":
+        lines.append("null")
+
+    else:
+        # Unknown type or anyOf/oneOf
+        if "anyOf" in schema or "oneOf" in schema:
+            lines.append('"value"')
+        else:
+            lines.append('""')
+
+    return lines
+
+
 def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
     """Generate markdown documentation for a plugin with enhanced formatting."""
     from pydantic_core import PydanticUndefined
@@ -315,6 +427,10 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
     lines.append("")
 
     if plugin_spec.config_model:
+        # Get JSON schema for the model
+        json_schema = plugin_spec.config_model.model_json_schema()
+        properties = json_schema.get("properties", {})
+
         # YAML example
         lines.append("### Example Configuration")
         lines.append("")
@@ -324,39 +440,56 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
         lines.append("    config:")
 
         for field_name, field_info in plugin_spec.config_model.model_fields.items():
-            # Get default value for YAML
-            default = field_info.default
-            if default is PydanticUndefined:
-                value_str = "# REQUIRED"
-            elif default is None:
-                value_str = "null"
-            elif isinstance(default, str):
-                value_str = f'"{default}"'
-            elif isinstance(default, bool):
-                value_str = str(default).lower()
-            elif isinstance(default, (int, float)):
-                value_str = str(default)
-            elif isinstance(default, list):
-                value_str = "[]"
-            elif isinstance(default, dict):
-                value_str = "{}"
-            else:
-                value_str = str(default)
+            # Get field schema
+            field_schema = properties.get(field_name, {})
 
-            # Get field type
+            # Get default value
+            default = field_info.default
+
+            # Generate YAML value using schema
+            if default is PydanticUndefined:
+                # Required field - generate example from schema
+                yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+            elif default is None:
+                yaml_lines = ["null"]
+            elif isinstance(default, str):
+                yaml_lines = [f'"{default}"']
+            elif isinstance(default, bool):
+                yaml_lines = [str(default).lower()]
+            elif isinstance(default, (int, float)):
+                yaml_lines = [str(default)]
+            elif isinstance(default, list):
+                # Use schema to generate example list
+                yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+            elif isinstance(default, dict):
+                # Use schema to generate example dict
+                yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+            else:
+                yaml_lines = [str(default)]
+
+            # Get field type for comment
             field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
             field_type = field_type.replace("typing.", "")
 
             # Get description
             description = field_info.description or ""
 
-            # Build inline comment
+            # Build inline comment for first line
             if description:
                 comment = f"  # {field_type}: {description}"
             else:
                 comment = f"  # {field_type}"
 
-            lines.append(f"      {field_name}: {value_str}{comment}")
+            # Output YAML lines
+            if len(yaml_lines) == 1 and not yaml_lines[0].startswith("\n"):
+                # Simple single-line value
+                lines.append(f"      {field_name}: {yaml_lines[0]}{comment}")
+            else:
+                # Multi-line value (nested structure)
+                lines.append(f"      {field_name}:{comment}")
+                for yaml_line in yaml_lines:
+                    if yaml_line:  # Skip empty strings
+                        lines.append(f"    {yaml_line}")
 
         lines.append("```")
         lines.append("")

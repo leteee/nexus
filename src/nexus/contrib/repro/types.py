@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 
@@ -101,7 +101,7 @@ class DataRenderer(ABC):
         Render data visualization onto frame.
 
         This method internally calls match_data() with the timestamp,
-        then renders the matched data.
+        then renders the matched data. Context is accessible via self.ctx.
 
         Args:
             frame: Video frame as numpy array (H, W, C) in BGR format
@@ -113,9 +113,11 @@ class DataRenderer(ABC):
         Example:
             >>> def render(self, frame, timestamp_ms):
             ...     # Match data for this timestamp
-            ...     matched = self.match_data(timestamp_ms, self.tolerance_ms)
+            ...     matched = self.match_data(timestamp_ms)
             ...     if not matched:
             ...         return frame
+            ...     # Use context for logging
+            ...     self.ctx.logger.debug(f"Rendering data at {timestamp_ms}ms")
             ...     # Render the data
             ...     speed = matched[0].get('speed', 0)
             ...     cv2.putText(frame, f"Speed: {speed:.1f}", (20, 50), ...)

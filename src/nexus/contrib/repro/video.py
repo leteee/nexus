@@ -292,6 +292,7 @@ def render_all_frames(
     end_time_ms: Optional[float] = None,
     show_frame_info: bool = True,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    ctx: Any,
 ) -> Path:
     """
     Apply multiple data renderers to all video frames.
@@ -312,6 +313,7 @@ def render_all_frames(
         end_time_ms: Optional end time (None=to end)
         show_frame_info: Show frame ID and timestamp overlay (default: True)
         progress_callback: Optional callback(count, total) for progress tracking
+        ctx: Context object to pass to renderers (required, with logger and path resolution)
 
     Returns:
         Path to output directory
@@ -400,8 +402,8 @@ def render_all_frames(
 
         renderer_kwargs = config.get("kwargs", {})
 
-        # Instantiate renderer
-        renderer_instance = renderer_class(**renderer_kwargs)
+        # Instantiate renderer with ctx as first parameter
+        renderer_instance = renderer_class(ctx, **renderer_kwargs)
 
         renderers.append({
             "class": class_path,

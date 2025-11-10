@@ -12,7 +12,7 @@ Subclasses only need to implement render() method.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -30,18 +30,19 @@ class BaseDataRenderer(DataRenderer):
     - Configurable tolerance
 
     Subclasses implement:
-    - render(frame, timestamp_ms): How to draw data on frame
+    - render(ctx, frame, timestamp_ms): How to draw data on frame
 
     Example:
         >>> class SpeedRenderer(BaseDataRenderer):
-        ...     def __init__(self, data_path, position=(20, 50), **kwargs):
-        ...         super().__init__(data_path, **kwargs)
+        ...     def __init__(self, ctx, data_path, position=(20, 50), **kwargs):
+        ...         super().__init__(ctx, data_path, **kwargs)
         ...         self.position = position
         ...
         ...     def render(self, frame, timestamp_ms):
-        ...         matched = self.match_data(timestamp_ms, self.tolerance_ms)
+        ...         matched = self.match_data(timestamp_ms)
         ...         if not matched:
         ...             return frame
+        ...         self.ctx.logger.debug(f"Rendering speed at {timestamp_ms}ms")
         ...         speed = matched[0]['speed']
         ...         cv2.putText(frame, f"Speed: {speed:.1f}", self.position, ...)
         ...         return frame
@@ -49,6 +50,7 @@ class BaseDataRenderer(DataRenderer):
 
     def __init__(
         self,
+        ctx: Any,
         data_path: Union[Path, str],
         tolerance_ms: float = 50.0,
         match_strategy: Literal["nearest", "forward", "backward"] = "nearest",
@@ -56,14 +58,16 @@ class BaseDataRenderer(DataRenderer):
     ):
         """
         Args:
+            ctx: Context object providing logger, path resolution, shared state access
             data_path: Path to JSONL data file
             tolerance_ms: Matching tolerance in milliseconds
             match_strategy: Matching strategy - "nearest", "forward", or "backward"
-            time_offset_ms: Time offset to apply to data timestamps (int milliseconds)
-                          Positive: data is delayed (data later than video)
-                          Negative: data is ahead (data earlier than video)
-                          Example: time_offset_ms=100 means data at 1100ms matches video frame at 1000ms
+            time_offset_ms: Time offset to correct data timestamp bias (int milliseconds)
+                          Positive: data timestamps are slow (recorded smaller than actual)
+                          Negative: data timestamps are fast (recorded larger than actual)
+                          Example: time_offset_ms=100 means data recorded at 900ms actually happened at 1000ms
         """
+        self.ctx = ctx
         self.data_path = Path(data_path)
         self.tolerance_ms = tolerance_ms
         self.match_strategy = match_strategy
@@ -91,9 +95,9 @@ class BaseDataRenderer(DataRenderer):
         """
         Match data using configured strategy with time offset applied.
 
-        Time offset is applied to find data: searches for data at (timestamp_ms + time_offset_ms).
-        - time_offset_ms > 0: Look for later data (data delayed)
-        - time_offset_ms < 0: Look for earlier data (data ahead)
+        Time offset corrects data timestamp bias: searches for data at (timestamp_ms - time_offset_ms).
+        - time_offset_ms > 0: Data timestamps are slow (recorded smaller than actual)
+        - time_offset_ms < 0: Data timestamps are fast (recorded larger than actual)
 
         Args:
             timestamp_ms: Target timestamp in milliseconds (video frame time, int)
@@ -103,9 +107,9 @@ class BaseDataRenderer(DataRenderer):
             List with single matching data dict, or empty list if no match
 
         Example:
-            >>> # Video frame at 1000ms, time_offset_ms=100
-            >>> # Will search for data at 1100ms
-            >>> renderer.match_data(1000)  # Finds data near 1100ms
+            >>> # Video frame at 1000ms, time_offset_ms=100 (data timestamps slow by 100ms)
+            >>> # Will search for data recorded at 900ms (which actually happened at 1000ms)
+            >>> renderer.match_data(1000)  # Finds data near 900ms
         """
         if tolerance_ms is None:
             tolerance_ms = self.tolerance_ms
@@ -113,8 +117,9 @@ class BaseDataRenderer(DataRenderer):
         if not self.data:
             return []
 
-        # Apply time offset: search for data at (timestamp_ms + offset)
-        adjusted_timestamp_ms = timestamp_ms + self.time_offset_ms
+        # Apply time offset to correct data timestamp bias
+        # If data timestamps are slow, subtract offset to find earlier recorded timestamps
+        adjusted_timestamp_ms = timestamp_ms - self.time_offset_ms
 
         if self.match_strategy == "nearest":
             return self._match_nearest(adjusted_timestamp_ms, tolerance_ms)

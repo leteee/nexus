@@ -66,7 +66,18 @@ def discover_from_path(path_str: str, project_root: Path) -> int:
             # Adapter module doesn't exist, that's OK
             pass
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Failed to import '%s': %s", package_name, exc)
+        import traceback
+        logger.error(
+            "Failed to import plugin package '%s': %s\n"
+            "Error type: %s\n"
+            "Package path: %s\n"
+            "Traceback:\n%s",
+            package_name,
+            exc,
+            type(exc).__name__,
+            path,
+            traceback.format_exc()
+        )
         return 0
 
     logger.info("Imported package '%s'", package_name)
