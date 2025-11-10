@@ -7,17 +7,16 @@
 Repro渲染器是独立的Python类，用于将时序数据可视化到视频帧上。
 
 **核心特点**：
-- 使用 `@render` 装饰器注册
 - 继承 `BaseDataRenderer` 获得匹配功能
 - 只需实现 `render()` 方法
+- 使用全类名在配置中引用
 
 ## 最简单的渲染器
 
 ```python
-from nexus.contrib.repro import render, BaseDataRenderer
+from nexus.contrib.repro.renderers import BaseDataRenderer
 import cv2
 
-@render("my_renderer")
 class MyRenderer(BaseDataRenderer):
     def render(self, frame, timestamp_ms):
         # 在帧上绘制文本
@@ -36,7 +35,7 @@ class MyRenderer(BaseDataRenderer):
 
 ```yaml
 renderers:
-  - name: "my_renderer"  # 注册名称
+  - class: "your.module.path.MyRenderer"  # 全类名
     kwargs: {}
 ```
 
@@ -45,7 +44,6 @@ renderers:
 大多数渲染器需要加载和匹配时序数据。
 
 ```python
-@render("temperature")
 class TemperatureRenderer(BaseDataRenderer):
     def __init__(self, data_path, position=(30, 60), **kwargs):
         # 调用父类初始化（加载数据，设置匹配参数）
@@ -54,7 +52,7 @@ class TemperatureRenderer(BaseDataRenderer):
 
     def render(self, frame, timestamp_ms):
         # 匹配数据
-        matched = self.match_data(timestamp_ms, self.tolerance_ms)
+        matched = self.match_data(timestamp_ms)
 
         if not matched:
             # 没有匹配的数据，直接返回原帧
@@ -85,7 +83,7 @@ class TemperatureRenderer(BaseDataRenderer):
 
 ```yaml
 renderers:
-  - name: "temperature"
+  - class: "your.module.path.TemperatureRenderer"
     kwargs:
       data_path: "input/temperature.jsonl"
       position: [30, 60]
@@ -115,7 +113,7 @@ super().__init__(
 )
 
 # 在render中使用
-matched = self.match_data(timestamp_ms, self.tolerance_ms)
+matched = self.match_data(timestamp_ms)
 ```
 
 **匹配策略**：
@@ -146,11 +144,10 @@ super().__init__(
 ## 完整示例：GPS渲染器
 
 ```python
-from nexus.contrib.repro import render, BaseDataRenderer
+from nexus.contrib.repro.renderers import BaseDataRenderer
 import cv2
 import numpy as np
 
-@render("gps")
 class GPSRenderer(BaseDataRenderer):
     """
     渲染GPS位置和轨迹。
@@ -187,7 +184,7 @@ class GPSRenderer(BaseDataRenderer):
 
     def render(self, frame, timestamp_ms):
         # 匹配数据
-        matched = self.match_data(timestamp_ms, self.tolerance_ms)
+        matched = self.match_data(timestamp_ms)
 
         if not matched:
             return frame
@@ -246,7 +243,7 @@ class GPSRenderer(BaseDataRenderer):
 
 ```yaml
 renderers:
-  - name: "gps"
+  - class: "your.module.path.GPSRenderer"
     kwargs:
       data_path: "input/gps.jsonl"
       position: [30, 60]
@@ -263,10 +260,11 @@ renderers:
 渲染器可以加载多个数据文件：
 
 ```python
-@render("multi_sensor")
-class MultiSensorRenderer(BaseDataRenderer):
+from nexus.contrib.repro.io import load_jsonl
+
+class MultiSensorRenderer:
     def __init__(self, speed_path, temp_path, **kwargs):
-        # 不调用super().__init__，手动加载
+        # 手动加载多个数据文件
         self.speed_data = load_jsonl(speed_path)
         self.temp_data = load_jsonl(temp_path)
 

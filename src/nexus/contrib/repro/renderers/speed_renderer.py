@@ -7,21 +7,14 @@ Renders speed data in top-left corner with configurable position and styling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple, Union, TYPE_CHECKING
+from typing import Tuple, Union
 
 import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
 
-if TYPE_CHECKING:
-    from .. import render
-else:
-    # Import at runtime to avoid circular dependency
-    from .. import render
 
-
-@render("speed")
 class SpeedRenderer(BaseDataRenderer):
     """
     Render vehicle speed on video frames.

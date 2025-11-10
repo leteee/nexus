@@ -187,7 +187,7 @@ class DataRendererConfig(PluginConfig):
         description="Show frame ID and timestamp overlay on rendered frames"
     )
     renderers: list[dict] = Field(
-        description="List of renderer configurations with 'name' (registered name) or 'class' (full class path) and 'kwargs'"
+        description="List of renderer configurations with 'class' (full qualified class name) and 'kwargs'"
     )
 
 
@@ -196,7 +196,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     """
     Apply multiple data renderers to all video frames.
 
-    Uses the repro module's simple renderer registry to manage renderers.
+    Uses dynamic class import to load renderer classes by full qualified name.
     Renderers are automatically instantiated and reused for all frames.
 
     Path Resolution Convention:
@@ -210,15 +210,15 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         To disable auto-resolution for a specific field, use:
             Field(..., json_schema_extra={"skip_path_resolve": True})
 
-    Config format (use registered names):
+    Config format (use full class names):
         renderers:
-          - name: "speed"  # Short registered name
+          - class: "nexus.contrib.repro.renderers.SpeedRenderer"
             kwargs:
               data_path: "input/speed.jsonl"       # Auto-resolved
               position: [30, 60]
               tolerance_ms: 5000
 
-          - name: "target"
+          - class: "nexus.contrib.repro.renderers.TargetRenderer"
             kwargs:
               data_path: "input/adb_targets.jsonl"      # Auto-resolved
               calibration_path: "camera_calibration.yaml"  # Auto-resolved
@@ -230,7 +230,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
         show_frame_info: Show frame ID and timestamp overlay (default: True)
-        renderers: List of renderer configurations (use "name" for registered renderers)
+        renderers: List of renderer configurations (use "class" for full qualified class names)
     """
     config: DataRendererConfig = ctx.config  # type: ignore
 

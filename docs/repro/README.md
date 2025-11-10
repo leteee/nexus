@@ -10,7 +10,7 @@ Repro是Nexus框架中的一个**独立模块**，专门用于视频数据回放
 - 将渲染后的帧合成为视频
 
 **核心特性**：
-- ✨ 简单的渲染器注册系统（`@render`装饰器）
+- ✨ 简单的渲染器类系统（使用全类名）
 - 🎬 完整的视频处理工具链
 - ⏱️ 精确的时间戳匹配
 - 🎨 模块化的数据渲染器
@@ -21,11 +21,10 @@ Repro是Nexus框架中的一个**独立模块**，专门用于视频数据回放
 ### 1. 基础数据渲染
 
 ```python
-from nexus.contrib.repro import render, BaseDataRenderer
+from nexus.contrib.repro.renderers import BaseDataRenderer
 import cv2
 
-# 定义并注册渲染器
-@render("speed")
+# 定义渲染器类
 class SpeedRenderer(BaseDataRenderer):
     def __init__(self, data_path, position=(30, 60), **kwargs):
         super().__init__(data_path, **kwargs)
@@ -33,7 +32,7 @@ class SpeedRenderer(BaseDataRenderer):
 
     def render(self, frame, timestamp_ms):
         # 匹配时间戳的数据
-        matched = self.match_data(timestamp_ms, self.tolerance_ms)
+        matched = self.match_data(timestamp_ms)
         if not matched:
             return frame
 
@@ -65,7 +64,7 @@ pipeline:
       output_dir: "temp/rendered"
       timestamps_path: "input/frame_timestamps.csv"
       renderers:
-        - name: "speed"  # 使用注册的渲染器
+        - class: "nexus.contrib.repro.renderers.SpeedRenderer"  # 使用全类名
           kwargs:
             data_path: "input/speed.jsonl"
             position: [30, 60]
@@ -90,11 +89,10 @@ nexus run --case my_replay --template repro/repro
 
 渲染器负责将时序数据可视化到视频帧上。
 
-**注册渲染器**：
+**定义渲染器**：
 ```python
-from nexus.contrib.repro import render, BaseDataRenderer
+from nexus.contrib.repro.renderers import BaseDataRenderer
 
-@render("my_renderer")  # 注册名称
 class MyRenderer(BaseDataRenderer):
     def render(self, frame, timestamp_ms):
         # 实现渲染逻辑
@@ -104,7 +102,7 @@ class MyRenderer(BaseDataRenderer):
 **使用渲染器**：
 ```yaml
 renderers:
-  - name: "my_renderer"  # 引用注册名称
+  - class: "your.module.path.MyRenderer"  # 使用全类名
     kwargs:
       data_path: "input/data.jsonl"
 ```
@@ -156,7 +154,7 @@ renderer = MyRenderer(
 显示车辆速度：
 
 ```yaml
-- name: "speed"
+- class: "nexus.contrib.repro.renderers.SpeedRenderer"
   kwargs:
     data_path: "input/speed.jsonl"
     position: [30, 60]           # 文本位置
@@ -177,7 +175,7 @@ renderer = MyRenderer(
 渲染3D目标检测框：
 
 ```yaml
-- name: "target"
+- class: "nexus.contrib.repro.renderers.TargetRenderer"
   kwargs:
     data_path: "input/adb_targets.jsonl"
     calibration_path: "camera_calibration.json"
@@ -354,7 +352,7 @@ pipeline:
     config:
       renderers:
         # 使用_extends继承配置
-        - name: "speed"
+        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
           kwargs:
             _extends: "@defaults.speed_renderer"
             data_path: "input/speed.jsonl"
@@ -366,12 +364,12 @@ pipeline:
 
 ```yaml
 renderers:
-  - name: "speed"
+  - class: "nexus.contrib.repro.renderers.SpeedRenderer"
     kwargs:
       data_path: "input/speed.jsonl"  # 自动解析为绝对路径
       position: [30, 60]               # 保持不变
 
-  - name: "target"
+  - class: "nexus.contrib.repro.renderers.TargetRenderer"
     kwargs:
       data_path: "input/targets.jsonl"       # 自动解析
       calibration_path: "camera_calib.json"  # 自动解析
@@ -379,29 +377,23 @@ renderers:
 
 ## 架构设计
 
-### 渲染器注册系统
+### 渲染器类系统
+
+Repro使用简单的类导入系统，无需注册：
 
 ```python
-# nexus/contrib/repro/__init__.py
-
-_RENDERER_REGISTRY: Dict[str, Type] = {}
-
-def render(name: str):
-    """注册渲染器装饰器"""
-    def decorator(cls: Type) -> Type:
-        _RENDERER_REGISTRY[name] = cls
-        return cls
-    return decorator
-
-def get_renderer(name: str) -> Type:
-    """获取渲染器类"""
-    return _RENDERER_REGISTRY[name]
+# 在配置中使用全类名
+renderers:
+  - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+    kwargs:
+      data_path: "input/speed.jsonl"
 ```
 
 **特点**：
-- 简单：一行装饰器注册
-- 独立：不依赖Nexus插件系统
-- 轻量：纯Python dict注册表
+- 简单：直接使用Python类
+- 显式：全类名明确指定渲染器
+- 灵活：可以使用任何可导入的类
+- 无注册：不需要额外的装饰器或注册步骤
 
 ### 基础渲染器
 
@@ -442,7 +434,7 @@ def render_data_on_frames(ctx: PluginContext):
     renderer_configs = []
     for rc in config.renderers:
         kwargs = ctx.auto_resolve_paths(rc["kwargs"])
-        renderer_configs.append({"name": rc["name"], "kwargs": kwargs})
+        renderer_configs.append({"class": rc["class"], "kwargs": kwargs})
 
     # 调用repro函数
     render_all_frames(
@@ -457,7 +449,7 @@ def render_data_on_frames(ctx: PluginContext):
 Repro模块是**独立的**：
 - 可以作为Python库直接使用
 - 不依赖Nexus核心（除了插件适配器）
-- 有自己的渲染器注册系统
+- 使用标准Python类导入机制
 
 **直接使用**（不通过Nexus）：
 ```python
@@ -468,7 +460,10 @@ render_all_frames(
     output_dir="rendered/",
     timestamps_path="timestamps.csv",
     renderer_configs=[
-        {"name": "speed", "kwargs": {"data_path": "speed.jsonl"}}
+        {
+            "class": "nexus.contrib.repro.renderers.SpeedRenderer",
+            "kwargs": {"data_path": "speed.jsonl"}
+        }
     ]
 )
 ```

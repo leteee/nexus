@@ -216,12 +216,11 @@ results = engine.run_pipeline(case_config)
 独立的视频时序数据可视化模块：
 
 ```python
-from nexus.contrib.repro import render, BaseDataRenderer
+from nexus.contrib.repro.renderers import BaseDataRenderer
 
-@render("speed")
 class SpeedRenderer(BaseDataRenderer):
     def render(self, frame, timestamp_ms):
-        matched = self.match_data(timestamp_ms, self.tolerance_ms)
+        matched = self.match_data(timestamp_ms)
         if matched:
             speed = matched[0]['speed']
             cv2.putText(frame, f"Speed: {speed:.1f} km/h", ...)

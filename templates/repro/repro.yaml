@@ -65,14 +65,14 @@ pipeline:
       # Renderers with shared configuration
       renderers:
         # Render vehicle speed using shared config
-        - name: "speed"
+        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
           kwargs:
             _extends: "@defaults.speed_renderer"  # Inherit speed_renderer defaults
             data_path: "input/speed.jsonl"        # Add data_path
             time_offset_ms: 0                     # Can override defaults
 
         # Render 3D target detections using shared config
-        - name: "target"
+        - class: "nexus.contrib.repro.renderers.TargetRenderer"
           kwargs:
             _extends: "@defaults.target_renderer"                # Inherit target_renderer defaults
             data_path: "input/adb_targets.jsonl"
@@ -91,17 +91,17 @@ pipeline:
 
 # Architecture Notes:
 #
-# 1. Modular Renderers (Simple Registration):
+# 1. Modular Renderers (Class-Based):
 #    - Each renderer handles ONE data type
-#    - Registered with @render("name") decorator
+#    - Use full qualified class names in config
 #    - SpeedRenderer: Vehicle speed with forward matching
 #    - TargetRenderer: 3D object detection with projection
 #
 # 2. Easy to Extend:
 #    - Add new data type: Create a renderer class
 #    - Inherit from BaseDataRenderer
-#    - Register with @render("your_name") decorator
-#    - Add to renderers list using "name" key
+#    - Use full class name in renderers list
+#    - Example: "your.module.path.GPSRenderer"
 #
 # 3. Matching Strategies:
 #    - Forward: Use most recent data ≤ timestamp (good for speed, GPS)
@@ -114,24 +114,30 @@ pipeline:
 #
 # Example: Adding Custom Renderer
 #
-# # 1. Define and register renderer:
-# from nexus.contrib.repro import render, BaseDataRenderer
+# # 1. Define renderer class:
+# from nexus.contrib.repro.renderers import BaseDataRenderer
 #
-# @render("gps")
 # class GPSRenderer(BaseDataRenderer):
+#     def __init__(self, data_path, position=(20, 100), **kwargs):
+#         super().__init__(data_path, **kwargs)
+#         self.position = position
+#
 #     def render(self, frame, timestamp_ms):
-#         # Draw GPS data
+#         matched = self.match_data(timestamp_ms)
+#         if matched:
+#             # Draw GPS data on frame
+#             pass
 #         return frame
 #
-# # 2. Add to config:
+# # 2. Add to config using full class name:
 # renderers:
-#   - name: "speed"
+#   - class: "nexus.contrib.repro.renderers.SpeedRenderer"
 #     kwargs: { ... }
 #
-#   - name: "target"
+#   - class: "nexus.contrib.repro.renderers.TargetRenderer"
 #     kwargs: { ... }
 #
-#   - name: "gps"  # Your custom renderer
+#   - class: "your.module.path.GPSRenderer"  # Your custom renderer
 #     kwargs:
 #       data_path: "input/gps.jsonl"
 #       position: [20, 100]

@@ -296,7 +296,7 @@ def render_all_frames(
     """
     Apply multiple data renderers to all video frames.
 
-    Uses the simple renderer registry to load and instantiate renderers.
+    Dynamically imports and instantiates renderer classes by full qualified name.
     Renderers are instantiated once and reused for all frames.
 
     Args:
@@ -304,8 +304,8 @@ def render_all_frames(
         output_dir: Directory for rendered frames
         timestamps_path: Path to frame timestamps CSV
         renderer_configs: List of renderer configurations
-            Format: [{"name": "renderer_name", "kwargs": {...}}, ...]
-            - "name": Registered renderer name (e.g., "speed", "target")
+            Format: [{"class": "full.module.path.ClassName", "kwargs": {...}}, ...]
+            - "class": Full qualified class name (e.g., "nexus.contrib.repro.renderers.SpeedRenderer")
             - "kwargs": Dictionary of renderer constructor arguments
         frame_pattern: Frame filename pattern
         start_time_ms: Optional start time (None=from beginning)
@@ -317,10 +317,10 @@ def render_all_frames(
         Path to output directory
 
     Example:
-        >>> # Using registered renderer names
+        >>> # Using full class names
         >>> renderer_configs = [
         ...     {
-        ...         "name": "speed",  # Registered name
+        ...         "class": "nexus.contrib.repro.renderers.SpeedRenderer",
         ...         "kwargs": {
         ...             "data_path": Path("speed.jsonl"),
         ...             "position": (30, 60),
@@ -328,7 +328,7 @@ def render_all_frames(
         ...         }
         ...     },
         ...     {
-        ...         "name": "target",
+        ...         "class": "nexus.contrib.repro.renderers.TargetRenderer",
         ...         "kwargs": {
         ...             "data_path": Path("targets.jsonl"),
         ...             "calibration_path": Path("calib.yaml"),
@@ -345,7 +345,7 @@ def render_all_frames(
         ...     end_time_ms=5000.0
         ... )
     """
-    from . import get_renderer  # Import here to avoid circular dependency
+    import importlib
 
     frames_dir = Path(frames_dir)
     output_dir = Path(output_dir)
@@ -381,26 +381,34 @@ def render_all_frames(
     renderers: List[Dict[str, Any]] = []
 
     for i, config in enumerate(renderer_configs):
-        # Extract renderer name
-        renderer_name = config.get("name")
-        if not renderer_name:
+        # Extract full class name
+        class_path = config.get("class")
+        if not class_path:
             raise ValueError(
-                f"Renderer config must have 'name' key: {config}"
+                f"Renderer config must have 'class' key with full qualified class name: {config}"
             )
 
-        # Get renderer class from registry
-        renderer_class = get_renderer(renderer_name)
+        # Dynamically import renderer class
+        try:
+            module_path, class_name = class_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            renderer_class = getattr(module, class_name)
+        except (ValueError, ImportError, AttributeError) as e:
+            raise ImportError(
+                f"Failed to import renderer class '{class_path}': {e}"
+            )
+
         renderer_kwargs = config.get("kwargs", {})
 
         # Instantiate renderer
         renderer_instance = renderer_class(**renderer_kwargs)
 
         renderers.append({
-            "name": renderer_name,
+            "class": class_path,
             "instance": renderer_instance
         })
 
-        logger.info(f"  [{i+1}] {renderer_name} -> {renderer_class.__name__}")
+        logger.info(f"  [{i+1}] {class_path} -> {renderer_class.__name__}")
 
     # Render all frames
     logger.info(f"Rendering {len(frame_times)} frames...")

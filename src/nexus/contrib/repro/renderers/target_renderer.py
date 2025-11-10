@@ -10,21 +10,14 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
 
-if TYPE_CHECKING:
-    from .. import render
-else:
-    # Import at runtime to avoid circular dependency
-    from .. import render
 
-
-@render("target")
 class TargetRenderer(BaseDataRenderer):
     """
     Render 3D target detections projected to 2D image.
