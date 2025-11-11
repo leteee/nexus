@@ -45,9 +45,10 @@ defaults:
 pipeline:
   # Step 1: Extract frames from video
   - plugin: "Video Splitter"
+    # enable: true  # Default, no need to specify
     config:
-      video_path: "input/synthetic_driving.mp4"
-      output_dir: "temp/frames"
+      video_path: "input/*.mp4"
+      output_path: "temp/frames"
       frame_pattern: "frame_{:06d}.png"
 
   # Step 2: Render data onto frames using modular renderers
@@ -57,15 +58,17 @@ pipeline:
       start_time: "2025-10-27 08:30:10"
       end_time: "2025-10-27 08:30:30"
       frames_dir: "temp/frames"
-      output_dir: "temp/rendered_frames"
+      output_path: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
       show_frame_info: true
 
       # Renderers with shared configuration
+      # Each renderer supports 'enable' field to control execution (default: true)
       renderers:
         # Render vehicle speed using shared config
         - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+          # enable: true  # Default, can be omitted
           kwargs:
             _extends: "@defaults.speed_renderer"  # Inherit speed_renderer defaults
             data_path: "input/speed.jsonl"        # Add data_path
@@ -73,6 +76,7 @@ pipeline:
 
         # Render 3D target detections using shared config
         - class: "nexus.contrib.repro.renderers.TargetRenderer"
+          enable: true  # Explicitly enabled (optional, as true is default)
           kwargs:
             _extends: "@defaults.target_renderer"                # Inherit target_renderer defaults
             data_path: "input/adb_targets.jsonl"
@@ -111,6 +115,30 @@ pipeline:
 # 4. Data Flow:
 #    Video → Frames → [Renderer 1] → [Renderer 2] → ... → Rendered Frames → Video
 #    Each renderer applies its visualization sequentially
+#
+# 5. Enable/Disable Steps:
+#    Use 'enable' field to control step execution:
+#    - enable: true  (default, executes the step)
+#    - enable: false (skips the step)
+#
+#    Example - Skip video composition:
+#      - plugin: "Video Composer"
+#        enable: false
+#        config: { ... }
+#
+#    When disabled, log shows: "Skipping disabled plugin (step N): Plugin Name"
+#
+# 6. Enable/Disable Renderers:
+#    Each renderer also supports 'enable' field:
+#    - enable: true  (default, executes the renderer)
+#    - enable: false (skips the renderer)
+#
+#    Example - Skip target rendering:
+#      - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#        enable: false
+#        kwargs: { ... }
+#
+#    When disabled, log shows: "Skipping disabled renderer (#N): ClassName"
 #
 # Example: Adding Custom Renderer
 #

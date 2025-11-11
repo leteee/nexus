@@ -22,7 +22,7 @@ class VideoMetadata:
     fps: float
     width: int
     height: int
-    output_dir: Path
+    output_path: Path
 
 
 class DataRenderer(ABC):

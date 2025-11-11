@@ -6,11 +6,23 @@ Provides common utilities like time parsing, formatting and video metadata extra
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Union
 
 import cv2
+
+# Setup logger for this module
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Default Timezone Configuration
+# =============================================================================
+
+# Default timezone: UTC+8 (China Standard Time / Beijing Time)
+DEFAULT_TIMEZONE = timezone(timedelta(hours=8))
 
 
 # =============================================================================
@@ -34,9 +46,9 @@ def parse_time_value(time_value: Union[str, float, int, None]) -> Optional[int]:
     String formats (via parse_time_string):
         - ISO 8601 with timezone: "2025-10-27T08:00:00+08:00"
         - ISO 8601 UTC: "2025-10-27T00:00:00Z"
-        - ISO 8601 without TZ: "2025-10-27T00:00:00" (assumes UTC)
-        - Space-separated: "2025-10-27 08:00:00" (assumes UTC)
-        - Date only: "2025-10-27" (assumes 00:00:00 UTC)
+        - ISO 8601 without TZ: "2025-10-27T00:00:00" (assumes UTC+8)
+        - Space-separated: "2025-10-27 08:00:00" (assumes UTC+8)
+        - Date only: "2025-10-27" (assumes 00:00:00 UTC+8)
 
     Args:
         time_value: Time value in any supported format
@@ -64,11 +76,11 @@ def parse_time_value(time_value: Union[str, float, int, None]) -> Optional[int]:
         >>> parse_time_value("2025-10-27T08:00:00+08:00")
         1761523200000
 
-        >>> # Space-separated format
-        >>> parse_time_value("2025-10-27 00:00:00")
+        >>> # Space-separated format (assumes UTC+8 by default)
+        >>> parse_time_value("2025-10-27 08:00:00")
         1761523200000
 
-        >>> # Date only
+        >>> # Date only (assumes 00:00:00 UTC+8)
         >>> parse_time_value("2025-10-27")
         1761523200000
 
@@ -76,24 +88,29 @@ def parse_time_value(time_value: Union[str, float, int, None]) -> Optional[int]:
         For configuration files, prefer (in order):
         1. Direct Unix timestamp: 1761523200000 (fastest, no parsing)
         2. ISO 8601 with timezone: "2025-10-27T08:00:00+08:00" (explicit)
-        3. ISO 8601 UTC: "2025-10-27T00:00:00Z" (universal)
+        3. Space-separated with TZ: "2025-10-27 08:00:00" (defaults to UTC+8)
 
     Note:
         Always returns INTEGER milliseconds for consistency.
         Millisecond precision is sufficient for video/sensor data.
+        Default timezone is UTC+8 (Beijing Time) when not specified.
 
     See also:
         parse_time_string(): Detailed string format documentation
         timestamp_to_string(): Convert timestamp back to string
     """
     if time_value is None:
+        logger.debug("Time value is None, returning None")
         return None
 
     if isinstance(time_value, str):
+        logger.debug(f"Parsing time string: '{time_value}'")
         return parse_time_string(time_value)
 
     # Already a timestamp (int or float) - convert to int
-    return int(time_value)
+    timestamp_ms = int(time_value)
+    logger.debug(f"Using direct timestamp: {timestamp_ms} ms")
+    return timestamp_ms
 
 
 def parse_time_string(time_str: str) -> int:
@@ -103,15 +120,15 @@ def parse_time_string(time_str: str) -> int:
     Supported formats:
         1. ISO 8601 with timezone: "2025-10-27T08:00:00+08:00"
         2. ISO 8601 UTC: "2025-10-27T00:00:00Z"
-        3. ISO 8601 without timezone: "2025-10-27T00:00:00" (assumes UTC)
-        4. Space-separated datetime: "2025-10-27 08:00:00" (assumes UTC)
-        5. Date only: "2025-10-27" (assumes 00:00:00 UTC)
+        3. ISO 8601 without timezone: "2025-10-27T00:00:00" (assumes UTC+8)
+        4. Space-separated datetime: "2025-10-27 08:00:00" (assumes UTC+8)
+        5. Date only: "2025-10-27" (assumes 00:00:00 UTC+8)
         6. With milliseconds: "2025-10-27T00:00:00.123+08:00"
         7. With microseconds: "2025-10-27T00:00:00.123456+08:00"
 
     Timezone handling:
         - If timezone specified in string, it will be used for conversion
-        - If no timezone specified, UTC is assumed for consistency
+        - If no timezone specified, UTC+8 (Beijing Time) is assumed as default
         - All timestamps are converted to UTC before calculating Unix timestamp
 
     Args:
@@ -128,20 +145,21 @@ def parse_time_string(time_str: str) -> int:
         >>> parse_time_string("2025-10-27T08:00:00+08:00")
         1761523200000
 
-        >>> # Space-separated format (common in configs)
+        >>> # Space-separated format (common in configs, assumes UTC+8)
         >>> parse_time_string("2025-10-27 08:00:00")
-        1761550800000
+        1761523200000
 
-        >>> # Date only (assumes 00:00:00 UTC)
+        >>> # Date only (assumes 00:00:00 UTC+8)
         >>> parse_time_string("2025-10-27")
         1761523200000
 
-        >>> # UTC with Z suffix
+        >>> # UTC with Z suffix (explicit UTC)
         >>> parse_time_string("2025-10-27T00:00:00Z")
-        1761523200000
+        1761494400000
 
     Note:
         Returns INTEGER milliseconds, following industry standards.
+        When no timezone is specified, UTC+8 (Beijing Time) is used as default.
         For cross-machine reliability, prefer formats with explicit timezone
         or direct Unix timestamps.
     """
@@ -164,24 +182,34 @@ def parse_time_string(time_str: str) -> int:
             dt = None
 
         if dt is None:
+            logger.error(f"Failed to parse time string: '{time_str}'")
             raise ValueError(
                 f"Unable to parse time string: '{time_str}'\n"
                 f"Supported formats:\n"
                 f"  ISO 8601 with timezone:  '2025-10-27T08:00:00+08:00'\n"
                 f"  ISO 8601 UTC:            '2025-10-27T00:00:00Z'\n"
-                f"  ISO 8601 (assumes UTC):  '2025-10-27T00:00:00'\n"
-                f"  Space-separated:         '2025-10-27 08:00:00'\n"
-                f"  Date only:               '2025-10-27'\n"
+                f"  ISO 8601 (assumes UTC+8): '2025-10-27T00:00:00'\n"
+                f"  Space-separated:         '2025-10-27 08:00:00' (assumes UTC+8)\n"
+                f"  Date only:               '2025-10-27' (assumes UTC+8)\n"
                 f"\n"
                 f"Or use direct Unix timestamp in milliseconds: 1761523200000"
             )
 
-    # If naive datetime (no timezone info), assume UTC for consistency
+    # If naive datetime (no timezone info), assume UTC+8 (Beijing Time) as default
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        logger.debug(
+            f"Time string '{time_str}' has no timezone info, "
+            f"assuming default timezone UTC+8 (Beijing Time)"
+        )
+        dt = dt.replace(tzinfo=DEFAULT_TIMEZONE)
+    else:
+        logger.debug(f"Parsed time string '{time_str}' with timezone: {dt.tzinfo}")
 
     # Convert to Unix timestamp in milliseconds (integer)
-    return int(dt.timestamp() * 1000)
+    timestamp_ms = int(dt.timestamp() * 1000)
+    logger.debug(f"Converted '{time_str}' to timestamp: {timestamp_ms} ms")
+
+    return timestamp_ms
 
 
 # =============================================================================
@@ -198,26 +226,25 @@ def timestamp_to_datetime(
 
     Args:
         timestamp_ms: Unix timestamp in milliseconds (integer)
-        tz: Target timezone (default: UTC)
+        tz: Target timezone (default: UTC+8 / Beijing Time)
 
     Returns:
         datetime object in specified timezone
 
     Examples:
-        >>> # Convert to UTC datetime
+        >>> # Convert to Beijing time (UTC+8, default)
         >>> dt = timestamp_to_datetime(1761523200000)
         >>> print(dt)
-        2025-10-27 00:00:00+00:00
-
-        >>> # Convert to Beijing time (UTC+8)
-        >>> from datetime import timezone, timedelta
-        >>> beijing_tz = timezone(timedelta(hours=8))
-        >>> dt = timestamp_to_datetime(1761523200000, tz=beijing_tz)
-        >>> print(dt)
         2025-10-27 08:00:00+08:00
+
+        >>> # Convert to UTC explicitly
+        >>> from datetime import timezone
+        >>> dt = timestamp_to_datetime(1761523200000, tz=timezone.utc)
+        >>> print(dt)
+        2025-10-27 00:00:00+00:00
     """
     if tz is None:
-        tz = timezone.utc
+        tz = DEFAULT_TIMEZONE
 
     # Convert milliseconds to seconds
     timestamp_s = timestamp_ms / 1000.0
@@ -226,7 +253,14 @@ def timestamp_to_datetime(
     dt_utc = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
 
     # Convert to target timezone
-    return dt_utc.astimezone(tz)
+    dt = dt_utc.astimezone(tz)
+
+    logger.debug(
+        f"Converted timestamp {timestamp_ms} ms to datetime: {dt.isoformat()} "
+        f"(timezone: {tz})"
+    )
+
+    return dt
 
 
 def timestamp_to_string(
@@ -240,25 +274,24 @@ def timestamp_to_string(
     Args:
         timestamp_ms: Unix timestamp in milliseconds (integer)
         fmt: Output format - "iso" (default), "datetime", "date", "time", or custom strftime format
-        tz: Target timezone (default: UTC)
+        tz: Target timezone (default: UTC+8 / Beijing Time)
 
     Returns:
         Formatted time string
 
     Examples:
-        >>> # ISO 8601 format (default)
+        >>> # ISO 8601 format with Beijing time (default)
         >>> timestamp_to_string(1761523200000)
-        '2025-10-27T00:00:00+00:00'
-
-        >>> # ISO 8601 with Beijing timezone
-        >>> from datetime import timezone, timedelta
-        >>> beijing_tz = timezone(timedelta(hours=8))
-        >>> timestamp_to_string(1761523200000, tz=beijing_tz)
         '2025-10-27T08:00:00+08:00'
 
-        >>> # Human-readable datetime
+        >>> # ISO 8601 with UTC
+        >>> from datetime import timezone
+        >>> timestamp_to_string(1761523200000, tz=timezone.utc)
+        '2025-10-27T00:00:00+00:00'
+
+        >>> # Human-readable datetime (Beijing time)
         >>> timestamp_to_string(1761523200000, fmt="datetime")
-        '2025-10-27 00:00:00'
+        '2025-10-27 08:00:00'
 
         >>> # Date only
         >>> timestamp_to_string(1761523200000, fmt="date")
@@ -266,25 +299,29 @@ def timestamp_to_string(
 
         >>> # Time only
         >>> timestamp_to_string(1761523200000, fmt="time")
-        '00:00:00'
+        '08:00:00'
 
         >>> # Custom format
         >>> timestamp_to_string(1761523200000, fmt="%Y年%m月%d日 %H:%M:%S")
-        '2025年10月27日 00:00:00'
+        '2025年10月27日 08:00:00'
     """
     dt = timestamp_to_datetime(timestamp_ms, tz=tz)
 
     if fmt == "iso":
-        return dt.isoformat()
+        result = dt.isoformat()
     elif fmt == "datetime":
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        result = dt.strftime("%Y-%m-%d %H:%M:%S")
     elif fmt == "date":
-        return dt.strftime("%Y-%m-%d")
+        result = dt.strftime("%Y-%m-%d")
     elif fmt == "time":
-        return dt.strftime("%H:%M:%S")
+        result = dt.strftime("%H:%M:%S")
     else:
         # Custom strftime format
-        return dt.strftime(fmt)
+        result = dt.strftime(fmt)
+
+    logger.debug(f"Formatted timestamp {timestamp_ms} ms as '{result}' (format: {fmt})")
+
+    return result
 
 
 def format_duration_ms(duration_ms: int) -> str:
@@ -341,7 +378,9 @@ def get_current_timestamp_ms() -> int:
         >>> now = get_current_timestamp_ms()
         >>> print(f"Current time: {timestamp_to_string(now)}")
     """
-    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    timestamp_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    logger.debug(f"Current timestamp: {timestamp_ms} ms")
+    return timestamp_ms
 
 
 def create_timezone(offset_hours: float) -> timezone:
@@ -365,7 +404,9 @@ def create_timezone(offset_hours: float) -> timezone:
         >>> print(ny_tz)
         UTC-05:00
     """
-    return timezone(timedelta(hours=offset_hours))
+    tz = timezone(timedelta(hours=offset_hours))
+    logger.debug(f"Created timezone with offset: UTC{offset_hours:+.1f}")
+    return tz
 
 
 # =============================================================================
@@ -388,11 +429,16 @@ def get_video_metadata(video_path: Path) -> dict:
         >>> print(f"FPS: {meta['fps']}, Duration: {meta['duration_s']}s")
     """
     video_path = Path(video_path)
+
+    logger.debug(f"Extracting metadata from video: {video_path}")
+
     if not video_path.exists():
+        logger.error(f"Video file not found: {video_path}")
         raise FileNotFoundError(f"Video not found: {video_path}")
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
+        logger.error(f"Failed to open video file: {video_path}")
         raise RuntimeError(f"Failed to open video: {video_path}")
 
     try:
@@ -402,6 +448,12 @@ def get_video_metadata(video_path: Path) -> dict:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         duration_s = total_frames / fps if fps > 0 else 0.0
 
+        logger.info(
+            f"Video metadata: {video_path.name} - "
+            f"{width}x{height}, {fps:.2f} FPS, {total_frames} frames, "
+            f"{duration_s:.2f}s"
+        )
+
         return {
             "fps": fps,
             "total_frames": total_frames,
@@ -409,5 +461,9 @@ def get_video_metadata(video_path: Path) -> dict:
             "height": height,
             "duration_s": duration_s,
         }
+    except Exception as e:
+        logger.error(f"Error extracting video metadata from {video_path}: {e}")
+        raise
     finally:
         cap.release()
+        logger.debug(f"Released video capture for: {video_path}")

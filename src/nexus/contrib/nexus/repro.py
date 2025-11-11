@@ -5,6 +5,7 @@ Adapts video replay and data rendering logic to Nexus plugin interface.
 """
 
 from typing import Any, Union, Optional
+from pathlib import Path
 
 from pydantic import Field
 
@@ -29,6 +30,60 @@ from nexus.contrib.repro.datagen import (
 
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def resolve_video_path_with_glob(ctx: PluginContext, video_path_pattern: str) -> Path:
+    """
+    Resolve video path with glob pattern support.
+
+    Supports wildcards like *, ?, [, ] for pattern matching.
+    Returns the first matching file sorted alphabetically.
+
+    Args:
+        ctx: Plugin context for path resolution and logging
+        video_path_pattern: Path pattern (can contain wildcards)
+
+    Returns:
+        Resolved absolute path to the first matching video file
+
+    Raises:
+        FileNotFoundError: If no files match the pattern
+
+    Examples:
+        - "input/driving.mp4" -> Direct file path
+        - "input/*.mp4" -> First .mp4 file in input/
+        - "input/video_*.mp4" -> First file matching pattern
+    """
+    # Resolve the path pattern first
+    resolved_pattern = ctx.resolve_path(video_path_pattern)
+
+    # Check if pattern contains wildcards
+    if any(char in str(resolved_pattern) for char in ['*', '?', '[', ']']):
+        # Use glob to find matching files
+        parent_dir = resolved_pattern.parent if resolved_pattern.parent.exists() else Path.cwd()
+        pattern = resolved_pattern.name
+
+        matching_files = sorted(parent_dir.glob(pattern))
+
+        if not matching_files:
+            raise FileNotFoundError(
+                f"No video files found matching pattern: {video_path_pattern} "
+                f"(resolved to: {resolved_pattern})"
+            )
+
+        video_path = matching_files[0]
+        ctx.logger.info(
+            f"Matched {len(matching_files)} file(s) with pattern '{video_path_pattern}', "
+            f"using first: {video_path.name}"
+        )
+        return video_path
+    else:
+        return resolved_pattern
+
+
+# =============================================================================
 # Video Processing Plugins
 # =============================================================================
 
@@ -39,7 +94,7 @@ class VideoSplitterConfig(PluginConfig):
     video_path: str = Field(
         description="Path to input video file (MP4, AVI, MOV supported)"
     )
-    output_dir: str = Field(
+    output_path: str = Field(
         default="frames",
         description="Output directory for extracted frame images"
     )
@@ -95,16 +150,23 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
 
     Note: Use a separate Timeline Generator plugin to create
     frame_timestamps.csv with real acquisition times.
+
+    video_path supports glob patterns:
+        - "input/driving.mp4" -> Direct file path
+        - "input/*.mp4" -> First .mp4 file in input/
+        - "input/video_*.mp4" -> First file matching pattern
     """
     config: VideoSplitterConfig = ctx.config  # type: ignore
-    video_path = ctx.resolve_path(config.video_path)
-    output_dir = ctx.resolve_path(config.output_dir)
+
+    # Resolve video path with glob pattern support
+    video_path = resolve_video_path_with_glob(ctx, config.video_path)
+    output_path = ctx.resolve_path(config.output_path)
 
     ctx.logger.info(f"Extracting frames from {video_path}")
 
     metadata = extract_frames(
         video_path,
-        output_dir,
+        output_path,
         frame_pattern=config.frame_pattern,
     )
 
@@ -114,7 +176,7 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
 
     # Store metadata for downstream plugins
     ctx.remember("video_metadata", metadata)
-    ctx.remember("frames_dir", output_dir)
+    ctx.remember("frames_dir", output_path)
 
     return metadata
 
@@ -170,7 +232,7 @@ class DataRendererConfig(PluginConfig):
         default="frames",
         description="Directory containing extracted video frames"
     )
-    output_dir: str = Field(
+    output_path: str = Field(
         default="rendered_frames",
         description="Output directory for frames with rendered data overlays"
     )
@@ -213,20 +275,27 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     Config format (use full class names):
         renderers:
           - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+            enable: true  # Optional, default is true
             kwargs:
               data_path: "input/speed.jsonl"       # Auto-resolved
               position: [30, 60]
               tolerance_ms: 5000
 
           - class: "nexus.contrib.repro.renderers.TargetRenderer"
+            enable: false  # Set to false to skip this renderer
             kwargs:
               data_path: "input/adb_targets.jsonl"      # Auto-resolved
               calibration_path: "camera_calibration.yaml"  # Auto-resolved
               tolerance_ms: 50
 
+    Renderer enable field:
+        - enable: true (default, executes the renderer)
+        - enable: false (skips the renderer)
+        When disabled, log shows: "Skipping disabled renderer (#N): ClassName"
+
     Config:
         frames_dir: Directory containing extracted frames
-        output_dir: Directory for rendered frames
+        output_path: Directory for rendered frames
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
         show_frame_info: Show frame ID and timestamp overlay (default: True)
@@ -236,7 +305,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
 
     # Resolve top-level paths
     frames_dir = ctx.resolve_path(config.frames_dir)
-    output_dir = ctx.resolve_path(config.output_dir)
+    output_path = ctx.resolve_path(config.output_path)
 
     if config.timestamps_path:
         timestamps_path = ctx.resolve_path(config.timestamps_path)
@@ -245,7 +314,13 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
 
     # Resolve paths in renderer kwargs automatically using '*_path' convention
     renderer_configs = []
-    for renderer_config in config.renderers:
+    for idx, renderer_config in enumerate(config.renderers, start=1):
+        # Check if renderer is enabled (default: true)
+        if not renderer_config.get("enable", True):
+            renderer_class = renderer_config.get("class", "unknown")
+            ctx.logger.info(f"Skipping disabled renderer (#{idx}): {renderer_class}")
+            continue
+
         rc = renderer_config.copy()
         kwargs = rc.get("kwargs", {})
 
@@ -272,9 +347,9 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         if count % 100 == 0:
             ctx.logger.info(f"Rendered {count}/{total} frames...")
 
-    output_dir = render_all_frames(
+    output_path = render_all_frames(
         frames_dir=frames_dir,
-        output_dir=output_dir,
+        output_path=output_path,
         timestamps_path=timestamps_path,
         renderer_configs=renderer_configs,
         frame_pattern=config.frame_pattern,
@@ -285,12 +360,12 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         ctx=ctx,  # Pass context to renderers
     )
 
-    ctx.logger.info(f"Completed: rendered frames to {output_dir}")
+    ctx.logger.info(f"Completed: rendered frames to {output_path}")
 
     # Store output dir for Video Composer
-    ctx.remember("rendered_frames_dir", output_dir)
+    ctx.remember("rendered_frames_dir", output_path)
 
-    return output_dir
+    return output_path
 
 
 # =============================================================================
@@ -346,8 +421,13 @@ def generate_timeline(ctx: PluginContext) -> Any:
 
     Can auto-extract FPS and duration from video, or use manual configuration.
 
+    video_path supports glob patterns:
+        - "input/driving.mp4" -> Direct file path
+        - "input/*.mp4" -> First .mp4 file in input/
+        - "input/video_*.mp4" -> First file matching pattern
+
     Config:
-        video_path: (Optional) Video file to extract FPS and duration from
+        video_path: (Optional) Video file to extract FPS and duration from (supports glob patterns)
         fps: Video frame rate (required if video_path not provided)
         total_frames: Number of frames to generate (required if video_path not provided)
         start_time: Starting time in format "YYYY-MM-DD HH:MM:SS"
@@ -368,7 +448,7 @@ def generate_timeline(ctx: PluginContext) -> Any:
 
     # Get FPS and total_frames from video or config
     if config.video_path:
-        video_path = ctx.resolve_path(config.video_path)
+        video_path = resolve_video_path_with_glob(ctx, config.video_path)
         ctx.logger.info(f"Extracting metadata from video: {video_path}")
 
         video_meta = get_video_metadata(video_path)
@@ -469,10 +549,15 @@ def generate_speed_data(ctx: PluginContext) -> Any:
     Mimics real sensor behavior: event-driven with periodic updates.
     Data generation is INDEPENDENT of video duration.
 
+    video_path supports glob patterns:
+        - "input/driving.mp4" -> Direct file path
+        - "input/*.mp4" -> First .mp4 file in input/
+        - "input/video_*.mp4" -> First file matching pattern
+
     Config:
         start_time: Starting time string (e.g., "2025-10-27 00:00:00")
                     If not provided, uses context from Timeline Generator
-        video_path: (Optional) Video to extract duration from
+        video_path: (Optional) Video to extract duration from (supports glob patterns)
         duration_s: Data generation duration (required if video_path not provided)
         max_interval_s: Maximum interval without sending data (default 5s)
         speed_change_threshold: Minimum speed change to trigger event (km/h)
@@ -499,7 +584,7 @@ def generate_speed_data(ctx: PluginContext) -> Any:
 
     # Get duration from video or config or context
     if config.video_path:
-        video_path = ctx.resolve_path(config.video_path)
+        video_path = resolve_video_path_with_glob(ctx, config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
         ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
@@ -604,10 +689,15 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
     Detection range: 5m to 150m
     Frequency: 20Hz with timing jitter (±2ms default)
 
+    video_path supports glob patterns:
+        - "input/driving.mp4" -> Direct file path
+        - "input/*.mp4" -> First .mp4 file in input/
+        - "input/video_*.mp4" -> First file matching pattern
+
     Config:
         start_time: Starting time string (e.g., "2025-10-27 00:00:00")
                     If not provided, uses context from Timeline Generator
-        video_path: (Optional) Video to extract duration from
+        video_path: (Optional) Video to extract duration from (supports glob patterns)
         duration_s: Data generation duration (required if video_path not provided)
         frequency_hz: Target data frequency (default 20Hz)
         timing_jitter_ms: Random timing error in reception (±ms)
@@ -646,7 +736,7 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
 
     # Get duration from video or config or context
     if config.video_path:
-        video_path = ctx.resolve_path(config.video_path)
+        video_path = resolve_video_path_with_glob(ctx, config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
         ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")

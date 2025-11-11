@@ -74,6 +74,12 @@ class PipelineEngine:
                 raise ValueError(f"Pipeline step {idx} missing 'plugin' key")
 
             plugin_name: str = step["plugin"]
+
+            # Check if plugin is enabled (default: true)
+            if not step.get("enable", True):
+                self.logger.info(f"Skipping disabled plugin (step {idx}): {plugin_name}")
+                continue
+
             step_config: Dict[str, Any] = step.get("config", {})
 
             # Resolve configuration references

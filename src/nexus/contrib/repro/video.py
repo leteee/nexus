@@ -111,7 +111,7 @@ def _draw_frame_info(
 
 def extract_frames(
     video_path: Path,
-    output_dir: Path,
+    output_path: Path,
     *,
     frame_pattern: str = "frame_{:06d}.png",
 ) -> VideoMetadata:
@@ -120,7 +120,7 @@ def extract_frames(
 
     Args:
         video_path: Path to input video file
-        output_dir: Directory to save extracted frames
+        output_path: Directory to save extracted frames
         frame_pattern: Filename pattern for frames (must contain one format spec)
 
     Returns:
@@ -135,12 +135,12 @@ def extract_frames(
         >>> print(f"Extracted {metadata.total_frames} frames at {metadata.fps} FPS")
     """
     video_path = Path(video_path)
-    output_dir = Path(output_dir)
+    output_path = Path(output_path)
 
     if not video_path.exists():
         raise FileNotFoundError(f"Video not found: {video_path}")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Open video
     cap = cv2.VideoCapture(str(video_path))
@@ -167,20 +167,20 @@ def extract_frames(
                     break
 
                 # Save frame
-                frame_path = output_dir / frame_pattern.format(frame_idx)
+                frame_path = output_path / frame_pattern.format(frame_idx)
                 cv2.imwrite(str(frame_path), frame)
 
                 frame_idx += 1
                 pbar.update(1)
 
-        logger.info(f"Completed: extracted {frame_idx} frames to {output_dir}")
+        logger.info(f"Completed: extracted {frame_idx} frames to {output_path}")
 
         return VideoMetadata(
             total_frames=frame_idx,
             fps=fps,
             width=width,
             height=height,
-            output_dir=output_dir,
+            output_path=output_path,
         )
 
     finally:
@@ -283,7 +283,7 @@ def compose_video(
 
 def render_all_frames(
     frames_dir: Path,
-    output_dir: Path,
+    output_path: Path,
     timestamps_path: Path,
     renderer_configs: List[dict],
     *,
@@ -302,7 +302,7 @@ def render_all_frames(
 
     Args:
         frames_dir: Directory containing extracted frames
-        output_dir: Directory for rendered frames
+        output_path: Directory for rendered frames
         timestamps_path: Path to frame timestamps CSV
         renderer_configs: List of renderer configurations
             Format: [{"class": "full.module.path.ClassName", "kwargs": {...}}, ...]
@@ -350,7 +350,7 @@ def render_all_frames(
     import importlib
 
     frames_dir = Path(frames_dir)
-    output_dir = Path(output_dir)
+    output_path = Path(output_path)
     timestamps_path = Path(timestamps_path)
 
     # Validate inputs
@@ -359,7 +359,7 @@ def render_all_frames(
     if not timestamps_path.exists():
         raise FileNotFoundError(f"Timestamps file not found: {timestamps_path}")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Load frame timestamps
     logger.info(f"Loading frame timestamps from {timestamps_path}")
@@ -376,7 +376,7 @@ def render_all_frames(
 
     if len(frame_times) == 0:
         logger.warning("No frames in specified time range")
-        return output_dir
+        return output_path
 
     # Instantiate all renderers once
     logger.info(f"Preparing {len(renderer_configs)} renderers")
@@ -442,8 +442,8 @@ def render_all_frames(
                 frame = _draw_frame_info(frame, frame_idx, timestamp_ms)
 
             # Save rendered frame
-            output_path = output_dir / frame_pattern.format(frame_idx)
-            cv2.imwrite(str(output_path), frame)
+            output_file = output_path / frame_pattern.format(frame_idx)
+            cv2.imwrite(str(output_file), frame)
 
             rendered_count += 1
 
@@ -453,6 +453,6 @@ def render_all_frames(
             else:
                 pbar.update(1)
 
-    logger.info(f"Completed: rendered {rendered_count} frames to {output_dir}")
+    logger.info(f"Completed: rendered {rendered_count} frames to {output_path}")
 
-    return output_dir
+    return output_path
