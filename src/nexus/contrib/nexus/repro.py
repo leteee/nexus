@@ -129,14 +129,28 @@ class VideoComposerConfig(PluginConfig):
         default="mp4v",
         description="Video codec for encoding (mp4v, avc1, etc.)"
     )
+    # Time range support (alternative to frame index)
+    start_time: Union[str, float, None] = Field(
+        default=None,
+        description="Start time for video clip (None=beginning, timestamp_ms as float, or time string like '2025-10-27 12:00:00')"
+    )
+    end_time: Union[str, float, None] = Field(
+        default=None,
+        description="End time for video clip (None=end, timestamp_ms as float, or time string)"
+    )
+    timestamps_path: Optional[str] = Field(
+        default=None,
+        description="Path to frame timestamps CSV (None to use frames_dir/frame_timestamps.csv)"
+    )
+    # Frame index range support (alternative to time range)
     start_frame: int = Field(
         default=0,
         ge=0,
-        description="First frame index to include (0-based)"
+        description="First frame index to include (0-based, used if start_time is None)"
     )
     end_frame: Optional[int] = Field(
         default=None,
-        description="Last frame index to include (None for all frames)"
+        description="Last frame index to include (None for all frames, used if end_time is None)"
     )
 
 
@@ -184,16 +198,86 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
 @plugin(name="Video Composer", config=VideoComposerConfig)
 def compose_frames_to_video(ctx: PluginContext) -> Any:
     """
-    Compose video from sequence of frame images.
+    Compose video from extracted frame images.
 
     Can use frames from Video Splitter or custom rendered frames.
-    Supports frame range selection for creating clips.
+    Supports both time range and frame index range selection for creating clips.
+
+    Time range (preferred):
+        start_time: "2025-10-27 08:30:15" or timestamp_ms
+        end_time: "2025-10-27 08:30:25" or timestamp_ms
+        timestamps_path: Path to frame_timestamps.csv (auto-detected if None)
+
+    Frame index range (alternative):
+        start_frame: 150
+        end_frame: 450
+
+    Priority: If start_time/end_time are provided, they override start_frame/end_frame.
     """
+    import pandas as pd
+
     config: VideoComposerConfig = ctx.config  # type: ignore
     frames_dir = ctx.resolve_path(config.frames_dir)
     output_path = ctx.resolve_path(config.output_path)
 
-    ctx.logger.info(f"Composing video from {frames_dir}")
+    # Determine frame range
+    start_frame_idx = config.start_frame
+    end_frame_idx = config.end_frame
+
+    # If time range is specified, convert to frame indices
+    if config.start_time is not None or config.end_time is not None:
+        # Load timestamps
+        if config.timestamps_path:
+            timestamps_path = ctx.resolve_path(config.timestamps_path)
+        else:
+            timestamps_path = frames_dir / "frame_timestamps.csv"
+
+        if not timestamps_path.exists():
+            raise FileNotFoundError(
+                f"Timestamps file not found: {timestamps_path}. "
+                f"Required when using start_time/end_time."
+            )
+
+        ctx.logger.info(f"Loading frame timestamps from {timestamps_path}")
+        frame_times = pd.read_csv(timestamps_path)
+
+        # Parse time values
+        start_time_ms = parse_time_value(config.start_time)
+        end_time_ms = parse_time_value(config.end_time)
+
+        # Convert time range to frame indices
+        if start_time_ms is not None:
+            # Find first frame >= start_time
+            matching_frames = frame_times[frame_times["timestamp_ms"] >= start_time_ms]
+            if len(matching_frames) > 0:
+                start_frame_idx = int(matching_frames.iloc[0]["frame_index"])
+                ctx.logger.info(
+                    f"Start time {start_time_ms} ms -> frame {start_frame_idx}"
+                )
+            else:
+                ctx.logger.warning(
+                    f"No frames found after start_time {start_time_ms} ms, "
+                    f"using start_frame={start_frame_idx}"
+                )
+
+        if end_time_ms is not None:
+            # Find last frame <= end_time
+            matching_frames = frame_times[frame_times["timestamp_ms"] <= end_time_ms]
+            if len(matching_frames) > 0:
+                end_frame_idx = int(matching_frames.iloc[-1]["frame_index"])
+                ctx.logger.info(
+                    f"End time {end_time_ms} ms -> frame {end_frame_idx}"
+                )
+            else:
+                ctx.logger.warning(
+                    f"No frames found before end_time {end_time_ms} ms, "
+                    f"using end_frame={end_frame_idx}"
+                )
+
+    ctx.logger.info(
+        f"Composing video from {frames_dir} "
+        f"(frame range: {start_frame_idx} to {end_frame_idx or 'end'})"
+    )
 
     result_path = compose_video(
         frames_dir,
@@ -201,8 +285,8 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
         fps=config.fps,
         frame_pattern=config.frame_pattern,
         codec=config.codec,
-        start_frame=config.start_frame,
-        end_frame=config.end_frame,
+        start_frame=start_frame_idx,
+        end_frame=end_frame_idx,
     )
 
     ctx.logger.info(f"Created video: {result_path}")

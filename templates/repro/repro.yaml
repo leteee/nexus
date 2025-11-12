@@ -93,6 +93,17 @@ pipeline:
       frame_pattern: "frame_{:06d}.png"
       codec: "mp4v"
 
+      # Option 1: Use time range (preferred, requires frame_timestamps.csv)
+      # start_time: "2025-10-27 08:30:10"
+      # end_time: "2025-10-27 08:30:30"
+      # timestamps_path: "input/vehicle_timeline.csv"  # Optional, auto-detected from frames_dir
+
+      # Option 2: Use frame index range
+      # start_frame: 0      # First frame (0-based)
+      # end_frame: 900      # Last frame (None for all)
+
+      # Note: If both time range and frame index are specified, time range takes priority
+
 # Architecture Notes:
 #
 # 1. Modular Renderers (Class-Based):
