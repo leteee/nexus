@@ -24,9 +24,17 @@ class TargetRenderer(BaseDataRenderer):
 
     Features:
     - Projects 3D bounding boxes from ADS to camera coordinates
-    - Draws boxes with target IDs
-    - Optional information panel in bottom-left corner (disabled by default)
+    - Draws bounding boxes
+    - Shows target info list in bottom-left corner (default)
+    - Info list stacks upward when there are many targets
+    - Optional ID labels above boxes (disabled by default)
+    - Optional detailed info panel (disabled by default)
     - Configurable tolerance for matching
+
+    Display modes:
+    - Default: Bounding boxes + target info list in bottom-left
+    - show_box_label=True: Add ID labels above each box
+    - show_panel=True: Add detailed info panel (additional to info list)
 
     Data format (JSONL):
         {
@@ -71,6 +79,7 @@ class TargetRenderer(BaseDataRenderer):
         ...     data_path="input/adb_targets.jsonl",
         ...     calibration_path="camera_calibration.json",
         ...     tolerance_ms=50.0,
+        ...     text_position=[15, 1070],  # Custom position
         ... )
         >>> frame = cv2.imread("frame_0000.png")
         >>> frame = renderer.render(frame, timestamp_ms=1761524999999.678)
@@ -86,8 +95,10 @@ class TargetRenderer(BaseDataRenderer):
         box_color: Tuple[int, int, int] = (0, 255, 0),  # Green
         box_thickness: int = 2,
         text_color: Tuple[int, int, int] = (0, 255, 255),  # Yellow
-        font_scale: float = 0.5,
+        font_scale: float = 0.6,
         text_thickness: int = 1,
+        text_position: Optional[Tuple[int, int]] = None,
+        show_box_label: bool = False,
         show_panel: bool = False,
     ):
         """
@@ -99,10 +110,12 @@ class TargetRenderer(BaseDataRenderer):
             time_offset_ms: Time offset to correct data timestamp bias (int, default 0ms)
             box_color: Bounding box color in BGR format
             box_thickness: Bounding box line thickness
-            text_color: ID label text color in BGR format (default: yellow)
-            font_scale: ID label font size multiplier (default: 0.5)
-            text_thickness: ID label text thickness (default: 1)
-            show_panel: Whether to show info panel in bottom-left (default: False)
+            text_color: Target info text color in BGR format (default: yellow)
+            font_scale: Text font size multiplier (default: 0.6)
+            text_thickness: Text thickness (default: 1)
+            text_position: Bottom-left anchor position [x, y] for target info list (None=auto at [10, frame_height-10])
+            show_box_label: Show ID label above each box (default: False)
+            show_panel: Whether to show detailed info panel in bottom-left (default: False)
         """
         # Use nearest matching for targets
         super().__init__(
@@ -119,6 +132,8 @@ class TargetRenderer(BaseDataRenderer):
         self.text_color = text_color
         self.font_scale = font_scale
         self.text_thickness = text_thickness
+        self.text_position = text_position
+        self.show_box_label = show_box_label
         self.show_panel = show_panel
 
         # Load camera calibration
@@ -258,38 +273,39 @@ class TargetRenderer(BaseDataRenderer):
             thickness=self.box_thickness,
         )
 
-        # Draw target ID above box with text outline
-        label = f"ID:{target['id']}"
+        # Only draw ID label above box if show_box_label is enabled
+        if self.show_box_label:
+            label = f"ID:{target['id']}"
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        outline_color = (0, 0, 0)  # Black outline
-        outline_thickness = self.text_thickness + 2
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            outline_color = (0, 0, 0)  # Black outline
+            outline_thickness = self.text_thickness + 2
 
-        label_pos = (x_min, max(y_min - 5, 15))
+            label_pos = (x_min, max(y_min - 5, 15))
 
-        # Draw text outline for better visibility
-        cv2.putText(
-            frame,
-            label,
-            label_pos,
-            font,
-            self.font_scale,
-            outline_color,
-            outline_thickness,
-            cv2.LINE_AA,
-        )
+            # Draw text outline for better visibility
+            cv2.putText(
+                frame,
+                label,
+                label_pos,
+                font,
+                self.font_scale,
+                outline_color,
+                outline_thickness,
+                cv2.LINE_AA,
+            )
 
-        # Draw main text
-        cv2.putText(
-            frame,
-            label,
-            label_pos,
-            font,
-            self.font_scale,
-            self.text_color,
-            self.text_thickness,
-            cv2.LINE_AA,
-        )
+            # Draw main text
+            cv2.putText(
+                frame,
+                label,
+                label_pos,
+                font,
+                self.font_scale,
+                self.text_color,
+                self.text_thickness,
+                cv2.LINE_AA,
+            )
 
         return frame
 
@@ -364,6 +380,77 @@ class TargetRenderer(BaseDataRenderer):
 
         return frame
 
+    def _draw_target_info_list(
+        self,
+        frame: np.ndarray,
+        targets: List[dict],
+    ) -> np.ndarray:
+        """
+        Draw target information list in bottom-left corner (text only, no panel).
+
+        Targets are drawn from bottom to top (stacking upward when there are many targets).
+
+        Args:
+            frame: Video frame
+            targets: List of target dictionaries
+
+        Returns:
+            Frame with target info list
+        """
+        if not targets:
+            return frame
+
+        frame_height = frame.shape[0]
+
+        # Determine starting position (bottom-left corner)
+        if self.text_position is not None:
+            start_x, start_y = self.text_position
+        else:
+            start_x = 10
+            start_y = frame_height - 10  # Default: 10 pixels from bottom
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        outline_color = (0, 0, 0)  # Black outline
+        outline_thickness = self.text_thickness + 2
+
+        # Calculate line height based on font scale
+        line_height = int(30 * self.font_scale)  # Approximate line height
+
+        # Draw targets from bottom to top
+        y = start_y
+        for target in reversed(targets):  # Reverse to draw from bottom
+            # Format: "ID:1 car 45.2m"
+            text = f"ID:{target['id']} {target['type']} {target['distance_m']:.1f}m"
+
+            # Draw text outline
+            cv2.putText(
+                frame,
+                text,
+                (start_x, y),
+                font,
+                self.font_scale,
+                outline_color,
+                outline_thickness,
+                cv2.LINE_AA,
+            )
+
+            # Draw main text
+            cv2.putText(
+                frame,
+                text,
+                (start_x, y),
+                font,
+                self.font_scale,
+                self.text_color,
+                self.text_thickness,
+                cv2.LINE_AA,
+            )
+
+            # Move up for next target
+            y -= line_height
+
+        return frame
+
     def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
         Render 3D targets on frame.
@@ -406,7 +493,10 @@ class TargetRenderer(BaseDataRenderer):
 
         self.ctx.logger.debug(f"Successfully rendered {len(projected_targets)}/{len(targets)} targets")
 
-        # Draw info panel if enabled
+        # Draw target info list in bottom-left corner (default behavior)
+        frame = self._draw_target_info_list(frame, projected_targets)
+
+        # Draw detailed info panel if enabled (optional, additional to info list)
         if self.show_panel:
             frame = self._draw_target_panel(frame, projected_targets)
 

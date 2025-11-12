@@ -33,9 +33,12 @@ defaults:
     box_color: [0, 255, 0]  # BGR: Green boxes
     box_thickness: 2
     text_color: [0, 255, 255]  # BGR: Yellow text
-    font_scale: 0.5
+    font_scale: 0.6
     text_thickness: 1
-    show_panel: false     # Default: false (no panel, text only)
+    text_position: null   # Auto: [10, frame_height-10] (bottom-left corner)
+                          # Custom: [x, y] where y is from bottom
+    show_box_label: false # Show ID label above each box (default: false)
+    show_panel: false     # Show detailed info panel (default: false)
 
   # Camera calibration path
   camera:
@@ -85,7 +88,9 @@ pipeline:
             data_path: "input/adb_targets.jsonl"
             calibration_path: "@defaults.camera.calibration_path"  # Reference nested value
             time_offset_ms: 0
-            # show_panel: false  # Default: false (no panel, text only with outline)
+            # text_position: [15, 1070]  # Optional: Custom position (default: auto bottom-left)
+            # show_box_label: false  # Show ID above each box (default: false)
+            # show_panel: false  # Show detailed panel (default: false)
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
@@ -118,11 +123,20 @@ pipeline:
 # 2. Text Rendering Configuration:
 #    All renderers support customizable text appearance:
 #    - position: [x, y] - Text position (SpeedRenderer)
-#    - font_scale: float - Font size multiplier (e.g., 1.2, 0.5)
+#    - font_scale: float - Font size multiplier (e.g., 1.2, 0.6)
 #    - color / text_color: [B, G, R] - Text color in BGR format
 #      Examples: [0, 255, 0] = Green, [0, 255, 255] = Yellow, [255, 0, 0] = Blue
 #    - thickness / text_thickness: int - Text line thickness
 #    - Text uses black outline automatically for better visibility
+#
+#    TargetRenderer special features:
+#    - text_position: [x, y] - Bottom-left anchor for target info list
+#      Default: [10, frame_height-10] (auto-calculated)
+#      Custom: [15, 1070] for 1080p video
+#    - Target list stacks UPWARD when there are many targets
+#    - Each target shows as: "ID:1 car 45.2m"
+#    - show_box_label: Show ID above each box (default: false)
+#    - show_panel: Show detailed panel (default: false)
 #
 #    Example - Multiple speed displays with different colors:
 #      - class: "nexus.contrib.repro.renderers.SpeedRenderer"
@@ -140,6 +154,15 @@ pipeline:
 #          font_scale: 1.0
 #          color: [0, 255, 255]  # Yellow
 #          thickness: 2
+#
+#    Example - Custom target info position:
+#      - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#        kwargs:
+#          data_path: "input/targets.jsonl"
+#          calibration_path: "calib.json"
+#          text_position: [15, 1070]  # 10px from bottom on 1080p
+#          text_color: [0, 255, 255]  # Yellow
+#          font_scale: 0.6
 #
 # 3. Easy to Extend:
 #    - Add new data type: Create a renderer class
