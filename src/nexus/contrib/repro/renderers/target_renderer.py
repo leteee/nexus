@@ -25,7 +25,7 @@ class TargetRenderer(BaseDataRenderer):
     Features:
     - Projects 3D bounding boxes from ADS to camera coordinates
     - Draws boxes with target IDs
-    - Information panel in bottom-left corner
+    - Optional information panel in bottom-left corner (disabled by default)
     - Configurable tolerance for matching
 
     Data format (JSONL):
@@ -85,7 +85,10 @@ class TargetRenderer(BaseDataRenderer):
         time_offset_ms: int = 0,
         box_color: Tuple[int, int, int] = (0, 255, 0),  # Green
         box_thickness: int = 2,
-        show_panel: bool = True,
+        text_color: Tuple[int, int, int] = (0, 255, 255),  # Yellow
+        font_scale: float = 0.5,
+        text_thickness: int = 1,
+        show_panel: bool = False,
     ):
         """
         Args:
@@ -96,7 +99,10 @@ class TargetRenderer(BaseDataRenderer):
             time_offset_ms: Time offset to correct data timestamp bias (int, default 0ms)
             box_color: Bounding box color in BGR format
             box_thickness: Bounding box line thickness
-            show_panel: Whether to show info panel in bottom-left
+            text_color: ID label text color in BGR format (default: yellow)
+            font_scale: ID label font size multiplier (default: 0.5)
+            text_thickness: ID label text thickness (default: 1)
+            show_panel: Whether to show info panel in bottom-left (default: False)
         """
         # Use nearest matching for targets
         super().__init__(
@@ -110,6 +116,9 @@ class TargetRenderer(BaseDataRenderer):
         self.calibration_path = Path(calibration_path)
         self.box_color = box_color
         self.box_thickness = box_thickness
+        self.text_color = text_color
+        self.font_scale = font_scale
+        self.text_thickness = text_thickness
         self.show_panel = show_panel
 
         # Load camera calibration
@@ -249,21 +258,36 @@ class TargetRenderer(BaseDataRenderer):
             thickness=self.box_thickness,
         )
 
-        # Draw target ID above box
+        # Draw target ID above box with text outline
         label = f"ID:{target['id']}"
 
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
-        thickness = 1
+        outline_color = (0, 0, 0)  # Black outline
+        outline_thickness = self.text_thickness + 2
 
+        label_pos = (x_min, max(y_min - 5, 15))
+
+        # Draw text outline for better visibility
         cv2.putText(
             frame,
             label,
-            (x_min, max(y_min - 5, 15)),
+            label_pos,
             font,
-            font_scale,
-            (0, 255, 255),  # Yellow
-            thickness,
+            self.font_scale,
+            outline_color,
+            outline_thickness,
+            cv2.LINE_AA,
+        )
+
+        # Draw main text
+        cv2.putText(
+            frame,
+            label,
+            label_pos,
+            font,
+            self.font_scale,
+            self.text_color,
+            self.text_thickness,
             cv2.LINE_AA,
         )
 

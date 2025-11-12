@@ -23,7 +23,7 @@ class SpeedRenderer(BaseDataRenderer):
     - Displays speed in km/h (or N/A if no data)
     - Configurable position and styling
     - Forward matching (speed "holds" until next update)
-    - Background panel for readability
+    - Text with outline for readability (no background panel)
 
     Data format (JSONL):
         {"timestamp_ms": 1759284000000.0, "speed": 120.5}
@@ -104,26 +104,26 @@ class SpeedRenderer(BaseDataRenderer):
 
         text = f"Speed: {speed_str}"
 
-        # Draw with background
+        # Draw text with outline (no background panel)
         x, y = self.position
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        # Get text size
-        (text_w, text_h), baseline = cv2.getTextSize(
-            text, font, self.font_scale, self.thickness
-        )
+        # Draw text outline (black) for better visibility
+        outline_color = (0, 0, 0)
+        outline_thickness = self.thickness + 2
 
-        # Draw background rectangle
-        padding = 10
-        cv2.rectangle(
+        cv2.putText(
             frame,
-            (x - padding, y - text_h - padding),
-            (x + text_w + padding, y + baseline + padding),
-            (0, 0, 0),  # Black background
-            -1,
+            text,
+            (x, y),
+            font,
+            self.font_scale,
+            outline_color,
+            outline_thickness,
+            cv2.LINE_AA,
         )
 
-        # Draw text
+        # Draw main text
         cv2.putText(
             frame,
             text,

@@ -24,15 +24,18 @@ defaults:
     position: [30, 60]
     tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
     font_scale: 1.2
-    color: [0, 255, 0]    # Green
+    color: [0, 255, 0]    # BGR: Green
     thickness: 3
 
   # Target renderer configuration
   target_renderer:
     tolerance_ms: 50.0    # Nearest matching: within 50ms
-    box_color: [0, 255, 0]  # Green boxes
+    box_color: [0, 255, 0]  # BGR: Green boxes
     box_thickness: 2
-    show_panel: true
+    text_color: [0, 255, 255]  # BGR: Yellow text
+    font_scale: 0.5
+    text_thickness: 1
+    show_panel: false     # Default: false (no panel, text only)
 
   # Camera calibration path
   camera:
@@ -82,7 +85,7 @@ pipeline:
             data_path: "input/adb_targets.jsonl"
             calibration_path: "@defaults.camera.calibration_path"  # Reference nested value
             time_offset_ms: 0
-            show_panel: true
+            # show_panel: false  # Default: false (no panel, text only with outline)
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
@@ -112,22 +115,48 @@ pipeline:
 #    - SpeedRenderer: Vehicle speed with forward matching
 #    - TargetRenderer: 3D object detection with projection
 #
-# 2. Easy to Extend:
+# 2. Text Rendering Configuration:
+#    All renderers support customizable text appearance:
+#    - position: [x, y] - Text position (SpeedRenderer)
+#    - font_scale: float - Font size multiplier (e.g., 1.2, 0.5)
+#    - color / text_color: [B, G, R] - Text color in BGR format
+#      Examples: [0, 255, 0] = Green, [0, 255, 255] = Yellow, [255, 0, 0] = Blue
+#    - thickness / text_thickness: int - Text line thickness
+#    - Text uses black outline automatically for better visibility
+#
+#    Example - Multiple speed displays with different colors:
+#      - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#        kwargs:
+#          data_path: "input/speed_raw.jsonl"
+#          position: [30, 60]
+#          font_scale: 1.2
+#          color: [0, 255, 0]    # Green
+#          thickness: 3
+#
+#      - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#        kwargs:
+#          data_path: "input/speed_smooth.jsonl"
+#          position: [30, 120]
+#          font_scale: 1.0
+#          color: [0, 255, 255]  # Yellow
+#          thickness: 2
+#
+# 3. Easy to Extend:
 #    - Add new data type: Create a renderer class
 #    - Inherit from BaseDataRenderer
 #    - Use full class name in renderers list
 #    - Example: "your.module.path.GPSRenderer"
 #
-# 3. Matching Strategies:
+# 4. Matching Strategies:
 #    - Forward: Use most recent data ≤ timestamp (good for speed, GPS)
 #    - Nearest: Use closest data point (good for high-freq like targets)
 #    - Backward: Use earliest data ≥ timestamp (for predictive data)
 #
-# 4. Data Flow:
+# 5. Data Flow:
 #    Video → Frames → [Renderer 1] → [Renderer 2] → ... → Rendered Frames → Video
 #    Each renderer applies its visualization sequentially
 #
-# 5. Enable/Disable Steps:
+# 6. Enable/Disable Steps:
 #    Use 'enable' field to control step execution:
 #    - enable: true  (default, executes the step)
 #    - enable: false (skips the step)
@@ -139,7 +168,7 @@ pipeline:
 #
 #    When disabled, log shows: "Skipping disabled plugin (step N): Plugin Name"
 #
-# 6. Enable/Disable Renderers:
+# 7. Enable/Disable Renderers:
 #    Each renderer also supports 'enable' field:
 #    - enable: true  (default, executes the renderer)
 #    - enable: false (skips the renderer)

@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from .types import VideoMetadata
 from .io import load_frame_timestamps
+from .utils import timestamp_to_string
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,9 @@ def _draw_frame_info(
     timestamp_ms: int,
 ) -> np.ndarray:
     """
-    Draw frame information overlay (frame ID + timestamp) in top-right corner.
+    Draw frame information overlay in top-left corner (single line).
+
+    Displays: Frame: xxx  TS: xxxms  Time: 2025-10-27 08:30:10
 
     Args:
         frame: Video frame to annotate
@@ -37,74 +40,46 @@ def _draw_frame_info(
     Returns:
         Frame with info overlay
     """
-    # Format timestamp as readable string
-    # Convert ms to seconds with 3 decimal places
-    timestamp_s = timestamp_ms / 1000.0
+    # Format timestamp to datetime string
+    datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
 
-    # Prepare text lines
-    text_lines = [
-        f"Frame: {frame_idx}",
-        f"Time: {timestamp_s:.3f}s",
-        f"TS: {timestamp_ms}ms",
-    ]
+    # Create single-line text
+    text = f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}"
 
     # Text settings
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
+    font_scale = 0.6
     thickness = 1
-    color = (0, 255, 255)  # Yellow
-    bg_color = (0, 0, 0)  # Black background
-    padding = 8
-    line_height = 20
+    color = (0, 255, 255)  # Yellow text
+    outline_color = (0, 0, 0)  # Black outline
+    outline_thickness = 3
 
-    # Calculate panel dimensions
-    text_widths = []
-    for line in text_lines:
-        (w, h), _ = cv2.getTextSize(line, font, font_scale, thickness)
-        text_widths.append(w)
+    # Position in top-left corner
+    position = (10, 30)
 
-    panel_width = max(text_widths) + padding * 2
-    panel_height = len(text_lines) * line_height + padding * 2
-
-    # Position in top-right corner
-    frame_height, frame_width = frame.shape[:2]
-    panel_x = frame_width - panel_width - 10
-    panel_y = 10
-
-    # Draw semi-transparent background
-    overlay = frame.copy()
-    cv2.rectangle(
-        overlay,
-        (panel_x, panel_y),
-        (panel_x + panel_width, panel_y + panel_height),
-        bg_color,
-        -1,
-    )
-    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-
-    # Draw border
-    cv2.rectangle(
+    # Draw text outline (for better visibility)
+    cv2.putText(
         frame,
-        (panel_x, panel_y),
-        (panel_x + panel_width, panel_y + panel_height),
-        (100, 100, 100),
-        1,
+        text,
+        position,
+        font,
+        font_scale,
+        outline_color,
+        outline_thickness,
+        cv2.LINE_AA,
     )
 
-    # Draw text lines
-    text_y = panel_y + padding + 15
-    for line in text_lines:
-        cv2.putText(
-            frame,
-            line,
-            (panel_x + padding, text_y),
-            font,
-            font_scale,
-            color,
-            thickness,
-            cv2.LINE_AA,
-        )
-        text_y += line_height
+    # Draw main text
+    cv2.putText(
+        frame,
+        text,
+        position,
+        font,
+        font_scale,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
 
     return frame
 
