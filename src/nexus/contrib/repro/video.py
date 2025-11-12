@@ -17,71 +17,8 @@ from tqdm import tqdm
 
 from .types import VideoMetadata
 from .io import load_frame_timestamps
-from .utils import timestamp_to_string
 
 logger = logging.getLogger(__name__)
-
-
-def _draw_frame_info(
-    frame: np.ndarray,
-    frame_idx: int,
-    timestamp_ms: int,
-) -> np.ndarray:
-    """
-    Draw frame information overlay in top-left corner (single line).
-
-    Displays: Frame: xxx  TS: xxxms  Time: 2025-10-27 08:30:10
-
-    Args:
-        frame: Video frame to annotate
-        frame_idx: Frame index number
-        timestamp_ms: Frame timestamp in milliseconds
-
-    Returns:
-        Frame with info overlay
-    """
-    # Format timestamp to datetime string
-    datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
-
-    # Create single-line text
-    text = f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}"
-
-    # Text settings
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.6
-    thickness = 1
-    color = (0, 255, 255)  # Yellow text
-    outline_color = (0, 0, 0)  # Black outline
-    outline_thickness = 3
-
-    # Position in top-left corner
-    position = (10, 30)
-
-    # Draw text outline (for better visibility)
-    cv2.putText(
-        frame,
-        text,
-        position,
-        font,
-        font_scale,
-        outline_color,
-        outline_thickness,
-        cv2.LINE_AA,
-    )
-
-    # Draw main text
-    cv2.putText(
-        frame,
-        text,
-        position,
-        font,
-        font_scale,
-        color,
-        thickness,
-        cv2.LINE_AA,
-    )
-
-    return frame
 
 
 def extract_frames(
@@ -265,7 +202,6 @@ def render_all_frames(
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
     end_time_ms: Optional[float] = None,
-    show_frame_info: bool = True,
     progress_callback: Optional[Callable[[int, int], None]] = None,
     ctx: Any,
 ) -> Path:
@@ -286,16 +222,32 @@ def render_all_frames(
         frame_pattern: Frame filename pattern
         start_time_ms: Optional start time (None=from beginning)
         end_time_ms: Optional end time (None=to end)
-        show_frame_info: Show frame ID and timestamp overlay (default: True)
         progress_callback: Optional callback(count, total) for progress tracking
         ctx: Context object to pass to renderers (required, with logger and path resolution)
 
     Returns:
         Path to output directory
 
+    Note:
+        To display frame info, add FrameInfoRenderer to renderer_configs:
+        {
+            "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
+            "kwargs": {
+                "position": [10, 30],
+                "format": "datetime"
+            }
+        }
+
     Example:
         >>> # Using full class names
         >>> renderer_configs = [
+        ...     {
+        ...         "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
+        ...         "kwargs": {
+        ...             "position": (10, 30),
+        ...             "format": "datetime"
+        ...         }
+        ...     },
         ...     {
         ...         "class": "nexus.contrib.repro.renderers.SpeedRenderer",
         ...         "kwargs": {
@@ -319,7 +271,8 @@ def render_all_frames(
         ...     Path("timestamps.csv"),
         ...     renderer_configs,
         ...     start_time_ms=1000.0,
-        ...     end_time_ms=5000.0
+        ...     end_time_ms=5000.0,
+        ...     ctx=ctx
         ... )
     """
     import importlib
@@ -410,11 +363,14 @@ def render_all_frames(
 
             # Apply all renderers sequentially
             for renderer_info in renderers:
-                frame = renderer_info["instance"].render(frame, timestamp_ms)
+                renderer_instance = renderer_info["instance"]
+                renderer_class_name = renderer_info["class"]
 
-            # Draw frame info overlay (frame ID + timestamp)
-            if show_frame_info:
-                frame = _draw_frame_info(frame, frame_idx, timestamp_ms)
+                # Special handling for FrameInfoRenderer: pass frame_idx
+                if "FrameInfoRenderer" in renderer_class_name:
+                    frame = renderer_instance.render(frame, timestamp_ms, frame_idx)
+                else:
+                    frame = renderer_instance.render(frame, timestamp_ms)
 
             # Save rendered frame
             output_file = output_path / frame_pattern.format(frame_idx)

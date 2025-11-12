@@ -67,11 +67,19 @@ pipeline:
       output_path: "temp/rendered_frames"
       frame_pattern: "frame_{:06d}.png"
       timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
-      show_frame_info: true
 
       # Renderers with shared configuration
       # Each renderer supports 'enable' field to control execution (default: true)
       renderers:
+        # Render frame info (frame ID + timestamp) in top-left corner
+        - class: "nexus.contrib.repro.renderers.FrameInfoRenderer"
+          kwargs:
+            position: [10, 30]           # Top-left corner
+            format: "datetime"           # Options: "compact", "datetime", "detailed"
+            font_scale: 0.6
+            color: [0, 255, 255]         # BGR: Yellow
+            thickness: 1
+
         # Render vehicle speed using shared config
         - class: "nexus.contrib.repro.renderers.SpeedRenderer"
           # enable: true  # Default, can be omitted
@@ -115,19 +123,29 @@ pipeline:
 # Architecture Notes:
 #
 # 1. Modular Renderers (Class-Based):
-#    - Each renderer handles ONE data type
+#    - Each renderer handles ONE data type or display element
 #    - Use full qualified class names in config
+#    - FrameInfoRenderer: Frame metadata (frame ID + timestamp)
 #    - SpeedRenderer: Vehicle speed with forward matching
 #    - TargetRenderer: 3D object detection with projection
 #
 # 2. Text Rendering Configuration:
 #    All renderers support customizable text appearance:
-#    - position: [x, y] - Text position (SpeedRenderer)
+#    - position: [x, y] - Text position
 #    - font_scale: float - Font size multiplier (e.g., 1.2, 0.6)
 #    - color / text_color: [B, G, R] - Text color in BGR format
 #      Examples: [0, 255, 0] = Green, [0, 255, 255] = Yellow, [255, 0, 0] = Blue
 #    - thickness / text_thickness: int - Text line thickness
 #    - Text uses black outline automatically for better visibility
+#
+#    FrameInfoRenderer special features:
+#    - format: Display format options
+#      * "compact": "Frame: 123  TS: 1759284000000ms"
+#      * "datetime": "Frame: 123  TS: 1759284000000ms  Time: 2025-10-27 08:30:10"
+#      * "detailed": Multi-line with date and time
+#    - No data file needed (uses frame_idx and timestamp_ms directly)
+#    - Always displayed if included in renderers list
+#    - Can be disabled with enable: false
 #
 #    TargetRenderer special features:
 #    - text_position: [x, y] - Bottom-left anchor for target info list

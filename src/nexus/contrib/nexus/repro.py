@@ -328,10 +328,6 @@ class DataRendererConfig(PluginConfig):
         default=None,
         description="Path to custom frame timestamps CSV (None to use frames_dir/frame_timestamps.csv)"
     )
-    show_frame_info: bool = Field(
-        default=True,
-        description="Show frame ID and timestamp overlay on rendered frames"
-    )
     renderers: list[dict] = Field(
         description="List of renderer configurations with 'class' (full qualified class name) and 'kwargs'"
     )
@@ -382,8 +378,17 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         output_path: Directory for rendered frames
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
-        show_frame_info: Show frame ID and timestamp overlay (default: True)
         renderers: List of renderer configurations (use "class" for full qualified class names)
+
+    Note:
+        To show frame info, add FrameInfoRenderer to the renderers list:
+        {
+            "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
+            "kwargs": {
+                "position": [10, 30],
+                "format": "datetime"
+            }
+        }
     """
     config: DataRendererConfig = ctx.config  # type: ignore
 
@@ -439,7 +444,6 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,
-        show_frame_info=config.show_frame_info,
         progress_callback=progress_callback,
         ctx=ctx,  # Pass context to renderers
     )
