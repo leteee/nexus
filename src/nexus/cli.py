@@ -153,12 +153,13 @@ def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bo
         sys.exit(1)
 
 
-@cli.command(name="plugin")
+@cli.command(name="exec")
 @click.argument("plugin_name")
 @click.option("--case", "-c", required=True, help="Case directory for execution context")
 @click.option("--config", "-C", multiple=True, help="Config overrides (key=value)")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
-def plugin_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool) -> None:
+def exec_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool) -> None:
+    """Execute a single plugin."""
     setup_logging("DEBUG" if verbose else "INFO")
 
     project_root = find_project_root(Path.cwd())
@@ -214,10 +215,14 @@ def list_cmd(what: str) -> None:
                 click.echo(f"    {spec.description}")
 
 
-def _display_plugin_info(plugin_name: str) -> None:
-    """Display detailed information about a specific plugin."""
+@cli.command()
+@click.argument("plugin_name")
+def config(plugin_name: str) -> None:
+    """Show YAML configuration template for a plugin."""
+    project_root = find_project_root(Path.cwd())
+    _discover(project_root)
+
     from .core.discovery import get_plugin
-    from pydantic_core import PydanticUndefined
 
     try:
         spec = get_plugin(plugin_name)
@@ -226,53 +231,77 @@ def _display_plugin_info(plugin_name: str) -> None:
         click.echo("\nRun 'nexus list plugins' to see available plugins")
         sys.exit(1)
 
-    click.echo(f"Plugin: {plugin_name}")
-    click.echo("")
+    # Display plugin description
+    click.echo(f"# Plugin: {plugin_name}")
     if spec.description:
-        click.echo(spec.description)
-        click.echo("")
+        for line in spec.description.strip().split("\n"):
+            click.echo(f"# {line}" if line.strip() else "#")
+    click.echo("")
+
+    # Generate YAML configuration template
+    click.echo("pipeline:")
+    click.echo(f'  - plugin: "{plugin_name}"')
 
     if spec.config_model:
-        click.echo("Configuration fields:")
-        for field_name, field_info in spec.config_model.model_fields.items():
-            # Get default value
-            default = field_info.default
-            if default is PydanticUndefined:
-                default_str = "<required>"
-            elif default is None:
-                default_str = "None"
-            else:
-                default_str = str(default)
-
-            # Get field type
-            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-
-            # Get description
-            description = field_info.description or ""
-
-            # Format output
-            if description:
-                click.echo(f"  - {field_name} ({field_type}): {default_str}")
-                click.echo(f"    {description}")
-            else:
-                click.echo(f"  - {field_name} ({field_type}): {default_str}")
+        click.echo("    config:")
+        _generate_yaml_config(spec.config_model)
     else:
-        click.echo("No configuration fields")
+        click.echo("    # No configuration required")
 
 
-@cli.command()
-def help() -> None:  # pylint: disable=redefined-builtin
-    """Show help information for nexus commands."""
-    click.echo(cli.get_help(click.Context(cli)))
+def _generate_yaml_config(config_model: Any) -> None:
+    """Generate YAML configuration from Pydantic model."""
+    from pydantic_core import PydanticUndefined
 
+    json_schema = config_model.model_json_schema()
+    properties = json_schema.get("properties", {})
 
-@cli.command()
-@click.argument("plugin_name")
-def info(plugin_name: str) -> None:
-    """Show detailed information about a plugin."""
-    project_root = find_project_root(Path.cwd())
-    _discover(project_root)
-    _display_plugin_info(plugin_name)
+    for field_name, field_info in config_model.model_fields.items():
+        field_schema = properties.get(field_name, {})
+        default = field_info.default
+
+        # Get field type and description
+        field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
+        field_type = field_type.replace("typing.", "")
+        description = field_info.description or ""
+
+        # Build comment
+        if default is PydanticUndefined:
+            status = "required"
+        else:
+            status = "optional"
+
+        if description:
+            comment = f"  # {field_type}, {status}: {description}"
+        else:
+            comment = f"  # {field_type}, {status}"
+
+        # Generate YAML value
+        if default is PydanticUndefined:
+            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+        elif default is None:
+            yaml_lines = ["null"]
+        elif isinstance(default, str):
+            yaml_lines = [f'"{default}"']
+        elif isinstance(default, bool):
+            yaml_lines = [str(default).lower()]
+        elif isinstance(default, (int, float)):
+            yaml_lines = [str(default)]
+        elif isinstance(default, list):
+            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+        elif isinstance(default, dict):
+            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
+        else:
+            yaml_lines = [str(default)]
+
+        # Output YAML
+        if len(yaml_lines) == 1 and not yaml_lines[0].startswith("\n"):
+            click.echo(f"      {field_name}: {yaml_lines[0]}{comment}")
+        else:
+            click.echo(f"      {field_name}:{comment}")
+            for yaml_line in yaml_lines:
+                if yaml_line:
+                    click.echo(f"    {yaml_line}")
 
 
 @cli.command(name="doc")
