@@ -214,27 +214,19 @@ def list_cmd(what: str) -> None:
                 click.echo(f"    {spec.description}")
 
 
-@cli.command()
-@click.option("--plugin", help="Show help for a specific plugin")
-def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
-    """Show help information for commands or plugins."""
-    if not plugin:
-        click.echo(cli.get_help(click.Context(cli)))
-        return
-
-    project_root = find_project_root(Path.cwd())
-    _discover(project_root)
-
+def _display_plugin_info(plugin_name: str) -> None:
+    """Display detailed information about a specific plugin."""
     from .core.discovery import get_plugin
     from pydantic_core import PydanticUndefined
 
     try:
-        spec = get_plugin(plugin)
-    except KeyError as exc:
-        click.echo(f"ERROR: {exc}")
+        spec = get_plugin(plugin_name)
+    except KeyError:
+        click.echo(f"ERROR: Plugin '{plugin_name}' not found")
+        click.echo("\nRun 'nexus list plugins' to see available plugins")
         sys.exit(1)
 
-    click.echo(f"Plugin: {plugin}")
+    click.echo(f"Plugin: {plugin_name}")
     click.echo("")
     if spec.description:
         click.echo(spec.description)
@@ -264,6 +256,23 @@ def help(plugin: Optional[str]) -> None:  # pylint: disable=redefined-builtin
                 click.echo(f"    {description}")
             else:
                 click.echo(f"  - {field_name} ({field_type}): {default_str}")
+    else:
+        click.echo("No configuration fields")
+
+
+@cli.command()
+def help() -> None:  # pylint: disable=redefined-builtin
+    """Show help information for nexus commands."""
+    click.echo(cli.get_help(click.Context(cli)))
+
+
+@cli.command()
+@click.argument("plugin_name")
+def info(plugin_name: str) -> None:
+    """Show detailed information about a plugin."""
+    project_root = find_project_root(Path.cwd())
+    _discover(project_root)
+    _display_plugin_info(plugin_name)
 
 
 @cli.command(name="doc")
