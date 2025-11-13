@@ -30,7 +30,7 @@ class BaseDataRenderer(DataRenderer):
     - Configurable tolerance
 
     Subclasses implement:
-    - render(ctx, frame, timestamp_ms): How to draw data on frame
+    - render(frame, timestamp_ms): How to draw data on frame
 
     Example:
         >>> class SpeedRenderer(BaseDataRenderer):

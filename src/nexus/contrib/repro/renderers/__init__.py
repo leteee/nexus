@@ -37,7 +37,9 @@ Example usage:
     >>> frame = cv2.imread("frame.png")
     >>> timestamp_ms = 1761525000000.0
     >>> frame_idx = 100
-    >>> frame = frame_info.render(frame, timestamp_ms, frame_idx)
+    >>> # Store frame_idx in context for FrameInfoRenderer
+    >>> ctx.remember("current_frame_idx", frame_idx)
+    >>> frame = frame_info.render(frame, timestamp_ms)
     >>> frame = speed_renderer.render(frame, timestamp_ms)
     >>> frame = target_renderer.render(frame, timestamp_ms)
 """

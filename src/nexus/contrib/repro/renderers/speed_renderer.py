@@ -50,6 +50,7 @@ class SpeedRenderer(BaseDataRenderer):
         font_scale: float = 1.2,
         color: Tuple[int, int, int] = (0, 255, 0),  # BGR: Green
         thickness: int = 3,
+        show_timestamp: bool = True,
     ):
         """
         Args:
@@ -61,6 +62,7 @@ class SpeedRenderer(BaseDataRenderer):
             font_scale: Font size multiplier
             color: Text color in BGR format
             thickness: Text thickness
+            show_timestamp: Whether to show data and adjusted timestamps (default True)
         """
         # Use forward matching for speed (holds value)
         super().__init__(
@@ -75,6 +77,7 @@ class SpeedRenderer(BaseDataRenderer):
         self.font_scale = font_scale
         self.color = color
         self.thickness = thickness
+        self.show_timestamp = show_timestamp
 
     def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
@@ -96,13 +99,23 @@ class SpeedRenderer(BaseDataRenderer):
         # Prepare text
         if not matched or "speed" not in matched[0]:
             speed_str = "N/A"
+            data_ts_str = ""
             self.ctx.logger.debug(f"No speed data found for timestamp {timestamp_ms}ms")
         else:
             speed_value = matched[0]['speed']
+            data_timestamp = matched[0].get('timestamp_ms', 'N/A')
             speed_str = f"{speed_value:.1f} km/h"
-            self.ctx.logger.debug(f"Matched speed data: {speed_value:.1f} km/h at {matched[0].get('timestamp_ms', 'N/A')}ms")
 
-        text = f"Speed: {speed_str}"
+            # Show timestamps if enabled
+            if self.show_timestamp:
+                adjusted_timestamp = timestamp_ms - self.time_offset_ms
+                data_ts_str = f"  [Data: {data_timestamp}ms | Adj: {adjusted_timestamp}ms]"
+            else:
+                data_ts_str = ""
+
+            self.ctx.logger.debug(f"Matched speed data: {speed_value:.1f} km/h at {data_timestamp}ms")
+
+        text = f"Speed: {speed_str}{data_ts_str}"
 
         # Draw text with outline (no background panel)
         x, y = self.position

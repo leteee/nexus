@@ -100,6 +100,7 @@ class TargetRenderer(BaseDataRenderer):
         text_position: Optional[Tuple[int, int]] = None,
         show_box_label: bool = False,
         show_panel: bool = False,
+        show_timestamp: bool = True,
     ):
         """
         Args:
@@ -116,6 +117,7 @@ class TargetRenderer(BaseDataRenderer):
             text_position: Bottom-left anchor position [x, y] for target info list (None=auto at [10, frame_height-10])
             show_box_label: Show ID label above each box (default: False)
             show_panel: Whether to show detailed info panel in bottom-left (default: False)
+            show_timestamp: Whether to show data and adjusted timestamps (default True)
         """
         # Use nearest matching for targets
         super().__init__(
@@ -135,6 +137,7 @@ class TargetRenderer(BaseDataRenderer):
         self.text_position = text_position
         self.show_box_label = show_box_label
         self.show_panel = show_panel
+        self.show_timestamp = show_timestamp
 
         # Load camera calibration
         with open(self.calibration_path, 'r', encoding='utf-8') as f:
@@ -384,6 +387,8 @@ class TargetRenderer(BaseDataRenderer):
         self,
         frame: np.ndarray,
         targets: List[dict],
+        data_timestamp_ms: Optional[float] = None,
+        adjusted_timestamp_ms: Optional[int] = None,
     ) -> np.ndarray:
         """
         Draw target information list in bottom-left corner (text only, no panel).
@@ -393,6 +398,8 @@ class TargetRenderer(BaseDataRenderer):
         Args:
             frame: Video frame
             targets: List of target dictionaries
+            data_timestamp_ms: Original timestamp of the matched data
+            adjusted_timestamp_ms: Adjusted timestamp used for matching (frame_ts - offset)
 
         Returns:
             Frame with target info list
@@ -418,6 +425,42 @@ class TargetRenderer(BaseDataRenderer):
 
         # Draw targets from bottom to top
         y = start_y
+
+        # Draw timestamp if enabled
+        if self.show_timestamp and data_timestamp_ms is not None:
+            # Show both data timestamp and adjusted timestamp
+            if adjusted_timestamp_ms is not None:
+                ts_text = f"[Data: {data_timestamp_ms}ms | Adj: {adjusted_timestamp_ms}ms]"
+            else:
+                ts_text = f"[Data: {data_timestamp_ms}ms]"
+
+            # Draw text outline
+            cv2.putText(
+                frame,
+                ts_text,
+                (start_x, y),
+                font,
+                self.font_scale * 0.8,  # Slightly smaller font for timestamp
+                outline_color,
+                outline_thickness,
+                cv2.LINE_AA,
+            )
+
+            # Draw main text
+            cv2.putText(
+                frame,
+                ts_text,
+                (start_x, y),
+                font,
+                self.font_scale * 0.8,
+                self.text_color,
+                self.text_thickness,
+                cv2.LINE_AA,
+            )
+
+            # Move up for targets
+            y -= line_height
+
         for target in reversed(targets):  # Reverse to draw from bottom
             # Format: "ID:1 car 45.2m"
             text = f"ID:{target['id']} {target['type']} {target['distance_m']:.1f}m"
@@ -493,8 +536,12 @@ class TargetRenderer(BaseDataRenderer):
 
         self.ctx.logger.debug(f"Successfully rendered {len(projected_targets)}/{len(targets)} targets")
 
+        # Get original data timestamp and adjusted timestamp
+        data_timestamp_ms = matched[0].get('timestamp_ms')
+        adjusted_timestamp_ms = timestamp_ms - self.time_offset_ms
+
         # Draw target info list in bottom-left corner (default behavior)
-        frame = self._draw_target_info_list(frame, projected_targets)
+        frame = self._draw_target_info_list(frame, projected_targets, data_timestamp_ms, adjusted_timestamp_ms)
 
         # Draw detailed info panel if enabled (optional, additional to info list)
         if self.show_panel:

@@ -361,16 +361,13 @@ def render_all_frames(
                 logger.warning(f"Failed to read frame: {frame_path}")
                 continue
 
+            # Store current frame_idx in context for FrameInfoRenderer
+            ctx.remember("current_frame_idx", frame_idx)
+
             # Apply all renderers sequentially
             for renderer_info in renderers:
                 renderer_instance = renderer_info["instance"]
-                renderer_class_name = renderer_info["class"]
-
-                # Special handling for FrameInfoRenderer: pass frame_idx
-                if "FrameInfoRenderer" in renderer_class_name:
-                    frame = renderer_instance.render(frame, timestamp_ms, frame_idx)
-                else:
-                    frame = renderer_instance.render(frame, timestamp_ms)
+                frame = renderer_instance.render(frame, timestamp_ms)
 
             # Save rendered frame
             output_file = output_path / frame_pattern.format(frame_idx)

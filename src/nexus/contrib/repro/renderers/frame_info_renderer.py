@@ -64,18 +64,26 @@ class FrameInfoRenderer:
         self.color = color
         self.thickness = thickness
 
-    def render(self, frame: np.ndarray, timestamp_ms: int, frame_idx: int) -> np.ndarray:
+    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
         Render frame info on frame.
 
         Args:
             frame: Video frame (H, W, C) in BGR format
             timestamp_ms: Frame timestamp in milliseconds
-            frame_idx: Frame index number
 
         Returns:
             Frame with frame info rendered
+
+        Note:
+            frame_idx is retrieved from ctx.recall("current_frame_idx")
         """
+        # Get frame_idx from context (set by render_all_frames in video.py)
+        frame_idx = self.ctx.recall("current_frame_idx")
+        if frame_idx is None:
+            self.ctx.logger.warning("frame_idx not found in context, using 0")
+            frame_idx = 0
+
         # Log rendering start
         self.ctx.logger.debug(f"Rendering frame info at frame {frame_idx}, timestamp {timestamp_ms}ms")
 
