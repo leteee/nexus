@@ -5,7 +5,7 @@
 case_info:
   name: "Vehicle Data Replay"
   description: "Extract frames, render speed and ADB target data overlay, compose output video"
-  version: "4.1.0"
+  version: "4.0.0"
 
 # =============================================================================
 # Shared Defaults
@@ -19,36 +19,26 @@ defaults:
     time_offset_ms: 0
     tolerance_ms: 50.0
 
-  # --- New Unified Text Style and Position Defaults ---
-
-  # Base text style for all renderers
-  base_text_style: &base_text_style
-    font_scale: 0.6
-    thickness: 1
-    color: [0, 255, 255] # BGR: Yellow
-
-  # Style for the Speed Renderer
-  speed_style: &speed_style
-    <<: *base_text_style      # Inherit base style
+  # Speed renderer configuration
+  speed_renderer:
+    position: [30, 60]
+    tolerance_ms: 5000.0  # Forward matching: hold speed up to 5s
     font_scale: 1.2
+    color: [0, 255, 0]    # BGR: Green
     thickness: 3
-    color: [0, 255, 0]       # BGR: Green
-    position:
-      anchor: top_left       # Anchor the text's top-left corner
-      coords: [30, 60]       # at absolute pixel (30, 60)
 
-  # Style for the Target Info List Renderer
-  target_info_style: &target_info_style
-    <<: *base_text_style      # Inherit base style
-    position:
-      anchor: bottom_left    # Anchor the text block's bottom-left corner
-      coords: [10, -10]      # at 10px from left, 10px from bottom of the frame
-
-  # Non-style configuration for TargetRenderer
-  target_renderer_config: &target_renderer_config
-    tolerance_ms: 50.0
-    box_color: [0, 255, 0]
+  # Target renderer configuration
+  target_renderer:
+    tolerance_ms: 50.0    # Nearest matching: within 50ms
+    box_color: [0, 255, 0]  # BGR: Green boxes
     box_thickness: 2
+    text_color: [0, 255, 255]  # BGR: Yellow text
+    font_scale: 0.6
+    text_thickness: 1
+    text_position: null   # Auto: [10, frame_height-10] (bottom-left corner)
+                          # Custom: [x, y] where y is from bottom
+    show_box_label: false # Show ID label above each box (default: false)
+    show_panel: false     # Show detailed info panel (default: false)
 
   # Camera calibration path
   camera:
@@ -61,6 +51,7 @@ defaults:
 pipeline:
   # Step 1: Extract frames from video
   - plugin: "Video Splitter"
+    # enable: true  # Default, no need to specify
     config:
       video_path: "input/*.mp4"
       output_path: "temp/frames"
@@ -69,37 +60,45 @@ pipeline:
   # Step 2: Render data onto frames using modular renderers
   - plugin: "Data Renderer"
     config:
+      # Time range control
       start_time: "2025-10-27 08:30:10"
       end_time: "2025-10-27 08:30:30"
       frames_dir: "temp/frames"
       output_path: "temp/rendered_frames"
-      timestamps_path: "input/vehicle_timeline.csv"
+      frame_pattern: "frame_{:06d}.png"
+      timestamps_path: "input/vehicle_timeline.csv"  # Real frame acquisition timestamps
 
+      # Renderers with shared configuration
+      # Each renderer supports 'enable' field to control execution (default: true)
       renderers:
-        # Render frame info (frame ID + timestamp)
+        # Render frame info (frame ID + timestamp) in top-left corner
         - class: "nexus.contrib.repro.renderers.FrameInfoRenderer"
           kwargs:
-            format: "datetime"
-            style:
-              <<: *base_text_style
-              position:
-                anchor: top_left
-                coords: [10, 30]
+            position: [10, 30]           # Top-left corner
+            format: "datetime"           # Options: "compact", "datetime", "detailed"
+            font_scale: 0.6
+            color: [0, 255, 255]         # BGR: Yellow
+            thickness: 1
 
         # Render vehicle speed using shared config
         - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+          # enable: true  # Default, can be omitted
           kwargs:
-            data_path: "input/speed.jsonl"
-            tolerance_ms: 5000.0  # Hold speed up to 5s
-            style: *speed_style     # Use the shared speed style
+            _extends: "@defaults.speed_renderer"  # Inherit speed_renderer defaults
+            data_path: "input/speed.jsonl"        # Add data_path
+            time_offset_ms: 0                     # Can override defaults
 
         # Render 3D target detections using shared config
         - class: "nexus.contrib.repro.renderers.TargetRenderer"
+          enable: true  # Explicitly enabled (optional, as true is default)
           kwargs:
-            <<: *target_renderer_config # Inherit non-style config
+            _extends: "@defaults.target_renderer"                # Inherit target_renderer defaults
             data_path: "input/adb_targets.jsonl"
-            calibration_path: "@defaults.camera.calibration_path"
-            style: *target_info_style # Use the shared target info style
+            calibration_path: "@defaults.camera.calibration_path"  # Reference nested value
+            time_offset_ms: 0
+            # text_position: [15, 1070]  # Optional: Custom position (default: auto bottom-left)
+            # show_box_label: false  # Show ID above each box (default: false)
+            # show_panel: false  # Show detailed panel (default: false)
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
@@ -110,47 +109,147 @@ pipeline:
       frame_pattern: "frame_{:06d}.png"
       codec: "mp4v"
 
+      # Option 1: Use time range (preferred, requires frame_timestamps.csv)
+      # start_time: "2025-10-27 08:30:10"
+      # end_time: "2025-10-27 08:30:30"
+      # timestamps_path: "input/vehicle_timeline.csv"  # Optional, auto-detected from frames_dir
+
+      # Option 2: Use frame index range
+      # start_frame: 0      # First frame (0-based)
+      # end_frame: 900      # Last frame (None for all)
+
+      # Note: If both time range and frame index are specified, time range takes priority
+
 # Architecture Notes:
 #
-# 1. New Position and Style Configuration:
-#    - Text rendering is now controlled by a 'style' object.
-#    - The 'position' object inside 'style' defines placement.
+# 1. Modular Renderers (Class-Based):
+#    - Each renderer handles ONE data type or display element
+#    - Use full qualified class names in config
+#    - FrameInfoRenderer: Frame metadata (frame ID + timestamp)
+#    - SpeedRenderer: Vehicle speed with forward matching
+#    - TargetRenderer: 3D object detection with projection
 #
-#    style:
-#      position:
-#        anchor: "top_left"  # Anchor point on the text box
-#        coords: [10, 30]    # [x, y] coordinates for the anchor
-#        is_relative: false  # false=pixels, true=percentage (0.0-1.0)
-#      color: [0, 255, 255]
-#      font_scale: 0.6
-#      thickness: 1
+# 2. Text Rendering Configuration:
+#    All renderers support customizable text appearance:
+#    - position: [x, y] - Text position
+#    - font_scale: float - Font size multiplier (e.g., 1.2, 0.6)
+#    - color / text_color: [B, G, R] - Text color in BGR format
+#      Examples: [0, 255, 0] = Green, [0, 255, 255] = Yellow, [255, 0, 0] = Blue
+#    - thickness / text_thickness: int - Text line thickness
+#    - Text uses black outline automatically for better visibility
 #
-#    Anchor options:
-#      - top_left, top_center, top_right
-#      - center_left, center, center_right
-#      - bottom_left, bottom_center, bottom_right
+#    FrameInfoRenderer special features:
+#    - format: Display format options
+#      * "compact": "Frame: 123  TS: 1759284000000ms"
+#      * "datetime": "Frame: 123  TS: 1759284000000ms  Time: 2025-10-27 08:30:10"
+#      * "detailed": Multi-line with date and time
+#    - No data file needed (uses frame_idx and timestamp_ms directly)
+#    - Always displayed if included in renderers list
+#    - Can be disabled with enable: false
 #
-#    Coordinate shorthand:
-#    - Negative coordinates are relative to the far edge (width/height).
-#      e.g., coords: [10, -10] with anchor: bottom_left places the text
-#      10px from the left and 10px from the bottom.
-#    - A simple list `position: [10, 30]` is a shorthand for
-#      `anchor: top_left`, `coords: [10, 30]`.
+#    TargetRenderer special features:
+#    - text_position: [x, y] - Bottom-left anchor for target info list
+#      Default: [10, frame_height-10] (auto-calculated)
+#      Custom: [15, 1070] for 1080p video
+#    - Target list stacks UPWARD when there are many targets
+#    - Each target shows as: "ID:1 car 45.2m"
+#    - show_box_label: Show ID above each box (default: false)
+#    - show_panel: Show detailed panel (default: false)
 #
-# 2. Reusability with YAML Anchors:
-#    - Use '&' to define a reusable block (e.g., &base_text_style).
-#    - Use '*' to reference a block (e.g., *base_text_style).
-#    - Use '<<:' to merge blocks.
+#    Example - Multiple speed displays with different colors:
+#      - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#        kwargs:
+#          data_path: "input/speed_raw.jsonl"
+#          position: [30, 60]
+#          font_scale: 1.2
+#          color: [0, 255, 0]    # Green
+#          thickness: 3
 #
-#    Example:
-#      defaults:
-#        base_style: &base
+#      - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#        kwargs:
+#          data_path: "input/speed_smooth.jsonl"
+#          position: [30, 120]
+#          font_scale: 1.0
+#          color: [0, 255, 255]  # Yellow
+#          thickness: 2
+#
+#    Example - Custom target info position:
+#      - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#        kwargs:
+#          data_path: "input/targets.jsonl"
+#          calibration_path: "calib.json"
+#          text_position: [15, 1070]  # 10px from bottom on 1080p
+#          text_color: [0, 255, 255]  # Yellow
 #          font_scale: 0.6
-#        speed_style: &speed
-#          <<: *base
-#          color: [0, 255, 0]
-#      ...
-#      renderers:
-#        - class: ...
-#          kwargs:
-#            style: *speed  # font_scale is 0.6, color is green
+#
+# 3. Easy to Extend:
+#    - Add new data type: Create a renderer class
+#    - Inherit from BaseDataRenderer
+#    - Use full class name in renderers list
+#    - Example: "your.module.path.GPSRenderer"
+#
+# 4. Matching Strategies:
+#    - Forward: Use most recent data ≤ timestamp (good for speed, GPS)
+#    - Nearest: Use closest data point (good for high-freq like targets)
+#    - Backward: Use earliest data ≥ timestamp (for predictive data)
+#
+# 5. Data Flow:
+#    Video → Frames → [Renderer 1] → [Renderer 2] → ... → Rendered Frames → Video
+#    Each renderer applies its visualization sequentially
+#
+# 6. Enable/Disable Steps:
+#    Use 'enable' field to control step execution:
+#    - enable: true  (default, executes the step)
+#    - enable: false (skips the step)
+#
+#    Example - Skip video composition:
+#      - plugin: "Video Composer"
+#        enable: false
+#        config: { ... }
+#
+#    When disabled, log shows: "Skipping disabled plugin (step N): Plugin Name"
+#
+# 7. Enable/Disable Renderers:
+#    Each renderer also supports 'enable' field:
+#    - enable: true  (default, executes the renderer)
+#    - enable: false (skips the renderer)
+#
+#    Example - Skip target rendering:
+#      - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#        enable: false
+#        kwargs: { ... }
+#
+#    When disabled, log shows: "Skipping disabled renderer (#N): ClassName"
+#
+# Example: Adding Custom Renderer
+#
+# # 1. Define renderer class:
+# from nexus.contrib.repro.renderers import BaseDataRenderer
+#
+# class GPSRenderer(BaseDataRenderer):
+#     def __init__(self, data_path, position=(20, 100), **kwargs):
+#         super().__init__(data_path, **kwargs)
+#         self.position = position
+#
+#     def render(self, frame, timestamp_ms):
+#         matched = self.match_data(timestamp_ms)
+#         if matched:
+#             # Draw GPS data on frame
+#             pass
+#         return frame
+#
+# # 2. Add to config using full class name:
+# renderers:
+#   - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+#     kwargs: { ... }
+#
+#   - class: "nexus.contrib.repro.renderers.TargetRenderer"
+#     kwargs: { ... }
+#
+#   - class: "your.module.path.GPSRenderer"  # Your custom renderer
+#     kwargs:
+#       data_path: "input/gps.jsonl"
+#       position: [20, 100]
+#       tolerance_ms: 1000
+#
+

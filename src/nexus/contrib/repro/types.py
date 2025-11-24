@@ -9,10 +9,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple, Union
+from typing import Any, List, Optional
 
 import numpy as np
-from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -24,38 +23,6 @@ class VideoMetadata:
     width: int
     height: int
     output_path: Path
-
-
-class Position(BaseModel):
-    """
-    Defines a position in 2D space with an anchor and relative/absolute coordinates.
-    """
-    anchor: Literal[
-        "top_left", "top_center", "top_right",
-        "center_left", "center", "center_right",
-        "bottom_left", "bottom_center", "bottom_right"
-    ] = Field(default="top_left", description="Anchor point on the object being placed.")
-    coords: Tuple[float, float] = Field(..., description="[x, y] coordinates for the anchor in the frame.")
-    is_relative: bool = Field(
-        default=False,
-        description="If true, coordinates are relative to frame dimensions (0.0-1.0). If false, they are absolute pixels."
-    )
-
-
-class TextAlignment(BaseModel):
-    """
-    Defines text styling and positioning.
-    """
-    position: Union[Position, Tuple[float, float]] = Field(
-        default=(10, 30),
-        description="Position of the text. Can be a simple [x, y] tuple (top-left anchor) or a detailed Position object."
-    )
-    color: Tuple[int, int, int] = Field(
-        default=(0, 255, 255),
-        description="Text color in BGR format (e.g., (0, 255, 255) for yellow)."
-    )
-    font_scale: float = Field(default=0.6, description="Font size multiplier.")
-    thickness: int = Field(default=1, description="Text line thickness.")
 
 
 class DataRenderer(ABC):
@@ -157,3 +124,4 @@ class DataRenderer(ABC):
             ...     return frame
         """
         raise NotImplementedError
+
