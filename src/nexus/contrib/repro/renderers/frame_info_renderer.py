@@ -3,154 +3,103 @@ Frame info renderer for displaying frame metadata on video frames.
 
 Renders frame index and timestamp information in configurable position and format.
 """
-
 from __future__ import annotations
 
-from typing import Tuple, Optional, Any
+from typing import Any
 
 import cv2
 import numpy as np
 
-from ..utils import timestamp_to_string
+from ..types import TextAlignment
+from ..utils import resolve_position, timestamp_to_string
 
 
 class FrameInfoRenderer:
     """
     Render frame information (frame index and timestamp) on video frames.
-
-    Features:
-    - Displays frame ID and timestamp
-    - Configurable position and styling
-    - Multiple format options (compact, datetime, detailed)
-    - Text with outline for readability (no background panel)
-
-    Example:
-        >>> renderer = FrameInfoRenderer(
-        ...     ctx=ctx,  # Pass PluginContext
-        ...     position=[10, 30],
-        ...     format="datetime",
-        ...     font_scale=0.6,
-        ...     color=[0, 255, 255],  # Yellow
-        ... )
-        >>> frame = cv2.imread("frame_0000.png")
-        >>> frame = renderer.render(frame, timestamp_ms=1759284000000)
     """
 
     def __init__(
         self,
         ctx: Any,
-        position: Tuple[int, int] = (10, 30),
         format: str = "datetime",
-        font_scale: float = 0.6,
-        color: Tuple[int, int, int] = (0, 255, 255),  # Yellow
-        thickness: int = 1,
+        style: dict | TextAlignment = None,
     ):
         """
         Args:
-            ctx: Context object providing logger, path resolution, shared state access
-            position: (x, y) position for text (top-left anchor)
-            format: Display format - "compact", "datetime", or "detailed"
-                - compact: "Frame: 123  TS: 1759284000000ms"
-                - datetime: "Frame: 123  TS: 1759284000000ms  Time: 2025-10-27 08:30:10"
-                - detailed: Multi-line with date and time
-            font_scale: Font size multiplier
-            color: Text color in BGR format
-            thickness: Text thickness
+            ctx: Context object providing logger, path resolution, shared state access.
+            format: Display format - "compact", "datetime", or "detailed".
+            style: Text styling and positioning configuration.
         """
         self.ctx = ctx
-        self.position = position
         self.format = format
-        self.font_scale = font_scale
-        self.color = color
-        self.thickness = thickness
+        
+        if style is None:
+            self.style = TextAlignment()
+        elif isinstance(style, dict):
+            self.style = TextAlignment.model_validate(style)
+        else:
+            self.style = style
 
     def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """
         Render frame info on frame.
-
-        Args:
-            frame: Video frame (H, W, C) in BGR format
-            timestamp_ms: Frame timestamp in milliseconds
-
-        Returns:
-            Frame with frame info rendered
-
-        Note:
-            frame_idx is retrieved from ctx.recall("current_frame_idx")
         """
-        # Get frame_idx from context (set by render_all_frames in video.py)
-        frame_idx = self.ctx.recall("current_frame_idx")
-        if frame_idx is None:
-            self.ctx.logger.warning("frame_idx not found in context, using 0")
-            frame_idx = 0
-
-        # Log rendering start
+        frame_idx = self.ctx.recall("current_frame_idx", 0)
         self.ctx.logger.debug(f"Rendering frame info at frame {frame_idx}, timestamp {timestamp_ms}ms")
 
         # Format text based on selected format
         if self.format == "compact":
             text = f"Frame: {frame_idx}  TS: {timestamp_ms}ms"
-            self._draw_text(frame, text, self.position)
+            self._draw_text(frame, text)
 
         elif self.format == "datetime":
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
             text = f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}"
-            self._draw_text(frame, text, self.position)
+            self._draw_text(frame, text)
 
         elif self.format == "detailed":
-            # Multi-line format
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
             lines = [
                 f"Frame: {frame_idx}",
                 f"TS: {timestamp_ms}ms",
                 f"Time: {datetime_str}",
             ]
-            x, y = self.position
-            line_height = int(25 * self.font_scale)
+            
+            # For multiline, we resolve the position of the first line
+            # and then draw subsequent lines below it.
+            initial_pos = resolve_position(frame, lines[0], self.style.font_scale, self.style.thickness, self.style.position)
+            
+            line_height = int(30 * self.style.font_scale) # Approximate line height
             for i, line in enumerate(lines):
-                self._draw_text(frame, line, (x, y + i * line_height))
+                # Use the resolved x of the first line and increment y for subsequent lines.
+                pos = (initial_pos[0], initial_pos[1] + i * line_height)
+                self._draw_single_line(frame, line, pos)
 
         else:
             self.ctx.logger.warning(f"Unknown format '{self.format}', using 'datetime' as default")
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
             text = f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}"
-            self._draw_text(frame, text, self.position)
+            self._draw_text(frame, text)
 
         return frame
 
-    def _draw_text(self, frame: np.ndarray, text: str, position: Tuple[int, int]) -> None:
-        """
-        Draw text with outline for better visibility.
+    def _draw_text(self, frame: np.ndarray, text: str) -> None:
+        """Draws a single line of text using the resolved position."""
+        pos = resolve_position(frame, text, self.style.font_scale, self.style.thickness, self.style.position)
+        self._draw_single_line(frame, text, pos)
 
-        Args:
-            frame: Video frame to draw on
-            text: Text to draw
-            position: (x, y) position
-        """
+    def _draw_single_line(self, frame: np.ndarray, text: str, position: tuple[int, int]) -> None:
+        """Draws text at a specific pixel coordinate."""
         font = cv2.FONT_HERSHEY_SIMPLEX
-        outline_color = (0, 0, 0)  # Black outline
-        outline_thickness = self.thickness + 2
+        outline_color = (0, 0, 0)
+        outline_thickness = self.style.thickness + 2
 
-        # Draw text outline
         cv2.putText(
-            frame,
-            text,
-            position,
-            font,
-            self.font_scale,
-            outline_color,
-            outline_thickness,
-            cv2.LINE_AA,
+            frame, text, position, font, self.style.font_scale,
+            outline_color, outline_thickness, cv2.LINE_AA
         )
-
-        # Draw main text
         cv2.putText(
-            frame,
-            text,
-            position,
-            font,
-            self.font_scale,
-            self.color,
-            self.thickness,
-            cv2.LINE_AA,
+            frame, text, position, font, self.style.font_scale,
+            self.style.color, self.style.thickness, cv2.LINE_AA
         )
