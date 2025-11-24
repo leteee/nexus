@@ -215,7 +215,7 @@ def list_cmd(what: str) -> None:
                 click.echo(f"    {spec.description}")
 
 
-@cli.command()
+@cli.command(name="template")
 @click.argument("plugin_name")
 def config(plugin_name: str) -> None:
     """Show YAML configuration template for a plugin."""
@@ -241,6 +241,7 @@ def config(plugin_name: str) -> None:
     # Generate YAML configuration template
     click.echo("pipeline:")
     click.echo(f'  - plugin: "{plugin_name}"')
+    click.echo("    enable: false")
 
     if spec.config_model:
         click.echo("    config:")
