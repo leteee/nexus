@@ -58,17 +58,12 @@ def discover_from_path(path_str: str, project_root: Path) -> int:
         logger.debug("Added %s to sys.path", parent)
     package_name = path.name
     try:
-        importlib.import_module(package_name)  # 先加载主包
-        adapter_module = f"{package_name}.nexus"
-        try:
-            importlib.import_module(adapter_module)
-        except ImportError:
-            # Adapter module doesn't exist, that's OK
-            pass
+        importlib.import_module(package_name)
+        logger.debug("Successfully imported  configured plugin package '%s'", package_name)
     except Exception as exc:  # pylint: disable=broad-except
         import traceback
         logger.error(
-            "Failed to import plugin package '%s': %s\n"
+            "Failed to import configured plugin package '%s': %s\n"
             "Error type: %s\n"
             "Package path: %s\n"
             "Traceback:\n%s",
@@ -76,11 +71,50 @@ def discover_from_path(path_str: str, project_root: Path) -> int:
             exc,
             type(exc).__name__,
             path,
-            traceback.format_exc()
+            traceback.format_exc(),
         )
         return 0
 
-    logger.info("Imported package '%s'", package_name)
+    # If the main package was imported, now attempt to load the 'nexus' adapter module.
+    adapter_module_name = f"{package_name}.nexus"
+    try:
+        importlib.import_module(adapter_module_name)
+        logger.info("Successfully loaded 'nexus' adapter from package '%s'", package_name)
+    except ImportError as exc:
+        # Check if the ImportError is for the adapter module itself (meaning it doesn't exist)
+        if exc.name == adapter_module_name:
+            logger.debug("No 'nexus' adapter module found in package '%s'. This is acceptable.", package_name)
+        else:
+            # The adapter module exists, but one of its internal dependencies is missing.
+            # This is a real error.
+            import traceback
+            logger.error(
+                "Failed to load 'nexus' adapter from package '%s' due to missing dependency '%s': %s\n"
+                "Error type: %s\n"
+                "Adapter module: %s\n"
+                "Traceback:\n%s",
+                package_name,
+                exc.name, # Log the name of the missing dependency
+                exc,
+                type(exc).__name__,
+                adapter_module_name,
+                traceback.format_exc(),
+            )
+            return 0 # Fail this discovery
+    except Exception as exc: # Catch any other non-ImportError exceptions during adapter loading
+        import traceback
+        logger.error(
+            "Failed to load 'nexus' adapter from package '%s' due to an unexpected error: %s\n"
+            "Error type: %s\n"
+            "Adapter module: %s\n"
+            "Traceback:\n%s",
+            package_name,
+            exc,
+            type(exc).__name__,
+            adapter_module_name,
+            traceback.format_exc(),
+        )
+        return 0 # Fail this discovery
     return 1
 
 
