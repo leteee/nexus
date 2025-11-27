@@ -32,8 +32,8 @@ class TargetRenderer(BaseDataRenderer):
         calibration_path: Union[str, Path],
         tolerance_ms: float = 50.0,
         time_offset_ms: int = 0,
-        box_color: Tuple[int, int, int] = (0, 255, 0),
-        box_thickness: int = 2,
+        box_color: Optional[Tuple[int, int, int]] = None, # Make optional
+        box_thickness: Optional[int] = None, # Make optional
         show_box_label: bool = True,
         show_timestamp: bool = True,
         textbox_config: Optional[Dict[str, Any]] = None,
@@ -45,8 +45,8 @@ class TargetRenderer(BaseDataRenderer):
             calibration_path: Path to camera calibration JSON file.
             tolerance_ms: Matching tolerance.
             time_offset_ms: Time offset for data timestamp bias.
-            box_color: Bounding box color.
-            box_thickness: Bounding box thickness.
+            box_color: Bounding box color (defaults to textbox_config.text_color if None).
+            box_thickness: Bounding box thickness (defaults to textbox_config.font.thickness if None).
             show_box_label: Show ID label above each box.
             show_timestamp: Show data timestamp in the text box.
             textbox_config: Dictionary defining the text panel's appearance and position.
@@ -60,11 +60,13 @@ class TargetRenderer(BaseDataRenderer):
         )
 
         self.calibration_path = Path(calibration_path)
-        self.box_color = box_color
-        self.box_thickness = box_thickness
         self.show_box_label = show_box_label
         self.show_timestamp = show_timestamp
         self.textbox_config = TextboxConfig.from_dict(textbox_config)
+
+        # Set box color and thickness, falling back to textbox config if not provided
+        self.box_color = box_color if box_color is not None else self.textbox_config.text_color
+        self.box_thickness = box_thickness if box_thickness is not None else self.textbox_config.font.thickness
 
         with open(self.calibration_path, 'r', encoding='utf-8') as f:
             self.calib = json.load(f)
@@ -136,7 +138,7 @@ class TargetRenderer(BaseDataRenderer):
             
             # Per-box labels use a hardcoded style for simplicity and to avoid config clutter
             cv2.putText(frame, label, label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 3, cv2.LINE_AA)
-            cv2.putText(frame, label, label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1, cv2.LINE_AA)
+            cv2.putText(frame, label, label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.box_color, 1, cv2.LINE_AA)
         
         return pt1, pt2 # Return the calculated 2D bounding box
 
