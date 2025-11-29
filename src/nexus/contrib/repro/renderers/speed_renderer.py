@@ -10,7 +10,7 @@ from typing import Optional, Any, Dict, Union
 import numpy as np
 
 from .base import BaseDataRenderer
-from ..utils_text import draw_textbox, TextboxConfig
+from ..common.utils_text import draw_textbox, TextboxConfig
 
 
 class SpeedRenderer(BaseDataRenderer):

@@ -17,7 +17,7 @@ from typing import Any, List, Literal, Optional, Union
 import numpy as np
 
 from ..types import DataRenderer
-from ..io import load_jsonl
+from ..common.io import load_jsonl
 
 
 class BaseDataRenderer(DataRenderer):

@@ -10,8 +10,8 @@ from typing import Optional, Any, Dict, List
 
 import numpy as np
 
-from ..utils import timestamp_to_string
-from ..utils_text import draw_textbox, TextboxConfig
+from ..common.utils import timestamp_to_string
+from ..common.utils_text import draw_textbox, TextboxConfig
 
 
 class FrameInfoRenderer:

@@ -43,7 +43,7 @@ from .types import (
 )
 
 # I/O utilities
-from .io import (
+from .common.io import (
     load_frame_timestamps,
     load_jsonl,
     save_jsonl,
@@ -53,7 +53,7 @@ from .io import (
 from .video import extract_frames, compose_video, render_all_frames
 
 # Utilities
-from .utils import (
+from .common.utils import (
     # Time parsing
     parse_time_string,
     parse_time_value,

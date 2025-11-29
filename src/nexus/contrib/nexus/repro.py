@@ -14,8 +14,8 @@ from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
 from nexus.contrib.repro.video import extract_frames, compose_video, render_all_frames
-from nexus.contrib.repro.io import save_jsonl
-from nexus.contrib.repro.utils import (
+from nexus.contrib.repro.common.io import save_jsonl
+from nexus.contrib.repro.common.utils import (
     parse_time_string,
     parse_time_value,
     get_video_metadata,

@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from .types import VideoMetadata
-from .io import load_frame_timestamps
+from .common.io import load_frame_timestamps
 
 logger = logging.getLogger(__name__)
 

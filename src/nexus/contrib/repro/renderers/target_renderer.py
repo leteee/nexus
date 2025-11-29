@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 from .base import BaseDataRenderer
-from ..utils_text import draw_textbox, TextboxConfig
+from ..common.utils_text import draw_textbox, TextboxConfig
 
 
 class TargetRenderer(BaseDataRenderer):

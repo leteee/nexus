@@ -17,8 +17,8 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from .io import save_jsonl
-from .utils import parse_time_string, parse_time_value, get_video_metadata
+from .common.io import save_jsonl
+from .common.utils import parse_time_string, parse_time_value, get_video_metadata
 
 
 # =============================================================================
