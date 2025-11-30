@@ -78,9 +78,9 @@ from .datagen import (
 
 # Import renderers
 from .renderers import (
-    BaseDataRenderer,
     SpeedRenderer,
     TargetRenderer,
+    FrameInfoRenderer,
 )
 
 __all__ = [
@@ -113,9 +113,9 @@ __all__ = [
     "save_timeline_csv",
     "SpeedProfile",
     # Renderers
-    "BaseDataRenderer",
     "SpeedRenderer",
     "TargetRenderer",
+    "FrameInfoRenderer",
 ]
 
 

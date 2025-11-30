@@ -1,64 +1,46 @@
 # Nexus Video Data Replay Template
 # Demonstrates overlaying time-series data onto video frames
-# with shared configuration using @defaults references
+# using the new SensorDataManager architecture.
 
 case_info:
   name: "Vehicle Data Replay"
   description: "Extract frames, render speed and ADB target data overlay, compose output video"
-  version: "4.1.0" # Version updated to reflect config changes
+  version: "5.5.0" # Version updated to reflect new panel.enabled default
 
 # =============================================================================
 # Shared Defaults
 # =============================================================================
 defaults:
-  # Common renderer settings
-  renderer_base:
-    time_offset_ms: 0
-    tolerance_ms: 50.0
-
-  # Base Textbox configuration to share common styling
+  # Base Textbox configuration to share common styling for all renderers.
+  # This is a good use of `defaults` as it's shared by multiple renderers.
   textbox_base_config:
-    # font.face: 0 matches default (cv2.FONT_HERSHEY_SIMPLEX)
-    # font.line_spacing: 1.5 matches default
-    outline_color: [0, 0, 0] # Common black outline (non-default)
-    # outline_thickness: 3 matches default
+    text_color: [0, 255, 255] # BGR: Yellow (non-default: White)
+    outline_color: [0, 0, 0] # Common black outline (non-default: None)
+    outline_thickness: 3 # Default: 3
 
-  # Speed renderer configuration
-  speed_renderer:
-    # Textbox settings are now nested under textbox_config
-    textbox_config:
-      _extends: "@defaults.textbox_base_config" # Inherit common textbox settings
-      position:
-        x: "width - 30" 
-        y: 60 
-        anchor: 'top_right'
-      font:
-        # scale: 0.8 
-        # thickness: 1 
-      panel:
-        enabled: false 
-      text_color: [0, 255, 0] # BGR: Green (non-default)
+    # PositionConfig parameters (nested)
+    position:
+      x: "width - 10"
+      y: 30
+      anchor: 'top_right'
 
-  # Target renderer configuration
-  target_renderer:
-    tolerance_ms: 50.0
-    box_color: [0, 255, 0]
-    box_thickness: 2
-    show_box_label: true # Show ID label above each box (default: false)
-    # Textbox settings are now nested under textbox_config
-    textbox_config:
-      _extends: "@defaults.textbox_base_config" # Inherit common textbox settings
-      position:
-        x: "width - 10"
-        y: "height - 10" 
-        anchor: 'bottom_right' 
-      font:
-        scale: 0.8 
-        # thickness: 1 matches default
-      # panel.enabled: true matches default
-      text_color: [0, 255, 255] # BGR: Yellow text (non-default)
+    # FontConfig parameters (nested)
+    # font:
+    #   face: 0 # Default: cv2.FONT_HERSHEY_SIMPLEX (0)
+    #   scale: 0.8 # Default: 0.8
+    #   thickness: 1 # Default: 1
+    #   line_spacing: 1.5 # Default: 1.5
 
-  # Camera calibration path
+    # PanelConfig parameters (nested)
+    # panel:
+    #   enabled: false # Default: false
+    #   padding: 10 # Default: 10
+    #   bg_color: [40, 40, 40] # Default: (40, 40, 40)
+    #   bg_alpha: 0.7 # Default: 0.7
+    #   border_color: [100, 100, 100] # Default: (100, 100, 100)
+    #   border_thickness: 1 # Default: 1
+
+  # Camera calibration path, used by TargetRenderer
   camera:
     calibration_path: "../../src/nexus/contrib/repro/camera_calibration.json"
 
@@ -72,9 +54,9 @@ pipeline:
     config:
       video_path: "input/*.mp4"
       output_path: "temp/frames"
-      frame_pattern: "frame_{:06d}.png" # Re-added
+      frame_pattern: "frame_{:06d}.png"
 
-  # Step 2: Render data onto frames using modular renderers
+  # Step 2: Render data onto frames using the new decoupled architecture
   - plugin: "Data Renderer"
     config:
       start_time: "2025-10-27 08:30:10"
@@ -82,40 +64,98 @@ pipeline:
       frames_dir: "temp/frames"
       output_path: "temp/rendered_frames"
       timestamps_path: "input/vehicle_timeline.csv"
-      frame_pattern: "frame_{:06d}.png" # Re-added
+      frame_pattern: "frame_{:06d}.png"
 
+      # Define all sensor data sources to be managed by SensorDataManager
+      sensors:
+        - name: "vehicle_speed"
+          path: "input/speed.jsonl"
+          time_offset_ms: 0
+        - name: "adb_targets"
+          path: "input/adb_targets.jsonl"
+          time_offset_ms: 0
+
+      # Define how to visualize the sensor data
       renderers:
-        # Render frame info (frame ID + timestamp) in top-left corner
+        # Render frame info (frame ID + timestamp). No sensor needed.
         - class: "nexus.contrib.repro.renderers.FrameInfoRenderer"
           kwargs:
-            format: "datetime" # "compact", "datetime", or "detailed"
+            format: "datetime"
             textbox_config:
-              _extends: "@defaults.textbox_base_config" # Inherit common textbox settings
+              _extends: "@defaults.textbox_base_config"
+
+        # Render vehicle speed by linking to the 'vehicle_speed' sensor.
+        # Configuration is now fully inline.
+        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
+          sensor: "vehicle_speed"
+          match_strategy: "forward"
+          kwargs:
+            # show_timestamp: true # Default: true
+            textbox_config:
+              _extends: "@defaults.textbox_base_config"
+              # TextboxConfig direct parameters
+              text_color: [0, 255, 0] # BGR: Green (non-default: White)
+              # outline_color: [0, 0, 0] # Inherited from @defaults.textbox_base_config
+              # outline_thickness: 3 # Inherited from @defaults.textbox_base_config
+
+              # PositionConfig parameters (nested)
+              position:
+                x: "width - 30" 
+                y: 60 
+                anchor: 'top_right'
+              # font:
+              #   face: 0 # Default: cv2.FONT_HERSHEY_SIMPLEX (0)
+              #   scale: 0.8 # Default: 0.8
+              #   thickness: 1 # Default: 1
+              #   line_spacing: 1.5 # Default: 1.5
+
+              # PanelConfig parameters (nested)
+              # panel:
+              #   enabled: false # Default: false
+              #   padding: 10 # Default: 10
+              #   bg_color: [40, 40, 40] # Default: (40, 40, 40)
+              #   bg_alpha: 0.7 # Default: 0.7
+              #   border_color: [100, 100, 100] # Default: (100, 100, 100)
+              #   border_thickness: 1 # Default: 1
+
+        # Render 3D target detections by linking to the 'adb_targets' sensor.
+        # Configuration is now fully inline.
+        - class: "nexus.contrib.repro.renderers.TargetRenderer"
+          sensor: "adb_targets"
+          match_strategy: "nearest"
+          kwargs:
+            calibration_path: "@defaults.camera.calibration_path"
+            box_color: [0, 255, 0] # Default: [0,255,0] (from TextboxConfig default if not overridden)
+            box_thickness: 2 # Default: 1 (from FontConfig default if not overridden)
+            show_box_label: true # Default: true
+            # show_timestamp: true # Default: true
+            textbox_config:
+              _extends: "@defaults.textbox_base_config"
+              # TextboxConfig direct parameters
+              text_color: [0, 255, 255] # BGR: Yellow text (non-default: White)
+              # outline_color: [0, 0, 0] # Inherited from @defaults.textbox_base_config
+              # outline_thickness: 3 # Inherited from @defaults.textbox_base_config
+
+              # PositionConfig parameters (nested)
               position:
                 x: "width - 10"
-                y: 30 
-                anchor: 'top_right'
+                y: "height - 10" 
+                anchor: 'bottom_right'
+              # FontConfig parameters (nested)
               font:
-                # scale: 0.8 
-                # thickness: 1 matches default
+                scale: 0.8 # Default: 0.8
+                # face: 0 # Default: cv2.FONT_HERSHEY_SIMPLEX (0)
+                # thickness: 1 # Default: 1
+                # line_spacing: 1.5 # Default: 1.5
+
+              # PanelConfig parameters (nested)
               panel:
-                enabled: false 
-              text_color: [0, 255, 255] # BGR: Yellow (non-default)
-
-        # Render vehicle speed using shared config
-        - class: "nexus.contrib.repro.renderers.SpeedRenderer"
-          kwargs:
-            _extends: "@defaults.speed_renderer" # Inherit speed_renderer defaults
-            data_path: "input/speed.jsonl"
-            time_offset_ms: 0
-
-        # Render 3D target detections using shared config
-        - class: "nexus.contrib.repro.renderers.TargetRenderer"
-          kwargs:
-            _extends: "@defaults.target_renderer" # Inherit target_renderer defaults
-            data_path: "input/adb_targets.jsonl"
-            calibration_path: "@defaults.camera.calibration_path"
-            time_offset_ms: 0
+                enabled: true # Non-default: false
+                # padding: 10 # Default: 10
+                # bg_color: [40, 40, 40] # Default: (40, 40, 40)
+                # bg_alpha: 0.7 # Default: 0.7
+                # border_color: [100, 100, 100] # Default: (100, 100, 100)
+                # border_thickness: 1 # Default: 1
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
@@ -123,12 +163,4 @@ pipeline:
       frames_dir: "temp/rendered_frames"
       output_path: "output/vehicle_replay.mp4"
       fps: 30.0
-      frame_pattern: "frame_{:06d}.png" # Re-added
-
-# Architecture Notes have been simplified as the new TextboxConfig is self-documenting.
-#
-# - Text Rendering: All text rendering is now controlled by a 'textbox_config' block
-#   which maps directly to the TextboxConfig dataclass in utils_text.py.
-#   This includes position, font, panel, and color settings.
-#
-# - To customize a renderer's text, modify its 'textbox_config' section.
+      frame_pattern: "frame_{:06d}.png"

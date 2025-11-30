@@ -4,7 +4,6 @@ Data renderers for repro module.
 Each renderer handles one type of data and renders it onto video frames.
 
 Available renderers:
-- BaseDataRenderer: Abstract base class with common matching strategies
 - SpeedRenderer: Render vehicle speed data
 - TargetRenderer: Render 3D object detections with projection
 - FrameInfoRenderer: Render frame metadata (frame ID and timestamp)
@@ -21,36 +20,25 @@ Example usage:
     >>>
     >>> speed_renderer = SpeedRenderer(
     ...     ctx=ctx,
-    ...     data_path="input/speed.jsonl",
-    ...     position=(30, 60),
-    ...     tolerance_ms=5000.0
+    ...     sensor="speed_sensor",
     ... )
     >>>
     >>> target_renderer = TargetRenderer(
     ...     ctx=ctx,
-    ...     data_path="input/adb_targets.jsonl",
+    ...     sensor="target_sensor",
     ...     calibration_path="camera_calibration.yaml",
-    ...     tolerance_ms=50.0
     ... )
     >>>
-    >>> # Render on frame
-    >>> frame = cv2.imread("frame.png")
-    >>> timestamp_ms = 1761525000000.0
-    >>> frame_idx = 100
-    >>> # Store frame_idx in context for FrameInfoRenderer
-    >>> ctx.remember("current_frame_idx", frame_idx)
-    >>> frame = frame_info.render(frame, timestamp_ms)
-    >>> frame = speed_renderer.render(frame, timestamp_ms)
-    >>> frame = target_renderer.render(frame, timestamp_ms)
+    >>> # In the main loop, you would get data and pass it to the renderer
+    >>> data = {"speed": 60.0, "snapshot_time_ms": 1000}
+    >>> frame = speed_renderer.render(frame, data)
 """
 
-from .base import BaseDataRenderer
 from .speed_renderer import SpeedRenderer
 from .target_renderer import TargetRenderer
 from .frame_info_renderer import FrameInfoRenderer
 
 __all__ = [
-    'BaseDataRenderer',
     'SpeedRenderer',
     'TargetRenderer',
     'FrameInfoRenderer',

@@ -193,11 +193,13 @@ def compose_video(
         writer.release()
 
 
+from .common.sensor_manager import SensorDataManager
+
 def render_all_frames(
     frames_dir: Path,
     output_path: Path,
     timestamps_path: Path,
-    renderer_configs: List[dict],
+    config: Dict[str, Any],
     *,
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
@@ -206,74 +208,54 @@ def render_all_frames(
     ctx: Any,
 ) -> Path:
     """
-    Apply multiple data renderers to all video frames.
+    Apply multiple data renderers to all video frames using the SensorDataManager.
 
-    Dynamically imports and instantiates renderer classes by full qualified name.
-    Renderers are instantiated once and reused for all frames.
+    This function orchestrates the entire rendering process:
+    1. Sets up a SensorDataManager with all sensor sources.
+    2. Instantiates all configured renderers.
+    3. For each frame, gets the required data from the manager and "pushes" it to the renderer.
 
     Args:
-        frames_dir: Directory containing extracted frames
-        output_path: Directory for rendered frames
-        timestamps_path: Path to frame timestamps CSV
-        renderer_configs: List of renderer configurations
-            Format: [{"class": "full.module.path.ClassName", "kwargs": {...}}, ...]
-            - "class": Full qualified class name (e.g., "nexus.contrib.repro.renderers.SpeedRenderer")
-            - "kwargs": Dictionary of renderer constructor arguments
-        frame_pattern: Frame filename pattern
-        start_time_ms: Optional start time (None=from beginning)
-        end_time_ms: Optional end time (None=to end)
-        progress_callback: Optional callback(count, total) for progress tracking
-        ctx: Context object to pass to renderers (required, with logger and path resolution)
+        frames_dir: Directory containing extracted frames.
+        output_path: Directory for rendered frames.
+        timestamps_path: Path to frame timestamps CSV.
+        config: A dictionary containing the main configuration, expected to have 'sensors' and 'renderers' keys.
+        frame_pattern: Frame filename pattern.
+        start_time_ms: Optional start time to begin rendering.
+        end_time_ms: Optional end time to stop rendering.
+        progress_callback: Optional callback(count, total) for progress tracking.
+        ctx: Context object passed to renderers (provides logger, etc.).
 
     Returns:
-        Path to output directory
+        Path to the output directory.
 
-    Note:
-        To display frame info, add FrameInfoRenderer to renderer_configs:
-        {
-            "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
-            "kwargs": {
-                "position": [10, 30],
-                "format": "datetime"
-            }
-        }
-
-    Example:
-        >>> # Using full class names
-        >>> renderer_configs = [
-        ...     {
-        ...         "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
-        ...         "kwargs": {
-        ...             "position": (10, 30),
-        ...             "format": "datetime"
-        ...         }
-        ...     },
-        ...     {
-        ...         "class": "nexus.contrib.repro.renderers.SpeedRenderer",
-        ...         "kwargs": {
-        ...             "data_path": Path("speed.jsonl"),
-        ...             "position": (30, 60),
-        ...             "time_offset_ms": 0
-        ...         }
-        ...     },
-        ...     {
-        ...         "class": "nexus.contrib.repro.renderers.TargetRenderer",
-        ...         "kwargs": {
-        ...             "data_path": Path("targets.jsonl"),
-        ...             "calibration_path": Path("calib.yaml"),
-        ...             "time_offset_ms": -50
-        ...         }
-        ...     }
-        ... ]
-        >>> render_all_frames(
-        ...     Path("frames/"),
-        ...     Path("rendered/"),
-        ...     Path("timestamps.csv"),
-        ...     renderer_configs,
-        ...     start_time_ms=1000.0,
-        ...     end_time_ms=5000.0,
-        ...     ctx=ctx
-        ... )
+    Example `config` structure:
+    ```python
+    config = {
+        "sensors": [
+            {"name": "speed_data", "path": "speed.jsonl", "time_offset_ms": 0},
+            {"name": "target_data", "path": "targets.jsonl", "time_offset_ms": -50},
+        ],
+        "renderers": [
+            {
+                "class": "nexus.contrib.repro.renderers.SpeedRenderer",
+                "sensor": "speed_data",
+                "match_strategy": "forward",
+                "kwargs": {"show_timestamp": True},
+            },
+            {
+                "class": "nexus.contrib.repro.renderers.TargetRenderer",
+                "sensor": "target_data",
+                "match_strategy": "nearest",
+                "kwargs": {"calibration_path": "calib.json"},
+            },
+            {
+                "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
+                "kwargs": {"format": "detailed"},
+            },
+        ],
+    }
+    ```
     """
     import importlib
 
@@ -288,59 +270,59 @@ def render_all_frames(
         raise FileNotFoundError(f"Timestamps file not found: {timestamps_path}")
 
     output_path.mkdir(parents=True, exist_ok=True)
+    
+    sensor_configs = config.get("sensors", [])
+    renderer_configs = config.get("renderers", [])
 
-    # Load frame timestamps
-    logger.info(f"Loading frame timestamps from {timestamps_path}")
-    frame_times = load_frame_timestamps(timestamps_path)
+    # 1. Set up SensorDataManager
+    logger.info(f"Setting up SensorDataManager with {len(sensor_configs)} sensors...")
+    sensor_manager = SensorDataManager()
+    for sensor_conf in sensor_configs:
+        sensor_manager.register_sensor(
+            name=sensor_conf["name"],
+            data_path=sensor_conf["path"],
+            time_offset_ms=sensor_conf.get("time_offset_ms", 0),
+        )
 
-    # Filter by time range if specified
-    if start_time_ms is not None:
-        frame_times = frame_times[frame_times["timestamp_ms"] >= start_time_ms]
-        logger.info(f"Filtered frames: start_time >= {start_time_ms} ms")
-
-    if end_time_ms is not None:
-        frame_times = frame_times[frame_times["timestamp_ms"] <= end_time_ms]
-        logger.info(f"Filtered frames: end_time <= {end_time_ms} ms")
-
-    if len(frame_times) == 0:
-        logger.warning("No frames in specified time range")
-        return output_path
-
-    # Instantiate all renderers once
-    logger.info(f"Preparing {len(renderer_configs)} renderers")
+    # 2. Instantiate all renderers
+    logger.info(f"Preparing {len(renderer_configs)} renderers...")
     renderers: List[Dict[str, Any]] = []
-
-    for i, config in enumerate(renderer_configs):
-        # Extract full class name
-        class_path = config.get("class")
+    for i, renderer_conf in enumerate(renderer_configs):
+        class_path = renderer_conf.get("class")
         if not class_path:
-            raise ValueError(
-                f"Renderer config must have 'class' key with full qualified class name: {config}"
-            )
+            raise ValueError(f"Renderer config missing 'class' key: {renderer_conf}")
 
-        # Dynamically import renderer class
         try:
             module_path, class_name = class_path.rsplit(".", 1)
             module = importlib.import_module(module_path)
             renderer_class = getattr(module, class_name)
         except (ValueError, ImportError, AttributeError) as e:
-            raise ImportError(
-                f"Failed to import renderer class '{class_path}': {e}"
-            )
+            raise ImportError(f"Failed to import renderer class '{class_path}': {e}")
 
-        renderer_kwargs = config.get("kwargs", {})
-
-        # Instantiate renderer with ctx as first parameter
+        renderer_kwargs = renderer_conf.get("kwargs", {})
         renderer_instance = renderer_class(ctx, **renderer_kwargs)
 
         renderers.append({
-            "class": class_path,
-            "instance": renderer_instance
+            "instance": renderer_instance,
+            "sensor": renderer_conf.get("sensor"),  # Can be None
+            "strategy": renderer_conf.get("match_strategy", "forward"),  # Default to 'forward'
         })
+        logger.info(f"  [{i+1}] {class_path} -> links to sensor '{renderers[-1]['sensor']}'")
 
-        logger.info(f"  [{i+1}] {class_path} -> {renderer_class.__name__}")
+    # 3. Load and filter frame timestamps
+    logger.info(f"Loading frame timestamps from {timestamps_path}")
+    frame_times = load_frame_timestamps(timestamps_path)
 
-    # Render all frames
+    if start_time_ms is not None:
+        frame_times = frame_times[frame_times["timestamp_ms"] >= start_time_ms]
+    if end_time_ms is not None:
+        frame_times = frame_times[frame_times["timestamp_ms"] <= end_time_ms]
+
+    if len(frame_times) == 0:
+        logger.warning("No frames in specified time range")
+        return output_path
+
+    # 4. Render all frames
     logger.info(f"Rendering {len(frame_times)} frames...")
     rendered_count = 0
     total_frames = len(frame_times)
@@ -350,7 +332,6 @@ def render_all_frames(
             frame_idx = int(row["frame_index"])
             timestamp_ms = int(row["timestamp_ms"])
 
-            # Load frame
             frame_path = frames_dir / frame_pattern.format(frame_idx)
             if not frame_path.exists():
                 logger.warning(f"Frame not found: {frame_path}, skipping")
@@ -361,26 +342,38 @@ def render_all_frames(
                 logger.warning(f"Failed to read frame: {frame_path}")
                 continue
 
-            # Store current frame_idx in context for FrameInfoRenderer
             ctx.remember("current_frame_idx", frame_idx)
 
-            # Apply all renderers sequentially
+            # Apply all renderers sequentially using the new data-push model
             for renderer_info in renderers:
                 renderer_instance = renderer_info["instance"]
-                frame = renderer_instance.render(frame, timestamp_ms)
+                sensor_name = renderer_info["sensor"]
+                strategy = renderer_info["strategy"]
+                
+                data_to_render = None
+                if sensor_name:
+                    # This is a data-driven renderer
+                    if sensor_name in sensor_manager.sensors:
+                        stream = sensor_manager.sensors[sensor_name]
+                        data_to_render = stream.get_value_at(timestamp_ms, strategy=strategy)
+                    else:
+                        logger.warning(f"Sensor '{sensor_name}' not found in SensorDataManager.")
+                else:
+                    # This is a context-driven renderer like FrameInfoRenderer
+                    data_to_render = {'snapshot_time_ms': timestamp_ms}
+                
+                frame = renderer_instance.render(frame, data_to_render)
 
             # Save rendered frame
             output_file = output_path / frame_pattern.format(frame_idx)
             cv2.imwrite(str(output_file), frame)
 
             rendered_count += 1
-
-            # Progress reporting
             if progress_callback:
                 progress_callback(rendered_count, total_frames)
             else:
                 pbar.update(1)
 
     logger.info(f"Completed: rendered {rendered_count} frames to {output_path}")
-
     return output_path
+

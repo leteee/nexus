@@ -10,14 +10,17 @@ from typing import Optional, Any, Dict, List
 
 import numpy as np
 
+from ..types import DataRenderer
 from ..common.utils import timestamp_to_string
 from ..common.utils_text import draw_textbox, TextboxConfig
 
 
-class FrameInfoRenderer:
+class FrameInfoRenderer(DataRenderer):
     """
     Renders frame information (frame index and timestamp) on video frames.
     Styling and position are controlled by a TextboxConfig object.
+    It does not use sensor data, but relies on the `snapshot_time_ms` passed
+    in its data dictionary.
     """
 
     def __init__(
@@ -25,29 +28,38 @@ class FrameInfoRenderer:
         ctx: Any,
         format: str = "datetime",
         textbox_config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ):
         """
         Args:
             ctx: Context object providing logger and shared state.
             format: Display format - "compact", "datetime", or "detailed".
-            textbox_config: A dictionary defining the text's appearance and position,
-                            matching the structure of TextboxConfig.
+            textbox_config: A dictionary defining the text's appearance and position.
+            **kwargs: Catches unused arguments from old configs.
         """
         self.ctx = ctx
+        
         self.format = format
         self.textbox_config = TextboxConfig.from_dict(textbox_config)
 
-    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
+    def render(self, frame: np.ndarray, data: Optional[Dict[str, Any]]) -> np.ndarray:
         """
         Renders frame info on the given frame.
 
         Args:
             frame: Video frame (H, W, C) in BGR format.
-            timestamp_ms: Frame timestamp in milliseconds.
+            data: A dictionary containing `snapshot_time_ms`. Other keys are ignored.
 
         Returns:
             The frame with the information rendered on it.
         """
+        if not data:
+            return frame
+            
+        timestamp_ms = int(data.get('snapshot_time_ms', 0))
+        if timestamp_ms == 0:
+            return frame
+
         frame_idx = self.ctx.recall("current_frame_idx", default=0)
         self.ctx.logger.debug(f"Rendering frame info for frame {frame_idx}")
 

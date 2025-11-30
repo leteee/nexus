@@ -15,11 +15,11 @@ from typing import List, Optional, Tuple, Any, Dict, Union
 import cv2
 import numpy as np
 
-from .base import BaseDataRenderer
+from ..types import DataRenderer
 from ..common.utils_text import draw_textbox, TextboxConfig
 
 
-class TargetRenderer(BaseDataRenderer):
+class TargetRenderer(DataRenderer):
     """
     Renders 3D target detections projected to a 2D image.
     Styling and position of the info panel are controlled by a TextboxConfig object.
@@ -28,36 +28,26 @@ class TargetRenderer(BaseDataRenderer):
     def __init__(
         self,
         ctx: Any,
-        data_path: Union[str, Path],
         calibration_path: Union[str, Path],
-        tolerance_ms: float = 50.0,
-        time_offset_ms: int = 0,
-        box_color: Optional[Tuple[int, int, int]] = None, # Make optional
-        box_thickness: Optional[int] = None, # Make optional
+        box_color: Optional[Tuple[int, int, int]] = None,
+        box_thickness: Optional[int] = None,
         show_box_label: bool = True,
         show_timestamp: bool = True,
         textbox_config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ):
         """
         Args:
             ctx: Context object.
-            data_path: Path to targets JSONL file.
             calibration_path: Path to camera calibration JSON file.
-            tolerance_ms: Matching tolerance.
-            time_offset_ms: Time offset for data timestamp bias.
             box_color: Bounding box color (defaults to textbox_config.text_color if None).
             box_thickness: Bounding box thickness (defaults to textbox_config.font.thickness if None).
             show_box_label: Show ID label above each box.
             show_timestamp: Show data timestamp in the text box.
             textbox_config: Dictionary defining the text panel's appearance and position.
+            **kwargs: Catches unused arguments from old configs.
         """
-        super().__init__(
-            ctx=ctx,
-            data_path=data_path,
-            tolerance_ms=tolerance_ms,
-            match_strategy="nearest",
-            time_offset_ms=time_offset_ms,
-        )
+        self.ctx = ctx
 
         self.calibration_path = Path(calibration_path)
         self.show_box_label = show_box_label
@@ -142,12 +132,11 @@ class TargetRenderer(BaseDataRenderer):
         
         return pt1, pt2 # Return the calculated 2D bounding box
 
-    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
-        matched = self.match_data(timestamp_ms)
-        if not matched:
+    def render(self, frame: np.ndarray, data: Optional[Dict[str, Any]]) -> np.ndarray:
+        if not data:
             return frame
 
-        targets = matched[0].get("targets", [])
+        targets = data.get("targets", [])
         if not targets:
             return frame
 
@@ -179,9 +168,9 @@ class TargetRenderer(BaseDataRenderer):
                 )
             
             if self.show_timestamp:
-                data_ts = matched[0].get('timestamp_ms', 'N/A')
-                adj_ts = timestamp_ms - self.time_offset_ms
-                lines.append(f"[Data: {int(data_ts)}ms | Adj: {adj_ts}ms]")
+                data_ts = int(data.get('timestamp_ms', 0))
+                snapshot_ts = int(data.get('snapshot_time_ms', 0))
+                lines.append(f"[Data: {data_ts}ms | Snap: {snapshot_ts}ms]")
 
             draw_textbox(frame, lines, self.textbox_config)
 

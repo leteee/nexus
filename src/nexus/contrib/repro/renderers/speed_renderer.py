@@ -9,62 +9,51 @@ from typing import Optional, Any, Dict, Union
 
 import numpy as np
 
-from .base import BaseDataRenderer
+from ..types import DataRenderer
 from ..common.utils_text import draw_textbox, TextboxConfig
 
 
-class SpeedRenderer(BaseDataRenderer):
+class SpeedRenderer(DataRenderer):
     """
     Renders vehicle speed on video frames.
     Styling and position are controlled by a TextboxConfig object.
+    This renderer expects to be "pushed" data from a SensorDataManager.
     """
 
     def __init__(
         self,
         ctx: Any,
-        data_path: Union[str, Path],
-        tolerance_ms: float = 5000.0,
-        time_offset_ms: int = 0,
         show_timestamp: bool = True,
         textbox_config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ):
         """
         Args:
             ctx: Context object.
-            data_path: Path to speed JSONL file.
-            tolerance_ms: Forward matching tolerance.
-            time_offset_ms: Time offset for data timestamp bias.
-            show_timestamp: Whether to show data and adjusted timestamps.
+            show_timestamp: Whether to show snapshot and aligned timestamps.
             textbox_config: Dictionary defining the text's appearance and position.
+            **kwargs: Catches unused arguments from old configs.
         """
-        super().__init__(
-            ctx=ctx,
-            data_path=data_path,
-            tolerance_ms=tolerance_ms,
-            match_strategy="forward",
-            time_offset_ms=time_offset_ms,
-        )
+        self.ctx = ctx
 
         self.show_timestamp = show_timestamp
         self.textbox_config = TextboxConfig.from_dict(textbox_config)
 
-    def render(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
+    def render(self, frame: np.ndarray, data: Optional[Dict[str, Any]]) -> np.ndarray:
         """
-        Renders speed on the frame.
+        Renders speed on the frame from the provided data dictionary.
         """
-        matched = self.match_data(timestamp_ms)
-
         lines = []
-        if not matched or "speed" not in matched[0]:
+        if not data or "speed" not in data:
             lines.append("Speed: N/A")
         else:
-            speed_value = matched[0]['speed']
+            speed_value = data['speed']
             lines.append(f"Speed: {speed_value:.1f} km/h")
 
             if self.show_timestamp:
-                data_timestamp = matched[0].get('timestamp_ms', 'N/A')
-                adjusted_timestamp = timestamp_ms - self.time_offset_ms
-                lines.append(f"[Data: {int(data_timestamp)}ms | Adj: {adjusted_timestamp}ms]")
+                data_ts = int(data.get('timestamp_ms', 0))
+                snapshot_ts = int(data.get('snapshot_time_ms', 0))
+                lines.append(f"[Data: {data_ts} | Snap: {snapshot_ts}]")
 
         if lines:
             draw_textbox(frame, lines, self.textbox_config)

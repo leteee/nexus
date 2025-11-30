@@ -328,6 +328,10 @@ class DataRendererConfig(PluginConfig):
         default=None,
         description="Path to custom frame timestamps CSV (None to use frames_dir/frame_timestamps.csv)"
     )
+    sensors: list[dict] = Field(
+        default=[],
+        description="List of sensor configurations, each with a 'name', 'path', and optional 'time_offset_ms'."
+    )
     renderers: list[dict] = Field(
         description="List of renderer configurations with 'class' (full qualified class name) and 'kwargs'"
     )
@@ -431,6 +435,22 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     if end_time_ms is not None:
         ctx.logger.info(f"End time: {end_time_ms} ms")
 
+    # Resolve paths for the new 'sensors' block
+    resolved_sensor_configs = []
+    for sensor_conf in config.sensors:
+        # Create a mutable copy
+        resolved_conf = dict(sensor_conf)
+        if 'path' in resolved_conf:
+            resolved_conf['path'] = ctx.resolve_path(resolved_conf['path'])
+        resolved_sensor_configs.append(resolved_conf)
+
+    # The `render_all_frames` function now expects a config dictionary
+    # containing both 'sensors' and 'renderers' keys.
+    new_config = {
+        "sensors": resolved_sensor_configs,
+        "renderers": renderer_configs,
+    }
+
     def progress_callback(count: int, total: int) -> None:
         """Progress callback for logging."""
         if count % 100 == 0:
@@ -440,7 +460,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frames_dir=frames_dir,
         output_path=output_path,
         timestamps_path=timestamps_path,
-        renderer_configs=renderer_configs,
+        config=new_config,  # Pass the new combined config
         frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,

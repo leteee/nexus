@@ -21,7 +21,7 @@ class FontConfig:
 @dataclass
 class PanelConfig:
     """Configuration for the background panel."""
-    enabled: bool = True
+    enabled: bool = False
     padding: int = 10
     bg_color: Tuple[int, int, int] = (40, 40, 40)
     bg_alpha: float = 0.7

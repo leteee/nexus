@@ -27,101 +27,30 @@ class VideoMetadata:
 
 class DataRenderer(ABC):
     """
-    Abstract base class for rendering time-series data onto video frames.
+    Abstract base class for all renderers that operate on a "push" model.
 
-    Subclasses define their own __init__ with required data sources,
-    then implement the three core methods:
-        1. load_data() - How to load data from file (JSONL/CSV/etc)
-        2. match_data() - How to find data matching a timestamp
-        3. render() - How to draw data on frame
-
-    Example:
-        >>> class SpeedRenderer(DataRenderer):
-        ...     def __init__(self, data_path):
-        ...         from nexus.contrib.repro.io import load_jsonl
-        ...         self.data = load_jsonl(data_path)
-        ...
-        ...     def load_data(self, data_path):
-        ...         pass  # Already loaded in __init__
-        ...
-        ...     def match_data(self, timestamp_ms, tolerance_ms=50.0):
-        ...         # Find nearest data point
-        ...         ...
-        ...
-        ...     def render(self, frame, data):
-        ...         # Draw speed on frame
-        ...         cv2.putText(frame, f"Speed: {data['speed']}", ...)
-        ...         return frame
+    This interface defines the contract for a renderer in the new architecture.
+    The renderer is expected to receive data that has already been processed
+    and matched for the current timestamp. Its only responsibility is to draw.
     """
-
-    @abstractmethod
-    def load_data(self, data_path: Path) -> None:
-        """
-        Load time-series data from file.
-
-        Note: This method may not be called if data is loaded in __init__.
-        Kept for interface compatibility.
-
-        Args:
-            data_path: Path to data file
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def match_data(
-        self,
-        timestamp_ms: int,
-        tolerance_ms: float = 50.0,
-    ) -> List[dict]:
-        """
-        Find data points matching the given timestamp.
-
-        Args:
-            timestamp_ms: Target timestamp in milliseconds (int)
-            tolerance_ms: Maximum acceptable time difference (ms)
-
-        Returns:
-            List of matching data dictionaries
-
-        Example:
-            >>> def match_data(self, timestamp_ms, tolerance_ms=50.0):
-            ...     matches = [d for d in self.data
-            ...                if abs(d['timestamp_ms'] - timestamp_ms) <= tolerance_ms]
-            ...     return matches[:1]  # Return nearest
-        """
-        raise NotImplementedError
 
     @abstractmethod
     def render(
         self,
         frame: np.ndarray,
-        timestamp_ms: int,
+        data: Optional[Dict[str, Any]],
     ) -> np.ndarray:
         """
-        Render data visualization onto frame.
-
-        This method internally calls match_data() with the timestamp,
-        then renders the matched data. Context is accessible via self.ctx.
+        Renders the given data onto the frame.
 
         Args:
-            frame: Video frame as numpy array (H, W, C) in BGR format
-            timestamp_ms: Frame timestamp in milliseconds (int)
+            frame: The video frame (as a numpy array) to draw on.
+            data: A dictionary containing the specific data for this renderer
+                  at the current timestamp. This can be None if no data was
+                  found for the current timestamp.
 
         Returns:
-            Frame with data rendered (modified in-place or copied)
-
-        Example:
-            >>> def render(self, frame, timestamp_ms):
-            ...     # Match data for this timestamp
-            ...     matched = self.match_data(timestamp_ms)
-            ...     if not matched:
-            ...         return frame
-            ...     # Use context for logging
-            ...     self.ctx.logger.debug(f"Rendering data at {timestamp_ms}ms")
-            ...     # Render the data
-            ...     speed = matched[0].get('speed', 0)
-            ...     cv2.putText(frame, f"Speed: {speed:.1f}", (20, 50), ...)
-            ...     return frame
+            The modified frame.
         """
         raise NotImplementedError
 
