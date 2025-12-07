@@ -435,21 +435,13 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     if end_time_ms is not None:
         ctx.logger.info(f"End time: {end_time_ms} ms")
 
-    # Resolve paths for the new 'sensors' block
+    # Resolve paths and parameters for the 'sensors' block
     resolved_sensor_configs = []
     for sensor_conf in config.sensors:
-        # Create a mutable copy
         resolved_conf = dict(sensor_conf)
         if 'path' in resolved_conf:
             resolved_conf['path'] = ctx.resolve_path(resolved_conf['path'])
         resolved_sensor_configs.append(resolved_conf)
-
-    # The `render_all_frames` function now expects a config dictionary
-    # containing both 'sensors' and 'renderers' keys.
-    new_config = {
-        "sensors": resolved_sensor_configs,
-        "renderers": renderer_configs,
-    }
 
     def progress_callback(count: int, total: int) -> None:
         """Progress callback for logging."""
@@ -460,7 +452,8 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frames_dir=frames_dir,
         output_path=output_path,
         timestamps_path=timestamps_path,
-        config=new_config,  # Pass the new combined config
+        sensor_configs=resolved_sensor_configs,
+        renderer_configs=renderer_configs,
         frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,
@@ -1004,4 +997,150 @@ def generate_synthetic_video(ctx: PluginContext) -> Any:
     ctx.remember("video_duration_s", metadata["duration_s"])
 
     return metadata
+
+
+# =============================================================================
+# Timeline and Frame Generation Plugins
+# =============================================================================
+
+
+class SimpleTimelineGeneratorConfig(PluginConfig):
+    """Configuration for generating a simple timeline based on duration."""
+
+    start_time: str = Field(
+        default="2025-10-27 00:00:00",
+        description="Starting timestamp in 'YYYY-MM-DD HH:MM:SS' format"
+    )
+    end_time: str = Field(
+        description="Ending timestamp in 'YYYY-MM-DD HH:MM:SS' format"
+    )
+    fps: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="Frames per second for the timeline"
+    )
+    timestamps_path: str = Field(
+        default="output/timeline.csv",
+        description="Output CSV file path for frame timestamps"
+    )
+    jitter_ms: int = Field(
+        default=0,
+        ge=0,
+        description="Maximum random timing jitter in milliseconds (±jitter_ms). Default is 0 for no jitter."
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible jitter generation"
+    )
+
+@plugin(name="Simple Timeline Generator", config=SimpleTimelineGeneratorConfig)
+def generate_simple_timeline(ctx: PluginContext) -> Any:
+    """
+    Generate a frame timeline based on a start time, end time, and FPS.
+
+    This plugin is useful for creating a time foundation for data replay
+    when no real video is available.
+    """
+    config: SimpleTimelineGeneratorConfig = ctx.config  # type: ignore
+
+    start_timestamp_ms = parse_time_string(config.start_time)
+    end_timestamp_ms = parse_time_string(config.end_time)
+
+    if start_timestamp_ms >= end_timestamp_ms:
+        raise ValueError("start_time must be before end_time")
+
+    duration_s = (end_timestamp_ms - start_timestamp_ms) / 1000.0
+    total_frames = int(duration_s * config.fps)
+
+    ctx.logger.info(
+        f"Generating timeline: {duration_s:.2f}s at {config.fps} FPS -> {total_frames} frames"
+    )
+
+    timeline = generate_timeline_with_jitter(
+        fps=config.fps,
+        total_frames=total_frames,
+        start_timestamp_ms=start_timestamp_ms,
+        jitter_ms=config.jitter_ms,
+        random_seed=config.random_seed,
+    )
+
+    output_path = ctx.resolve_path(config.timestamps_path)
+    save_timeline_csv(timeline, output_path)
+
+    ctx.logger.info(f"Timeline saved to {output_path}")
+
+    return output_path
+
+
+class BlankFrameGeneratorConfig(PluginConfig):
+    """Configuration for generating blank video frames from a timeline."""
+
+    timestamps_path: str = Field(
+        description="Path to timeline CSV file."
+    )
+    output_path: str = Field(
+        default="frames",
+        description="Output directory for generated blank frames"
+    )
+    width: int = Field(
+        default=1920,
+        description="Width of the blank frames in pixels"
+    )
+    height: int = Field(
+        default=1080,
+        description="Height of the blank frames in pixels"
+    )
+    frame_pattern: str = Field(
+        default="frame_{:06d}.png",
+        description="Filename pattern for the output frames."
+    )
+    color: tuple[int, int, int] = Field(
+        default=(0, 0, 0),
+        description="Color of the blank frames in BGR format (e.g., (0, 0, 0) for black)."
+    )
+
+@plugin(name="Blank Frame Generator", config=BlankFrameGeneratorConfig)
+def generate_blank_frames(ctx: PluginContext) -> Any:
+    """
+    Generate blank video frames based on a timeline file.
+
+    This plugin reads a timeline CSV and creates a blank image for each
+    frame entry, which is useful for replaying data without a real video source.
+    """
+    import pandas as pd
+    import numpy as np
+    import cv2
+    from tqdm import tqdm
+
+    config: BlankFrameGeneratorConfig = ctx.config  # type: ignore
+
+    timestamps_path = ctx.resolve_path(config.timestamps_path)
+    if not timestamps_path.exists():
+        raise FileNotFoundError(f"Timeline file not found: {timestamps_path}")
+
+    output_path = ctx.resolve_path(config.output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    ctx.logger.info(f"Reading timeline from {timestamps_path}")
+    timeline_df = pd.read_csv(timestamps_path)
+    total_frames = len(timeline_df)
+
+    ctx.logger.info(
+        f"Generating {total_frames} blank frames ({config.width}x{config.height}) "
+        f"into {output_path}"
+    )
+
+    # Create a blank image template
+    blank_image = np.full((config.height, config.width, 3), config.color, dtype=np.uint8)
+
+    with tqdm(total=total_frames, desc="Generating blank frames", unit="frame") as pbar:
+        for _, row in timeline_df.iterrows():
+            frame_idx = int(row["frame_index"])
+            frame_file = output_path / config.frame_pattern.format(frame_idx)
+            cv2.imwrite(str(frame_file), blank_image)
+            pbar.update(1)
+
+    ctx.logger.info("Blank frame generation complete.")
+
+    return output_path
 

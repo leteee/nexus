@@ -10,6 +10,7 @@ pipeline:
   # Step 0: Generate synthetic driving video (NEW!)
   # Creates a 1-minute 1920x1080 video simulating forward driving
   - plugin: "Synthetic Video Generator"
+    # enable: false
     config:
       output_path: "input/synthetic_driving.mp4"
       duration_s: 60.0                    # 1 minute video
@@ -22,11 +23,12 @@ pipeline:
   # Step 1: Generate timeline with realistic jitter
   # Automatically extracts FPS and frame count from video
   - plugin: "Timeline Generator"
+    # enable: false
     config:
       video_path: "input/synthetic_driving.mp4"    # Video file to analyze
       start_time: "2025-10-27 08:30:00"  # Human-readable time format
       jitter_ms: 2                        # ±2ms random jitter (integer)
-      output_csv: "input/vehicle_timeline.csv"
+      output_csv: "temp/timeline.csv"
       random_seed: 42                     # For reproducibility
 
   # Step 2: Generate event-driven speed data

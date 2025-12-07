@@ -11,12 +11,13 @@ class SensorStream:
     It supports data delays and provides efficient time-based queries using multiple strategies.
     """
 
-    def __init__(self, data_path: str, time_offset_ms: float = 0, logger: Optional[logging.Logger] = None):
+    def __init__(self, data_path: str, time_offset_ms: float = 0, tolerance_ms: float = float('inf'), logger: Optional[logging.Logger] = None):
         """
         Initializes the stream by loading, parsing, and sorting data from the given file.
         """
         self.data_path = data_path
         self.time_offset_ms = time_offset_ms
+        self.tolerance_ms = tolerance_ms
         
         if logger is None:
             # If no logger is provided, create a basic one.
@@ -140,7 +141,16 @@ class SensorStream:
             self.logger.debug(f"No data found for aligned_time_ms={aligned_time_ms} with strategy='{strategy}'")
             return None
 
-        # 4. Get the matched data and augment it with traceability info
+        # 4. Check if the found data is within the tolerance
+        matched_time_ms = self._timestamps[matched_index]
+        if abs(matched_time_ms - aligned_time_ms) > self.tolerance_ms:
+            self.logger.debug(
+                f"Data at {matched_time_ms} is outside tolerance ({self.tolerance_ms}ms) "
+                f"for aligned_time_ms={aligned_time_ms}"
+            )
+            return None
+
+        # 5. Get the matched data and augment it with traceability info
         matched_data = self._data[matched_index]
         result = matched_data.copy()
         result['snapshot_time_ms'] = snapshot_time_ms
@@ -183,7 +193,7 @@ class SensorDataManager:
         self.logger.info("SensorDataManager initialized.")
 
 
-    def register_sensor(self, name: str, data_path: str, time_offset_ms: float = 0):
+    def register_sensor(self, name: str, data_path: str, time_offset_ms: float = 0, tolerance_ms: float = float('inf')):
         """
         Registers a new sensor stream with the manager.
 
@@ -191,16 +201,22 @@ class SensorDataManager:
             name: A unique name for the sensor (e.g., 'gps', 'imu_1').
             data_path: The path to the sensor's JSONL data file.
             time_offset_ms: The inherent time offset of this sensor in milliseconds.
+            tolerance_ms: The time window in ms for which a match is considered valid.
         """
         if name in self._sensors:
             error_msg = f"Sensor with name '{name}' is already registered."
             self.logger.error(error_msg)
             raise ValueError(error_msg)
         
-        self.logger.info(f"Registering sensor '{name}' with data from '{data_path}' and offset {time_offset_ms}ms.")
+        self.logger.info(f"Registering sensor '{name}' with data from '{data_path}', offset {time_offset_ms}ms, tolerance {tolerance_ms}ms.")
         # Pass a child logger to the stream for hierarchical logging
         stream_logger = self.logger.getChild(f"SensorStream.{name}")
-        self._sensors[name] = SensorStream(data_path, time_offset_ms=time_offset_ms, logger=stream_logger)
+        self._sensors[name] = SensorStream(
+            data_path,
+            time_offset_ms=time_offset_ms,
+            tolerance_ms=tolerance_ms,
+            logger=stream_logger
+        )
 
     def get_time_range(self, sensor_name: Optional[str] = None) -> Optional[Tuple[float, float]]:
         """

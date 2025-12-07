@@ -11,6 +11,11 @@ case_info:
 # Shared Defaults
 # =============================================================================
 defaults:
+  time_section:
+      start_time: "2025-10-27 08:30:10"
+      end_time: "2025-10-27 08:30:30"
+
+  timestamps_path: "temp/timeline.csv"
   # Base Textbox configuration to share common styling for all renderers.
   # This is a good use of `defaults` as it's shared by multiple renderers.
   textbox_base_config:
@@ -48,22 +53,35 @@ defaults:
 # Pipeline
 # =============================================================================
 pipeline:
-  # Step 1: Extract frames from video
   - plugin: "Video Splitter"
-    enable: false
+    # enable: false
     config:
       video_path: "input/*.mp4"
       output_path: "temp/frames"
       frame_pattern: "frame_{:06d}.png"
 
+  - plugin: "Simple Timeline Generator"
+    enable: false
+    config:
+      _extends: "@defaults.time_section"
+      fps: 30.0
+      timestamps_path: "@defaults.timestamps_path"
+
+  - plugin: "Blank Frame Generator"
+    enable: false
+    config:
+      timestamps_path: "@defaults.timestamps_path"
+      output_path: "temp/frames"
+      width: 1920
+      height: 1080
+
   # Step 2: Render data onto frames using the new decoupled architecture
   - plugin: "Data Renderer"
     config:
-      start_time: "2025-10-27 08:30:10"
-      end_time: "2025-10-27 08:30:30"
+      _extends: "@defaults.time_section"
       frames_dir: "temp/frames"
       output_path: "temp/rendered_frames"
-      timestamps_path: "input/vehicle_timeline.csv"
+      timestamps_path: "@defaults.timestamps_path"
       frame_pattern: "frame_{:06d}.png"
 
       # Define all sensor data sources to be managed by SensorDataManager
@@ -71,9 +89,11 @@ pipeline:
         - name: "vehicle_speed"
           path: "input/speed.jsonl"
           time_offset_ms: 0
+          tolerance_ms: 5000
         - name: "adb_targets"
           path: "input/adb_targets.jsonl"
           time_offset_ms: 0
+          tolerance_ms: 50
 
       # Define how to visualize the sensor data
       renderers:
@@ -100,8 +120,8 @@ pipeline:
 
               # PositionConfig parameters (nested)
               position:
-                x: "width - 30" 
-                y: 60 
+                x: "width - 30"
+                y: 60
                 anchor: 'top_right'
               # font:
               #   face: 0 # Default: cv2.FONT_HERSHEY_SIMPLEX (0)
@@ -139,7 +159,7 @@ pipeline:
               # PositionConfig parameters (nested)
               position:
                 x: "width - 10"
-                y: "height - 10" 
+                y: "height - 10"
                 anchor: 'bottom_right'
               # FontConfig parameters (nested)
               font:
@@ -159,8 +179,9 @@ pipeline:
 
   # Step 3: Compose rendered frames back to video
   - plugin: "Video Composer"
+    # enable: false
     config:
       frames_dir: "temp/rendered_frames"
-      output_path: "output/vehicle_replay.mp4"
+      output_path: "output/repro.mp4"
       fps: 30.0
       frame_pattern: "frame_{:06d}.png"

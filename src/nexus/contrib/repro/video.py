@@ -199,7 +199,8 @@ def render_all_frames(
     frames_dir: Path,
     output_path: Path,
     timestamps_path: Path,
-    config: Dict[str, Any],
+    sensor_configs: List[Dict[str, Any]],
+    renderer_configs: List[Dict[str, Any]],
     *,
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
@@ -214,48 +215,6 @@ def render_all_frames(
     1. Sets up a SensorDataManager with all sensor sources.
     2. Instantiates all configured renderers.
     3. For each frame, gets the required data from the manager and "pushes" it to the renderer.
-
-    Args:
-        frames_dir: Directory containing extracted frames.
-        output_path: Directory for rendered frames.
-        timestamps_path: Path to frame timestamps CSV.
-        config: A dictionary containing the main configuration, expected to have 'sensors' and 'renderers' keys.
-        frame_pattern: Frame filename pattern.
-        start_time_ms: Optional start time to begin rendering.
-        end_time_ms: Optional end time to stop rendering.
-        progress_callback: Optional callback(count, total) for progress tracking.
-        ctx: Context object passed to renderers (provides logger, etc.).
-
-    Returns:
-        Path to the output directory.
-
-    Example `config` structure:
-    ```python
-    config = {
-        "sensors": [
-            {"name": "speed_data", "path": "speed.jsonl", "time_offset_ms": 0},
-            {"name": "target_data", "path": "targets.jsonl", "time_offset_ms": -50},
-        ],
-        "renderers": [
-            {
-                "class": "nexus.contrib.repro.renderers.SpeedRenderer",
-                "sensor": "speed_data",
-                "match_strategy": "forward",
-                "kwargs": {"show_timestamp": True},
-            },
-            {
-                "class": "nexus.contrib.repro.renderers.TargetRenderer",
-                "sensor": "target_data",
-                "match_strategy": "nearest",
-                "kwargs": {"calibration_path": "calib.json"},
-            },
-            {
-                "class": "nexus.contrib.repro.renderers.FrameInfoRenderer",
-                "kwargs": {"format": "detailed"},
-            },
-        ],
-    }
-    ```
     """
     import importlib
 
@@ -270,9 +229,6 @@ def render_all_frames(
         raise FileNotFoundError(f"Timestamps file not found: {timestamps_path}")
 
     output_path.mkdir(parents=True, exist_ok=True)
-    
-    sensor_configs = config.get("sensors", [])
-    renderer_configs = config.get("renderers", [])
 
     # 1. Set up SensorDataManager
     logger.info(f"Setting up SensorDataManager with {len(sensor_configs)} sensors...")
@@ -282,6 +238,7 @@ def render_all_frames(
             name=sensor_conf["name"],
             data_path=sensor_conf["path"],
             time_offset_ms=sensor_conf.get("time_offset_ms", 0),
+            tolerance_ms=sensor_conf.get("tolerance_ms", float('inf')),
         )
 
     # 2. Instantiate all renderers
