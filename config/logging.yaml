@@ -1,0 +1,56 @@
+# Nexus Logging Configuration
+# Uses Python's standard logging.config.dictConfig format
+#
+# Usage:
+#   - Logs to both console (INFO+) and rotating file (DEBUG+)
+#   - Configurable log levels per module
+#   - Rotating file handler with 10MB max size, 5 backups
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+  detailed:
+    format: '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+  simple:
+    format: '%(levelname)s - %(message)s'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/nexus.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+
+loggers:
+  # Top-level nexus logger - all submodules inherit this configuration
+  nexus:
+    level: INFO
+    handlers: [console, file]
+    propagate: false
+
+  # Override specific modules if needed (examples):
+  # nexus.contrib.repro.common.sensor_manager:
+  #   level: DEBUG  # More verbose logging for sensor manager
+  #
+  # nexus.contrib.repro.renderers:
+  #   level: WARNING  # Less verbose for renderers
+
+root:
+  level: WARNING
+  handlers: [console]

@@ -34,11 +34,56 @@ def find_project_root(start_path: Path) -> Path:
     return start_path
 
 
-def setup_logging(level: str = "INFO") -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+def setup_logging(level: str = "INFO", project_root: Optional[Path] = None) -> None:
+    """
+    Setup logging configuration.
+
+    Tries to load from config/logging.yaml, falls back to basic config if not found.
+
+    Args:
+        level: Default logging level if yaml config not found
+        project_root: Project root directory (auto-detected if None)
+    """
+    import logging.config
+
+    if project_root is None:
+        project_root = find_project_root(Path.cwd())
+
+    logging_config_path = project_root / "config" / "logging.yaml"
+
+    if logging_config_path.exists():
+        try:
+            import yaml
+            with open(logging_config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+
+            # Ensure log directory exists
+            logs_dir = project_root / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+
+            # Update file handler path to be absolute
+            if 'handlers' in config and 'file' in config['handlers']:
+                file_handler = config['handlers']['file']
+                if 'filename' in file_handler:
+                    file_handler['filename'] = str(project_root / file_handler['filename'])
+
+            logging.config.dictConfig(config)
+            logging.info(f"Loaded logging configuration from {logging_config_path}")
+        except Exception as e:
+            # Fall back to basic config if yaml loading fails
+            logging.basicConfig(
+                level=getattr(logging, level.upper()),
+                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            )
+            logging.warning(f"Failed to load logging config from {logging_config_path}: {e}")
+            logging.warning("Using basic logging configuration")
+    else:
+        # Use basic config if yaml file doesn't exist
+        logging.basicConfig(
+            level=getattr(logging, level.upper()),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+        logging.info("No logging.yaml found, using basic configuration")
 
 
 def _load_case_manager(project_root: Path) -> CaseManager:
@@ -130,9 +175,9 @@ def cli(ctx: click.Context, version: bool) -> None:
 @click.option("--config", "-C", multiple=True, help="Config overrides (key=value)")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bool) -> None:
-    setup_logging("DEBUG" if verbose else "INFO")
-
     project_root = find_project_root(Path.cwd())
+    setup_logging("DEBUG" if verbose else "INFO", project_root)
+
     manager = _load_case_manager(project_root)
 
     try:
@@ -160,9 +205,9 @@ def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bo
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def exec_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool) -> None:
     """Execute a single plugin."""
-    setup_logging("DEBUG" if verbose else "INFO")
-
     project_root = find_project_root(Path.cwd())
+    setup_logging("DEBUG" if verbose else "INFO", project_root)
+
     manager = _load_case_manager(project_root)
     engine = PipelineEngine(project_root, manager.resolve_case_path(case))
 

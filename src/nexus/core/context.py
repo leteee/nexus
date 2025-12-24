@@ -7,7 +7,6 @@ Provides lightweight immutable contexts used during pipeline execution.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from logging import Logger
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
 
@@ -18,11 +17,15 @@ from .path_resolver import auto_resolve_paths
 
 @dataclass(frozen=True)
 class NexusContext:
-    """Global execution context shared across plugins."""
+    """
+    Global execution context shared across plugins.
+
+    Provides project-level configuration and paths. Does not include logger
+    as per Python best practices - use module-level loggers instead.
+    """
 
     project_root: Path
     case_path: Path
-    logger: Logger
     run_config: Dict[str, Any] = field(default_factory=dict)
 
     def create_plugin_context(
@@ -35,7 +38,6 @@ class NexusContext:
         return PluginContext(
             project_root=self.project_root,
             case_path=self.case_path,
-            logger=self.logger,
             config=config,
             shared_state=shared_state,
         )
@@ -46,13 +48,15 @@ class PluginContext:
     """
     Context passed to plugins during execution.
 
-    Provides utilities for path resolution, state management, and logging.
+    Provides utilities for path resolution and state management.
+    Does not include logger - plugins should use module-level loggers
+    following Python logging best practices.
+
     Automatically resolves path parameters following the '*_path' convention.
     """
 
     project_root: Path
     case_path: Path
-    logger: Logger
     config: Optional[BaseModel] = None
     shared_state: Dict[str, Any] = field(default_factory=dict)
 

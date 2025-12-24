@@ -6,6 +6,7 @@ Renders frame index and timestamp information using the centralized draw_textbox
 
 from __future__ import annotations
 
+import logging
 from typing import Optional, Any, Dict, List
 
 import numpy as np
@@ -32,13 +33,14 @@ class FrameInfoRenderer(DataRenderer):
     ):
         """
         Args:
-            ctx: Context object providing logger and shared state.
+            ctx: Context object providing shared state.
             format: Display format - "compact", "datetime", or "detailed".
             textbox_config: A dictionary defining the text's appearance and position.
             **kwargs: Catches unused arguments from old configs.
         """
         self.ctx = ctx
-        
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
         self.format = format
         self.textbox_config = TextboxConfig.from_dict(textbox_config)
 
@@ -56,33 +58,33 @@ class FrameInfoRenderer(DataRenderer):
         if not data:
             return frame
             
-        timestamp_ms = int(data.get('snapshot_time_ms', 0))
-        if timestamp_ms == 0:
+        timestamp_ms = float(data.get('snapshot_time_ms', 0.0))
+        if timestamp_ms == 0.0:
             return frame
 
         frame_idx = self.ctx.recall("current_frame_idx", default=0)
-        self.ctx.logger.debug(f"Rendering frame info for frame {frame_idx}")
+        self.logger.debug(f"Rendering frame info for frame {frame_idx}")
 
         lines: List[str] = []
         if self.format == "compact":
-            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms}ms")
+            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms:.0f}ms")
 
         elif self.format == "datetime":
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
-            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}")
+            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms:.0f}ms  Time: {datetime_str}")
 
         elif self.format == "detailed":
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
             lines.extend([
                 f"Frame: {frame_idx}",
-                f"TS: {timestamp_ms}ms",
+                f"TS: {timestamp_ms:.0f}ms",
                 f"Time: {datetime_str}",
             ])
         else:
             # Default to 'datetime' format if an unknown format is provided
-            self.ctx.logger.warning(f"Unknown format '{self.format}', using 'datetime' as default")
+            self.logger.warning(f"Unknown format '{self.format}', using 'datetime' as default")
             datetime_str = timestamp_to_string(timestamp_ms, fmt="datetime")
-            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms}ms  Time: {datetime_str}")
+            lines.append(f"Frame: {frame_idx}  TS: {timestamp_ms:.0f}ms  Time: {datetime_str}")
 
         # With the new API, drawing single or multi-line text is identical
         draw_textbox(frame, lines, self.textbox_config)

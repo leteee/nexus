@@ -183,7 +183,7 @@ class _SensorEventIterator:
         Groups events that occur at the exact same timestamp.
         """
         if not self._heap:
-            self._logger.info("Event iteration finished.")
+            self.logger.info("Event iteration finished.")
             raise StopIteration
 
         # Pop the next chronological event
@@ -196,7 +196,7 @@ class _SensorEventIterator:
                 sensor_name: self._sensors[sensor_name]._data[data_index]
             }
         }
-        self._logger.debug(f"Popped event for '{sensor_name}' at {current_ts}")
+        self.logger.debug(f"Popped event for '{sensor_name}' at {current_ts}")
 
         # Advance the cursor for the stream we just popped from
         self._push_next_for(sensor_name, data_index + 1)
@@ -206,7 +206,7 @@ class _SensorEventIterator:
         while self._heap and self._heap[0][0] == current_ts:
             _, same_ts_sensor_name, same_ts_data_index = heapq.heappop(self._heap)
             
-            self._logger.debug(f"Popped simultaneous event for '{same_ts_sensor_name}' at {current_ts}")
+            self.logger.debug(f"Popped simultaneous event for '{same_ts_sensor_name}' at {current_ts}")
             snapshot['sensors'][same_ts_sensor_name] = self._sensors[same_ts_sensor_name]._data[same_ts_data_index]
             
             # Advance the cursor for this stream as well
@@ -223,9 +223,9 @@ class _SensorEventIterator:
             # Calculate the "world time" of the next event, including the sensor's offset
             timestamp = stream._timestamps[next_index] + stream.time_offset_ms
             heapq.heappush(self._heap, (timestamp, sensor_name, next_index))
-            self._logger.debug(f"Pushed next event for '{sensor_name}' at {timestamp} (index {next_index})")
+            self.logger.debug(f"Pushed next event for '{sensor_name}' at {timestamp} (index {next_index})")
         else:
-            self._logger.debug(f"Sensor stream '{sensor_name}' exhausted.")
+            self.logger.debug(f"Sensor stream '{sensor_name}' exhausted.")
 
 
 class SensorDataManager:

@@ -287,7 +287,7 @@ def render_all_frames(
     with tqdm(total=total_frames, desc="Rendering frames", unit="frame", disable=progress_callback is not None) as pbar:
         for _, row in frame_times.iterrows():
             frame_idx = int(row["frame_index"])
-            timestamp_ms = int(row["timestamp_ms"])
+            timestamp_ms = float(row["timestamp_ms"])
 
             frame_path = frames_dir / frame_pattern.format(frame_idx)
             if not frame_path.exists():

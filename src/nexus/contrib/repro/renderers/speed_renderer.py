@@ -4,6 +4,7 @@ Speed renderer for displaying vehicle speed on video frames.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional, Any, Dict, Union
 
@@ -35,6 +36,7 @@ class SpeedRenderer(DataRenderer):
             **kwargs: Catches unused arguments from old configs.
         """
         self.ctx = ctx
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.show_timestamp = show_timestamp
         self.textbox_config = TextboxConfig.from_dict(textbox_config)
@@ -51,9 +53,9 @@ class SpeedRenderer(DataRenderer):
             lines.append(f"Speed: {speed_value:.1f} km/h")
 
             if self.show_timestamp:
-                data_ts = int(data.get('timestamp_ms', 0))
-                snapshot_ts = int(data.get('snapshot_time_ms', 0))
-                lines.append(f"[Data: {data_ts} | Snap: {snapshot_ts}]")
+                data_ts = float(data.get('timestamp_ms', 0.0))
+                snapshot_ts = float(data.get('snapshot_time_ms', 0.0))
+                lines.append(f"[Data: {data_ts:.0f} | Snap: {snapshot_ts:.0f}]")
 
         if lines:
             draw_textbox(frame, lines, self.textbox_config)

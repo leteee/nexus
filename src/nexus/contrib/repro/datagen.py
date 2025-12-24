@@ -29,7 +29,7 @@ from .common.utils import parse_time_string, parse_time_value, get_video_metadat
 def generate_timeline_with_jitter(
     fps: float,
     total_frames: int,
-    start_timestamp_ms: int,
+    start_timestamp_ms: float,
     jitter_ms: int = 2,
     random_seed: Optional[int] = None,
 ) -> List[dict]:
@@ -42,23 +42,23 @@ def generate_timeline_with_jitter(
     Args:
         fps: Video frame rate (frames per second)
         total_frames: Number of frames in the video
-        start_timestamp_ms: Starting absolute timestamp in milliseconds (int)
+        start_timestamp_ms: Starting absolute timestamp in milliseconds (float)
         jitter_ms: Maximum jitter to add (±jitter_ms), default ±2ms (int)
         random_seed: Random seed for reproducibility
 
     Returns:
-        List of dicts with frame_index and timestamp_ms (int)
+        List of dicts with frame_index and timestamp_ms (float)
 
     Example:
         >>> timeline = generate_timeline_with_jitter(
         ...     fps=30.0,
         ...     total_frames=900,  # 30 seconds
-        ...     start_timestamp_ms=1730019000000,  # 2025-10-27 00:00:00
+        ...     start_timestamp_ms=1730019000000.0,  # 2025-10-27 00:00:00
         ...     jitter_ms=2
         ... )
-        >>> # Frame 0: 1730019000000 ms
-        >>> # Frame 1: ~1730019000033 ms ± 2ms
-        >>> # Frame 2: ~1730019000067 ms ± 2ms
+        >>> # Frame 0: 1730019000000.0 ms
+        >>> # Frame 1: ~1730019000033.333 ms ± 2ms
+        >>> # Frame 2: ~1730019000066.667 ms ± 2ms
     """
     if random_seed is not None:
         random.seed(random_seed)
@@ -74,8 +74,8 @@ def generate_timeline_with_jitter(
         # Add random integer jitter: [-jitter_ms, +jitter_ms]
         jitter = random.randint(-jitter_ms, jitter_ms)
 
-        # Final timestamp as integer
-        actual_timestamp = int(ideal_timestamp) + jitter
+        # Final timestamp as float
+        actual_timestamp = ideal_timestamp + jitter
 
         timeline.append({
             "frame_index": frame_idx,
@@ -115,7 +115,7 @@ class SpeedProfile:
 
 
 def generate_speed_data_event_driven(
-    start_timestamp_ms: int,
+    start_timestamp_ms: float,
     duration_s: float,
     speed_profiles: Optional[List[SpeedProfile]] = None,
     max_interval_s: float = 5.0,
@@ -133,7 +133,7 @@ def generate_speed_data_event_driven(
     but with a mandatory periodic update.
 
     Args:
-        start_timestamp_ms: Starting absolute timestamp in milliseconds (int)
+        start_timestamp_ms: Starting absolute timestamp in milliseconds (float)
         duration_s: Total duration to generate data for
         speed_profiles: List of speed behavior segments (if None, uses default)
         max_interval_s: Maximum interval without sending data (default 5s)
@@ -141,7 +141,7 @@ def generate_speed_data_event_driven(
         random_seed: Random seed for reproducibility
 
     Returns:
-        List of dicts with timestamp_ms (int) and speed (float)
+        List of dicts with timestamp_ms (float) and speed (float)
 
     Example:
         >>> profiles = [
@@ -150,7 +150,7 @@ def generate_speed_data_event_driven(
         ...     SpeedProfile(10.0, 60, 30, "decelerate"),
         ... ]
         >>> speed_data = generate_speed_data_event_driven(
-        ...     start_timestamp_ms=1730019000000,
+        ...     start_timestamp_ms=1730019000000.0,
         ...     duration_s=40.0,
         ...     speed_profiles=profiles
         ... )
@@ -201,8 +201,8 @@ def generate_speed_data_event_driven(
         time_elapsed = (current_time_s - last_recorded_time_s) >= max_interval_s
 
         if speed_changed or time_elapsed or len(speed_data) == 0:
-            # Convert to integer milliseconds
-            timestamp_ms = start_timestamp_ms + int(current_time_s * 1000)
+            # Convert to float milliseconds
+            timestamp_ms = start_timestamp_ms + (current_time_s * 1000)
             speed_data.append({
                 "timestamp_ms": timestamp_ms,
                 "speed": round(current_speed, 1),
@@ -281,7 +281,7 @@ def calculate_edge_angles(
 
 
 def generate_adb_target_data(
-    start_timestamp_ms: int,
+    start_timestamp_ms: float,
     duration_s: float,
     frequency_hz: float = 20.0,
     num_targets: int = 3,
@@ -300,7 +300,7 @@ def generate_adb_target_data(
     Detection range: 5m to 150m
 
     Args:
-        start_timestamp_ms: Starting absolute timestamp in milliseconds (int)
+        start_timestamp_ms: Starting absolute timestamp in milliseconds (float)
         duration_s: Total duration to generate data for
         frequency_hz: Target data frequency (default 20Hz)
         num_targets: Number of concurrent targets (2-3 typical)
@@ -309,11 +309,11 @@ def generate_adb_target_data(
         random_seed: Random seed for reproducibility
 
     Returns:
-        List of dicts with timestamp_ms (int) and targets array
+        List of dicts with timestamp_ms (float) and targets array
 
     Example:
         >>> target_data = generate_adb_target_data(
-        ...     start_timestamp_ms=1730019000000,
+        ...     start_timestamp_ms=1730019000000.0,
         ...     duration_s=30.0,
         ...     frequency_hz=20.0,
         ...     num_targets=3,
@@ -321,7 +321,7 @@ def generate_adb_target_data(
         ... )
         >>> # Each record:
         >>> # {
-        >>> #   "timestamp_ms": 1730019000000,
+        >>> #   "timestamp_ms": 1730019000000.0,
         >>> #   "targets": [
         >>> #     {
         >>> #       "id": 1,
@@ -395,7 +395,7 @@ def generate_adb_target_data(
     while current_time_s < duration_s:
         # Add integer timing jitter to simulate unstable data reception
         jitter = random.randint(-timing_jitter_ms, timing_jitter_ms)
-        timestamp_ms = start_timestamp_ms + int(current_time_s * 1000) + jitter
+        timestamp_ms = start_timestamp_ms + (current_time_s * 1000) + jitter
 
         # Update each target's position based on physics
         current_targets: List[dict] = []

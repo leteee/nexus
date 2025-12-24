@@ -4,6 +4,7 @@ Nexus plugin adapters for basic contrib package.
 Adapts basic data processing logic to Nexus plugin interface.
 """
 
+import logging
 from typing import Any, Optional
 
 from pydantic import Field
@@ -13,6 +14,8 @@ from nexus.core.discovery import plugin
 from nexus.core.types import PluginConfig
 
 from nexus.contrib.basic.generation import build_synthetic_dataframe
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -79,7 +82,7 @@ def generate_synthetic_data(ctx: PluginContext) -> Any:
         output_path = ctx.resolve_path(config.output_data)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(output_path, index=False)
-        ctx.logger.info("Wrote dataset to %s", output_path)
+        logger.info("Wrote dataset to %s", output_path)
 
     ctx.remember("last_result", frame)
     return frame

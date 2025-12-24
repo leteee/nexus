@@ -28,7 +28,6 @@ class PipelineEngine:
     def __init__(self, project_root: Path, case_dir: Path):
         self.project_root = project_root
         self.case_dir = case_dir
-        self.logger = logger
 
         discover_all_plugins(self.project_root)
 
@@ -58,7 +57,6 @@ class PipelineEngine:
         nexus_ctx = NexusContext(
             project_root=self.project_root,
             case_path=self.case_dir,
-            logger=self.logger,
             run_config=config_context,
         )
 
@@ -77,7 +75,7 @@ class PipelineEngine:
 
             # Check if plugin is enabled (default: true)
             if not step.get("enable", True):
-                self.logger.info(f"Skipping disabled plugin (step {idx}): {plugin_name}")
+                logger.info(f"Skipping disabled plugin (step {idx}): {plugin_name}")
                 continue
 
             step_config: Dict[str, Any] = step.get("config", {})
@@ -103,7 +101,7 @@ class PipelineEngine:
                 shared_state=shared_state,
             )
 
-            self.logger.info(f"Executing plugin: {plugin_name}")
+            logger.info(f"Executing plugin: {plugin_name}")
             step_result = plugin_spec.func(plugin_ctx)
             shared_state["last_result"] = step_result
             results[f"step_{idx}_result"] = step_result
@@ -149,7 +147,6 @@ class PipelineEngine:
         nexus_ctx = NexusContext(
             project_root=self.project_root,
             case_path=self.case_dir,
-            logger=self.logger,
             run_config=config_context,
         )
 
@@ -166,7 +163,7 @@ class PipelineEngine:
             shared_state={},
         )
 
-        self.logger.info(f"Executing plugin: {plugin_name}")
+        logger.info(f"Executing plugin: {plugin_name}")
         return plugin_spec.func(plugin_ctx)
 
     # ------------------------------------------------------------------

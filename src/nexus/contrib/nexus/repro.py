@@ -4,6 +4,7 @@ Nexus plugin adapters for repro (data replay) module.
 Adapts video replay and data rendering logic to Nexus plugin interface.
 """
 
+import logging
 from typing import Any, Union, Optional
 from pathlib import Path
 
@@ -27,6 +28,8 @@ from nexus.contrib.repro.datagen import (
     save_timeline_csv,
     SpeedProfile,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -74,7 +77,7 @@ def resolve_video_path_with_glob(ctx: PluginContext, video_path_pattern: str) ->
             )
 
         video_path = matching_files[0]
-        ctx.logger.info(
+        logger.info(
             f"Matched {len(matching_files)} file(s) with pattern '{video_path_pattern}', "
             f"using first: {video_path.name}"
         )
@@ -176,7 +179,7 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
     video_path = resolve_video_path_with_glob(ctx, config.video_path)
     output_path = ctx.resolve_path(config.output_path)
 
-    ctx.logger.info(f"Extracting frames from {video_path}")
+    logger.info(f"Extracting frames from {video_path}")
 
     metadata = extract_frames(
         video_path,
@@ -184,7 +187,7 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
         frame_pattern=config.frame_pattern,
     )
 
-    ctx.logger.info(
+    logger.info(
         f"Extracted {metadata.total_frames} frames at {metadata.fps:.2f} FPS"
     )
 
@@ -238,7 +241,7 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
                 f"Required when using start_time/end_time."
             )
 
-        ctx.logger.info(f"Loading frame timestamps from {timestamps_path}")
+        logger.info(f"Loading frame timestamps from {timestamps_path}")
         frame_times = pd.read_csv(timestamps_path)
 
         # Parse time values
@@ -251,11 +254,11 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
             matching_frames = frame_times[frame_times["timestamp_ms"] >= start_time_ms]
             if len(matching_frames) > 0:
                 start_frame_idx = int(matching_frames.iloc[0]["frame_index"])
-                ctx.logger.info(
+                logger.info(
                     f"Start time {start_time_ms} ms -> frame {start_frame_idx}"
                 )
             else:
-                ctx.logger.warning(
+                logger.warning(
                     f"No frames found after start_time {start_time_ms} ms, "
                     f"using start_frame={start_frame_idx}"
                 )
@@ -265,16 +268,16 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
             matching_frames = frame_times[frame_times["timestamp_ms"] <= end_time_ms]
             if len(matching_frames) > 0:
                 end_frame_idx = int(matching_frames.iloc[-1]["frame_index"])
-                ctx.logger.info(
+                logger.info(
                     f"End time {end_time_ms} ms -> frame {end_frame_idx}"
                 )
             else:
-                ctx.logger.warning(
+                logger.warning(
                     f"No frames found before end_time {end_time_ms} ms, "
                     f"using end_frame={end_frame_idx}"
                 )
 
-    ctx.logger.info(
+    logger.info(
         f"Composing video from {frames_dir} "
         f"(frame range: {start_frame_idx} to {end_frame_idx or 'end'})"
     )
@@ -289,7 +292,7 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
         end_frame=end_frame_idx,
     )
 
-    ctx.logger.info(f"Created video: {result_path}")
+    logger.info(f"Created video: {result_path}")
 
     ctx.remember("output_video", result_path)
 
@@ -411,7 +414,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         # Check if renderer is enabled (default: true)
         if not renderer_config.get("enable", True):
             renderer_class = renderer_config.get("class", "unknown")
-            ctx.logger.info(f"Skipping disabled renderer (#{idx}): {renderer_class}")
+            logger.info(f"Skipping disabled renderer (#{idx}): {renderer_class}")
             continue
 
         rc = renderer_config.copy()
@@ -424,16 +427,16 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         renderer_configs.append(rc)
 
     # Call repro module function
-    ctx.logger.info(f"Rendering frames from {frames_dir}")
+    logger.info(f"Rendering frames from {frames_dir}")
 
     # Parse time range
     start_time_ms = parse_time_value(config.start_time)
     end_time_ms = parse_time_value(config.end_time)
 
     if start_time_ms is not None:
-        ctx.logger.info(f"Start time: {start_time_ms} ms")
+        logger.info(f"Start time: {start_time_ms} ms")
     if end_time_ms is not None:
-        ctx.logger.info(f"End time: {end_time_ms} ms")
+        logger.info(f"End time: {end_time_ms} ms")
 
     # Resolve paths and parameters for the 'sensors' block
     resolved_sensor_configs = []
@@ -446,7 +449,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     def progress_callback(count: int, total: int) -> None:
         """Progress callback for logging."""
         if count % 100 == 0:
-            ctx.logger.info(f"Rendered {count}/{total} frames...")
+            logger.info(f"Rendered {count}/{total} frames...")
 
     output_path = render_all_frames(
         frames_dir=frames_dir,
@@ -461,7 +464,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         ctx=ctx,  # Pass context to renderers
     )
 
-    ctx.logger.info(f"Completed: rendered frames to {output_path}")
+    logger.info(f"Completed: rendered frames to {output_path}")
 
     # Store output dir for Video Composer
     ctx.remember("rendered_frames_dir", output_path)
@@ -545,18 +548,18 @@ def generate_timeline(ctx: PluginContext) -> Any:
     config: TimelineGeneratorConfig = ctx.config  # type: ignore
     # Parse start time to timestamp
     start_timestamp_ms = parse_time_string(config.start_time)
-    ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
+    logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
 
     # Get FPS and total_frames from video or config
     if config.video_path:
         video_path = resolve_video_path_with_glob(ctx, config.video_path)
-        ctx.logger.info(f"Extracting metadata from video: {video_path}")
+        logger.info(f"Extracting metadata from video: {video_path}")
 
         video_meta = get_video_metadata(video_path)
         fps = video_meta["fps"]
         total_frames = video_meta["total_frames"]
 
-        ctx.logger.info(
+        logger.info(
             f"Video: {total_frames} frames at {fps:.2f} FPS "
             f"(duration: {video_meta['duration_s']:.2f}s)"
         )
@@ -567,7 +570,7 @@ def generate_timeline(ctx: PluginContext) -> Any:
             )
         fps = config.fps
         total_frames = config.total_frames
-        ctx.logger.info(f"Using manual config: {total_frames} frames at {fps} FPS")
+        logger.info(f"Using manual config: {total_frames} frames at {fps} FPS")
 
     timeline = generate_timeline_with_jitter(
         fps=fps,
@@ -580,8 +583,8 @@ def generate_timeline(ctx: PluginContext) -> Any:
     output_path = ctx.resolve_path(config.output_csv)
     save_timeline_csv(timeline, output_path)
 
-    ctx.logger.info(f"Timeline saved to {output_path}")
-    ctx.logger.info(
+    logger.info(f"Timeline saved to {output_path}")
+    logger.info(
         f"Time range: {timeline[0]['timestamp_ms']:.1f} - {timeline[-1]['timestamp_ms']:.1f} ms"
     )
 
@@ -676,10 +679,10 @@ def generate_speed_data(ctx: PluginContext) -> Any:
     # Get start timestamp from config or context
     if config.start_time:
         start_timestamp_ms = parse_time_string(config.start_time)
-        ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
+        logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
-        ctx.logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
+        logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
     else:
         raise ValueError("start_time must be provided or Timeline Generator must run first")
 
@@ -688,17 +691,17 @@ def generate_speed_data(ctx: PluginContext) -> Any:
         video_path = resolve_video_path_with_glob(ctx, config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
-        ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
+        logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
     elif config.duration_s is not None:
         duration_s = config.duration_s
-        ctx.logger.info(f"Using configured duration: {duration_s}s")
+        logger.info(f"Using configured duration: {duration_s}s")
     elif hasattr(ctx, 'recall') and ctx.recall("video_duration_s"):
         duration_s = ctx.recall("video_duration_s")
-        ctx.logger.info(f"Using duration from context: {duration_s:.2f}s")
+        logger.info(f"Using duration from context: {duration_s:.2f}s")
     else:
         raise ValueError("duration_s or video_path must be provided")
 
-    ctx.logger.info(
+    logger.info(
         f"Generating speed data: {duration_s}s, "
         f"event threshold: {config.speed_change_threshold} km/h, "
         f"max interval: {config.max_interval_s}s"
@@ -716,12 +719,12 @@ def generate_speed_data(ctx: PluginContext) -> Any:
     output_path = ctx.resolve_path(config.output_jsonl)
     save_jsonl(speed_data, output_path)
 
-    ctx.logger.info(f"Generated {len(speed_data)} speed events")
-    ctx.logger.info(f"Speed data saved to {output_path}")
+    logger.info(f"Generated {len(speed_data)} speed events")
+    logger.info(f"Speed data saved to {output_path}")
 
     if speed_data:
         speeds = [d["speed"] for d in speed_data]
-        ctx.logger.info(f"Speed range: {min(speeds):.1f} - {max(speeds):.1f} km/h")
+        logger.info(f"Speed range: {min(speeds):.1f} - {max(speeds):.1f} km/h")
 
     return output_path
 
@@ -828,10 +831,10 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
     # Get start timestamp from config or context
     if config.start_time:
         start_timestamp_ms = parse_time_string(config.start_time)
-        ctx.logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
+        logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
-        ctx.logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
+        logger.info(f"Using start_timestamp_ms from context: {start_timestamp_ms}")
     else:
         raise ValueError("start_time must be provided or Timeline Generator must run first")
 
@@ -840,17 +843,17 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
         video_path = resolve_video_path_with_glob(ctx, config.video_path)
         video_meta = get_video_metadata(video_path)
         duration_s = video_meta["duration_s"]
-        ctx.logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
+        logger.info(f"Using video duration: {duration_s:.2f}s from {video_path}")
     elif config.duration_s is not None:
         duration_s = config.duration_s
-        ctx.logger.info(f"Using configured duration: {duration_s}s")
+        logger.info(f"Using configured duration: {duration_s}s")
     elif hasattr(ctx, 'recall') and ctx.recall("video_duration_s"):
         duration_s = ctx.recall("video_duration_s")
-        ctx.logger.info(f"Using duration from context: {duration_s:.2f}s")
+        logger.info(f"Using duration from context: {duration_s:.2f}s")
     else:
         raise ValueError("duration_s or video_path must be provided")
 
-    ctx.logger.info(
+    logger.info(
         f"Generating ADB target data: {duration_s}s at {config.frequency_hz}Hz, "
         f"{config.num_targets} targets, timing jitter: ±{config.timing_jitter_ms}ms"
     )
@@ -868,13 +871,13 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
     output_path = ctx.resolve_path(config.output_jsonl)
     save_jsonl(target_data, output_path)
 
-    ctx.logger.info(f"Generated {len(target_data)} target frames")
-    ctx.logger.info(f"Target data saved to {output_path}")
+    logger.info(f"Generated {len(target_data)} target frames")
+    logger.info(f"Target data saved to {output_path}")
 
     # Statistics
     total_targets = sum(len(d["targets"]) for d in target_data)
     avg_targets = total_targets / len(target_data) if target_data else 0
-    ctx.logger.info(f"Average targets per frame: {avg_targets:.1f}")
+    logger.info(f"Average targets per frame: {avg_targets:.1f}")
 
 
 # =============================================================================
@@ -970,7 +973,7 @@ def generate_synthetic_video(ctx: PluginContext) -> Any:
     config: SyntheticVideoGeneratorConfig = ctx.config  # type: ignore
     output_path = ctx.resolve_path(config.output_path)
 
-    ctx.logger.info(
+    logger.info(
         f"Generating synthetic video: {config.duration_s}s at {config.fps} FPS, "
         f"{config.width}x{config.height}, speed: {config.speed_kmh} km/h"
     )
@@ -985,8 +988,8 @@ def generate_synthetic_video(ctx: PluginContext) -> Any:
         random_seed=config.random_seed,
     )
 
-    ctx.logger.info(f"Video saved to {output_path}")
-    ctx.logger.info(
+    logger.info(f"Video saved to {output_path}")
+    logger.info(
         f"Generated {metadata['total_frames']} frames "
         f"({metadata['duration_s']}s at {metadata['fps']} FPS)"
     )
@@ -1052,7 +1055,7 @@ def generate_simple_timeline(ctx: PluginContext) -> Any:
     duration_s = (end_timestamp_ms - start_timestamp_ms) / 1000.0
     total_frames = int(duration_s * config.fps)
 
-    ctx.logger.info(
+    logger.info(
         f"Generating timeline: {duration_s:.2f}s at {config.fps} FPS -> {total_frames} frames"
     )
 
@@ -1067,7 +1070,7 @@ def generate_simple_timeline(ctx: PluginContext) -> Any:
     output_path = ctx.resolve_path(config.timestamps_path)
     save_timeline_csv(timeline, output_path)
 
-    ctx.logger.info(f"Timeline saved to {output_path}")
+    logger.info(f"Timeline saved to {output_path}")
 
     return output_path
 
@@ -1121,11 +1124,11 @@ def generate_blank_frames(ctx: PluginContext) -> Any:
     output_path = ctx.resolve_path(config.output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    ctx.logger.info(f"Reading timeline from {timestamps_path}")
+    logger.info(f"Reading timeline from {timestamps_path}")
     timeline_df = pd.read_csv(timestamps_path)
     total_frames = len(timeline_df)
 
-    ctx.logger.info(
+    logger.info(
         f"Generating {total_frames} blank frames ({config.width}x{config.height}) "
         f"into {output_path}"
     )
@@ -1140,7 +1143,7 @@ def generate_blank_frames(ctx: PluginContext) -> Any:
             cv2.imwrite(str(frame_file), blank_image)
             pbar.update(1)
 
-    ctx.logger.info("Blank frame generation complete.")
+    logger.info("Blank frame generation complete.")
 
     return output_path
 

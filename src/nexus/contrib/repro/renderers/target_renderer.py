@@ -8,6 +8,7 @@ Renders bounding boxes and an information panel using the centralized draw_textb
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from typing import List, Optional, Tuple, Any, Dict, Union
@@ -48,6 +49,7 @@ class TargetRenderer(DataRenderer):
             **kwargs: Catches unused arguments from old configs.
         """
         self.ctx = ctx
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.calibration_path = Path(calibration_path)
         self.show_box_label = show_box_label
@@ -122,7 +124,7 @@ class TargetRenderer(DataRenderer):
         cv2.rectangle(frame, pt1, pt2, color=self.box_color, thickness=self.box_thickness)
 
         if self.show_box_label:
-            label = f"ID:{proj_target['target']['id']}"
+            label = f"ID:{proj_target['target'].get('id', 'N/A')}"
             # Position label above the top-left corner of the axis-aligned box
             label_pos = (pt1[0], max(pt1[1] - 10, 15))
             
@@ -162,15 +164,15 @@ class TargetRenderer(DataRenderer):
                 ads_bounds = item['ads_bounds']
 
                 lines.append(
-                    f"  ID:{t['id']} {t['type']} D:{t['distance_m']:.1f}m "
+                    f"  ID:{t.get('id', 'N/A')} {t.get('type', 'N/A')} D:{t['distance_m']:.1f}m "
                     f"XL:{ads_bounds['x_left']:.1f} XR:{ads_bounds['x_right']:.1f} "
                     f"YT:{ads_bounds['y_top']:.1f} YB:{ads_bounds['y_bottom']:.1f}"
                 )
             
             if self.show_timestamp:
-                data_ts = int(data.get('timestamp_ms', 0))
-                snapshot_ts = int(data.get('snapshot_time_ms', 0))
-                lines.append(f"[Data: {data_ts}ms | Snap: {snapshot_ts}ms]")
+                data_ts = float(data.get('timestamp_ms', 0.0))
+                snapshot_ts = float(data.get('snapshot_time_ms', 0.0))
+                lines.append(f"[Data: {data_ts:.0f}ms | Snap: {snapshot_ts:.0f}ms]")
 
             draw_textbox(frame, lines, self.textbox_config)
 
