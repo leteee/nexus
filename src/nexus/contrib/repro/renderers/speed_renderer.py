@@ -11,7 +11,7 @@ from typing import Optional, Any, Dict, Union
 import numpy as np
 
 from ..types import DataRenderer
-from ..common.utils_text import draw_textbox, TextboxConfig
+from ..common.text_renderer import draw_textbox, TextboxConfig
 
 
 class SpeedRenderer(DataRenderer):
