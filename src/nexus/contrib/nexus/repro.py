@@ -16,11 +16,8 @@ from nexus.core.types import PluginConfig
 
 from nexus.contrib.repro.video import extract_frames, compose_video, render_all_frames
 from nexus.contrib.repro.common.io import save_jsonl
-from nexus.contrib.repro.common.utils import (
-    parse_time_string,
-    parse_time_value,
-    get_video_metadata,
-)
+from nexus.contrib.repro.common.time_utils import parse_time_string, parse_time_value
+from nexus.contrib.repro.common.utils import get_video_metadata
 from nexus.contrib.repro.datagen import (
     generate_timeline_with_jitter,
     generate_speed_data_event_driven,

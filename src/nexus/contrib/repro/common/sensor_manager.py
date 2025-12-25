@@ -394,13 +394,13 @@ class SensorPlayback:
             dictionary is returned if no new events occurred.
         """
         if current_time_ms < self._last_known_time_ms:
-            self._logger.warning(
+            self.logger.warning(
                 f"Time is moving backwards. Ignoring advance call from "
                 f"{self._last_known_time_ms} to {current_time_ms}."
             )
             return {}
 
-        self._logger.debug(
+        self.logger.debug(
             f"Advancing from {self._last_known_time_ms} to {current_time_ms}"
         )
         

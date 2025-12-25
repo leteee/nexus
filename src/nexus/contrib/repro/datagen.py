@@ -18,7 +18,8 @@ import numpy as np
 from tqdm import tqdm
 
 from .common.io import save_jsonl
-from .common.utils import parse_time_string, parse_time_value, get_video_metadata
+from .common.time_utils import parse_time_string, parse_time_value
+from .common.utils import get_video_metadata
 
 
 # =============================================================================
