@@ -35,6 +35,7 @@ class TargetRenderer(DataRenderer):
         show_box_label: bool = True,
         show_timestamp: bool = True,
         textbox_config: Optional[Dict[str, Any]] = None,
+        bounds_display_format: str = "distance",
         **kwargs: Any,
     ):
         """
@@ -46,6 +47,9 @@ class TargetRenderer(DataRenderer):
             show_box_label: Show ID label above each box.
             show_timestamp: Show data timestamp in the text box.
             textbox_config: Dictionary defining the text panel's appearance and position.
+            bounds_display_format: Display format for target bounds in info panel.
+                "distance" - Show XL/XR/YT/YB in meters (ADS coordinates).
+                "angle" - Show AL/AR/AT/AB in degrees (angular coordinates).
             **kwargs: Catches unused arguments from old configs.
         """
         self.ctx = ctx
@@ -59,6 +63,9 @@ class TargetRenderer(DataRenderer):
         # Set box color and thickness, falling back to textbox config if not provided
         self.box_color = box_color if box_color is not None else self.textbox_config.text_color
         self.box_thickness = box_thickness if box_thickness is not None else self.textbox_config.font.thickness
+
+        # Store display format
+        self.bounds_display_format = bounds_display_format
 
         with open(self.calibration_path, 'r', encoding='utf-8') as f:
             self.calib = json.load(f)
@@ -163,10 +170,20 @@ class TargetRenderer(DataRenderer):
                 t = item['target']
                 ads_bounds = item['ads_bounds']
 
+                # Format bounds display based on user preference
+                if self.bounds_display_format == "angle":
+                    bounds_str = (
+                        f"AL:{t['angle_left']:.1f}deg AR:{t['angle_right']:.1f}deg "
+                        f"AT:{t['angle_top']:.1f}deg AB:{t['angle_bottom']:.1f}deg"
+                    )
+                else:  # "distance" format (default)
+                    bounds_str = (
+                        f"XL:{ads_bounds['x_left']:.1f} XR:{ads_bounds['x_right']:.1f} "
+                        f"YT:{ads_bounds['y_top']:.1f} YB:{ads_bounds['y_bottom']:.1f}"
+                    )
+                
                 lines.append(
-                    f"  ID:{t.get('id', 'N/A')} {t.get('type', 'N/A')} D:{t['distance_m']:.1f}m "
-                    f"XL:{ads_bounds['x_left']:.1f} XR:{ads_bounds['x_right']:.1f} "
-                    f"YT:{ads_bounds['y_top']:.1f} YB:{ads_bounds['y_bottom']:.1f}"
+                    f"  ID:{t.get('id', 'N/A')} {t.get('type', 'N/A')} D:{t['distance_m']:.1f}m {bounds_str}"
                 )
             
             if self.show_timestamp:

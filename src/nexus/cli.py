@@ -19,6 +19,9 @@ from .core.case_manager import CaseManager
 from .core.config import load_global_configuration
 from .core.discovery import discover_all_plugins, list_plugins
 from .core.engine import PipelineEngine
+from .cli_plugins import plugins_cmd
+from .cli_cases import cases_cmd
+from .cli_templates import templates_cmd
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +168,13 @@ def cli(ctx: click.Context, version: bool) -> None:
         click.echo(ctx.get_help())
 
 
+# Register plugin management commands
+cli.add_command(plugins_cmd)
+
+# Register workspace management commands
+cli.add_command(cases_cmd)
+cli.add_command(templates_cmd)
+
 # ---------------------------------------------------------------------------
 # Commands
 
@@ -223,131 +233,6 @@ def exec_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool
     click.echo(f"SUCCESS: Plugin '{plugin_name}' completed")
     if result is not None:
         click.echo(f"Result type: {type(result).__name__}")
-
-
-@cli.command(name="list")
-@click.argument("what", type=click.Choice(["templates", "cases", "plugins"]), default="plugins")
-def list_cmd(what: str) -> None:
-    project_root = find_project_root(Path.cwd())
-    manager = _load_case_manager(project_root)
-
-    if what == "templates":
-        templates = manager.list_available_templates()
-        if not templates:
-            click.echo("No templates found")
-            return
-        click.echo("Available templates:")
-        for tpl in templates:
-            click.echo(f"  {tpl}")
-    elif what == "cases":
-        cases = manager.list_existing_cases()
-        if not cases:
-            click.echo("No cases found")
-            return
-        click.echo("Existing cases:")
-        for case in cases:
-            click.echo(f"  {case}")
-    else:
-        _discover(project_root)
-        plugins = list_plugins()
-        if not plugins:
-            click.echo("No plugins registered")
-            return
-        click.echo("Available plugins:")
-        for name, spec in sorted(plugins.items()):
-            click.echo(f"  {name}")
-            if spec.description:
-                click.echo(f"    {spec.description}")
-
-
-@cli.command(name="template")
-@click.argument("plugin_name")
-def config(plugin_name: str) -> None:
-    """Show YAML configuration template for a plugin."""
-    project_root = find_project_root(Path.cwd())
-    _discover(project_root)
-
-    from .core.discovery import get_plugin
-
-    try:
-        spec = get_plugin(plugin_name)
-    except KeyError:
-        click.echo(f"ERROR: Plugin '{plugin_name}' not found")
-        click.echo("\nRun 'nexus list plugins' to see available plugins")
-        sys.exit(1)
-
-    # Display plugin description
-    click.echo(f"# Plugin: {plugin_name}")
-    if spec.description:
-        for line in spec.description.strip().split("\n"):
-            click.echo(f"# {line}" if line.strip() else "#")
-    click.echo("")
-
-    # Generate YAML configuration template
-    click.echo("pipeline:")
-    click.echo(f'  - plugin: "{plugin_name}"')
-    click.echo("    enable: false")
-
-    if spec.config_model:
-        click.echo("    config:")
-        _generate_yaml_config(spec.config_model)
-    else:
-        click.echo("    # No configuration required")
-
-
-def _generate_yaml_config(config_model: Any) -> None:
-    """Generate YAML configuration from Pydantic model."""
-    from pydantic_core import PydanticUndefined
-
-    json_schema = config_model.model_json_schema()
-    properties = json_schema.get("properties", {})
-
-    for field_name, field_info in config_model.model_fields.items():
-        field_schema = properties.get(field_name, {})
-        default = field_info.default
-
-        # Get field type and description
-        field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-        field_type = field_type.replace("typing.", "")
-        description = field_info.description or ""
-
-        # Build comment
-        if default is PydanticUndefined:
-            status = "required"
-        else:
-            status = "optional"
-
-        if description:
-            comment = f"  # {field_type}, {status}: {description}"
-        else:
-            comment = f"  # {field_type}, {status}"
-
-        # Generate YAML value
-        if default is PydanticUndefined:
-            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
-        elif default is None:
-            yaml_lines = ["null"]
-        elif isinstance(default, str):
-            yaml_lines = [f'"{default}"']
-        elif isinstance(default, bool):
-            yaml_lines = [str(default).lower()]
-        elif isinstance(default, (int, float)):
-            yaml_lines = [str(default)]
-        elif isinstance(default, list):
-            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
-        elif isinstance(default, dict):
-            yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
-        else:
-            yaml_lines = [str(default)]
-
-        # Output YAML
-        if len(yaml_lines) == 1 and not yaml_lines[0].startswith("\n"):
-            click.echo(f"      {field_name}: {yaml_lines[0]}{comment}")
-        else:
-            click.echo(f"      {field_name}:{comment}")
-            for yaml_line in yaml_lines:
-                if yaml_line:
-                    click.echo(f"    {yaml_line}")
 
 
 @cli.command(name="doc")

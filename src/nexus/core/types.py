@@ -35,11 +35,13 @@ class PluginSpec:
         func: Callable,
         config_model: Optional[type[PluginConfig]] = None,
         description: Optional[str] = None,
+        tags: Optional[list[str]] = None,
     ):
         self.name = name
         self.func = func
         self.config_model = config_model
         self.description = description or (func.__doc__ if func.__doc__ else "")
+        self.tags = tags or []
         self.metadata: Dict[str, Any] = {}
 
     def with_metadata(self, **kwargs: Any) -> "PluginSpec":
@@ -49,6 +51,7 @@ class PluginSpec:
             func=self.func,
             config_model=self.config_model,
             description=self.description,
+            tags=self.tags,
         )
         spec.metadata = {**self.metadata, **kwargs}
         return spec

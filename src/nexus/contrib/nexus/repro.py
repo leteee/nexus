@@ -154,7 +154,7 @@ class VideoComposerConfig(PluginConfig):
     )
 
 
-@plugin(name="Video Splitter", config=VideoSplitterConfig)
+@plugin(name="Video Splitter", config=VideoSplitterConfig, tags=["video"])
 def split_video_to_frames(ctx: PluginContext) -> Any:
     """
     Extract all frames from video and save as images.
@@ -195,7 +195,7 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
     return metadata
 
 
-@plugin(name="Video Composer", config=VideoComposerConfig)
+@plugin(name="Video Composer", config=VideoComposerConfig, tags=["video"])
 def compose_frames_to_video(ctx: PluginContext) -> Any:
     """
     Compose video from extracted frame images.
@@ -337,7 +337,7 @@ class DataRendererConfig(PluginConfig):
     )
 
 
-@plugin(name="Data Renderer", config=DataRendererConfig)
+@plugin(name="Data Renderer", config=DataRendererConfig, tags=["rendering"])
 def render_data_on_frames(ctx: PluginContext) -> Any:
     """
     Apply multiple data renderers to all video frames.
@@ -442,12 +442,6 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         if 'path' in resolved_conf:
             resolved_conf['path'] = ctx.resolve_path(resolved_conf['path'])
         resolved_sensor_configs.append(resolved_conf)
-
-    def progress_callback(count: int, total: int) -> None:
-        """Progress callback for logging."""
-        if count % 100 == 0:
-            logger.info(f"Rendered {count}/{total} frames...")
-
     output_path = render_all_frames(
         frames_dir=frames_dir,
         output_path=output_path,
@@ -457,7 +451,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
         frame_pattern=config.frame_pattern,
         start_time_ms=start_time_ms,
         end_time_ms=end_time_ms,
-        progress_callback=progress_callback,
+       
         ctx=ctx,  # Pass context to renderers
     )
 
@@ -512,7 +506,7 @@ class TimelineGeneratorConfig(PluginConfig):
     )
 
 
-@plugin(name="Timeline Generator", config=TimelineGeneratorConfig)
+@plugin(name="Timeline Generator", config=TimelineGeneratorConfig, tags=["generation", "utility"])
 def generate_timeline(ctx: PluginContext) -> Any:
     """
     Generate frame timeline with realistic timestamp jitter.
@@ -638,7 +632,7 @@ class SpeedDataGeneratorConfig(PluginConfig):
     )
 
 
-@plugin(name="Speed Data Generator", config=SpeedDataGeneratorConfig)
+@plugin(name="Speed Data Generator", config=SpeedDataGeneratorConfig, tags=["data", "generation"])
 def generate_speed_data(ctx: PluginContext) -> Any:
     """
     Generate event-driven speed data.
@@ -776,7 +770,7 @@ class ADBTargetGeneratorConfig(PluginConfig):
     )
 
 
-@plugin(name="ADB Target Generator", config=ADBTargetGeneratorConfig)
+@plugin(name="ADB Target Generator", config=ADBTargetGeneratorConfig, tags=["data", "generation"])
 def generate_adb_targets(ctx: PluginContext) -> Any:
     """
     Generate ADB (Adaptive Driving Beam) target detection data.
@@ -925,7 +919,7 @@ class SyntheticVideoGeneratorConfig(PluginConfig):
     )
 
 
-@plugin(name="Synthetic Video Generator", config=SyntheticVideoGeneratorConfig)
+@plugin(name="Synthetic Video Generator", config=SyntheticVideoGeneratorConfig, tags=["video", "generation"])
 def generate_synthetic_video(ctx: PluginContext) -> Any:
     """
     Generate synthetic video simulating forward driving view.
@@ -1033,7 +1027,7 @@ class SimpleTimelineGeneratorConfig(PluginConfig):
         description="Random seed for reproducible jitter generation"
     )
 
-@plugin(name="Simple Timeline Generator", config=SimpleTimelineGeneratorConfig)
+@plugin(name="Simple Timeline Generator", config=SimpleTimelineGeneratorConfig, tags=["generation", "utility"])
 def generate_simple_timeline(ctx: PluginContext) -> Any:
     """
     Generate a frame timeline based on a start time, end time, and FPS.
@@ -1099,7 +1093,7 @@ class BlankFrameGeneratorConfig(PluginConfig):
         description="Color of the blank frames in BGR format (e.g., (0, 0, 0) for black)."
     )
 
-@plugin(name="Blank Frame Generator", config=BlankFrameGeneratorConfig)
+@plugin(name="Blank Frame Generator", config=BlankFrameGeneratorConfig, tags=["generation", "utility"])
 def generate_blank_frames(ctx: PluginContext) -> Any:
     """
     Generate blank video frames based on a timeline file.

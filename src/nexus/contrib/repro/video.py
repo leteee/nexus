@@ -205,7 +205,6 @@ def render_all_frames(
     frame_pattern: str = "frame_{:06d}.png",
     start_time_ms: Optional[float] = None,
     end_time_ms: Optional[float] = None,
-    progress_callback: Optional[Callable[[int, int], None]] = None,
     ctx: Any,
 ) -> Path:
     """
@@ -284,7 +283,7 @@ def render_all_frames(
     rendered_count = 0
     total_frames = len(frame_times)
 
-    with tqdm(total=total_frames, desc="Rendering frames", unit="frame", disable=progress_callback is not None) as pbar:
+    with tqdm(total=total_frames, desc="Rendering frames", unit="frame") as pbar:
         for _, row in frame_times.iterrows():
             frame_idx = int(row["frame_index"])
             timestamp_ms = float(row["timestamp_ms"])
@@ -325,11 +324,8 @@ def render_all_frames(
             output_file = output_path / frame_pattern.format(frame_idx)
             cv2.imwrite(str(output_file), frame)
 
-            rendered_count += 1
-            if progress_callback:
-                progress_callback(rendered_count, total_frames)
-            else:
-                pbar.update(1)
+            rendered_count += 1            
+            pbar.update(1)
 
     logger.info(f"Completed: rendered {rendered_count} frames to {output_path}")
     return output_path

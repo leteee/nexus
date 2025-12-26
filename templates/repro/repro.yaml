@@ -144,6 +144,7 @@ pipeline:
           sensor: "adb_targets"
           match_strategy: "nearest"
           kwargs:
+            bounds_display_format: "angle"
             calibration_path: "@defaults.camera.calibration_path"
             box_color: [0, 255, 0] # Default: [0,255,0] (from TextboxConfig default if not overridden)
             box_thickness: 2 # Default: 1 (from FontConfig default if not overridden)

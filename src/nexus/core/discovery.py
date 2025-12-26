@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 PLUGIN_REGISTRY: Dict[str, PluginSpec] = {}
 
 
-def plugin(*, name: str, config: Optional[type[PluginConfig]] = None, description: Optional[str] = None) -> Callable[[Callable], Callable]:
+def plugin(*, name: str, config: Optional[type[PluginConfig]] = None, description: Optional[str] = None, tags: Optional[List[str]] = None) -> Callable[[Callable], Callable]:
     """Decorator used by plugin authors to register their callable."""
 
     def decorator(func: Callable) -> Callable:
@@ -34,6 +34,7 @@ def plugin(*, name: str, config: Optional[type[PluginConfig]] = None, descriptio
             func=func,
             config_model=config,
             description=description or func.__doc__,
+            tags=tags,
         )
         logger.debug("Registered plugin: %s", name)
         return func

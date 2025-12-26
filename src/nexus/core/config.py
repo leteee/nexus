@@ -308,8 +308,14 @@ def load_global_configuration(project_root: Path) -> Dict[str, Any]:
 
     merged: Dict[str, Any] = {}
 
+    # Iterate through layers, giving higher precedence to later files
+    # (e.g., local.yaml overrides global.yaml).
     for layer in _iter_global_config_layers(project_root):
-        merged = deep_merge(merged, layer)
+        # By passing the existing `merged` config as the override, we ensure
+        # that values from previously loaded files (lower precedence)
+        # override the new layer (higher precedence).
+        # For lists, this means new layer's list comes first.
+        merged = deep_merge(layer, merged)
 
     if not merged:
         logger.debug("No global configuration layers found under %s", project_root)
