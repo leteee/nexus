@@ -283,10 +283,14 @@ def render_all_frames(
     rendered_count = 0
     total_frames = len(frame_times)
 
+    # Performance optimization: Use values instead of iterrows (3-5x faster)
+    frame_indices = frame_times["frame_index"].values
+    timestamps_ms = frame_times["timestamp_ms"].values
+
     with tqdm(total=total_frames, desc="Rendering frames", unit="frame") as pbar:
-        for _, row in frame_times.iterrows():
-            frame_idx = int(row["frame_index"])
-            timestamp_ms = float(row["timestamp_ms"])
+        for i in range(total_frames):
+            frame_idx = int(frame_indices[i])
+            timestamp_ms = float(timestamps_ms[i])
 
             frame_path = frames_dir / frame_pattern.format(frame_idx)
             if not frame_path.exists():
