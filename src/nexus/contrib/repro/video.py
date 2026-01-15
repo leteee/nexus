@@ -13,6 +13,7 @@ from typing import Optional, List, Any, Callable, Dict
 import cv2
 import numpy as np
 import pandas as pd
+import re
 from tqdm import tqdm
 
 from .types import VideoMetadata
@@ -228,6 +229,21 @@ def render_all_frames(
         raise FileNotFoundError(f"Timestamps file not found: {timestamps_path}")
 
     output_path.mkdir(parents=True, exist_ok=True)
+
+    # Clean up existing frames in output_path to avoid mixing old and new
+    # Convert format pattern (e.g. "frame_{:06d}.png") to glob pattern (e.g. "frame_*.png")
+    # We use a simple regex to replace any {...} placeholder with *
+    # Convert format pattern (e.g. "frame_{:06d}.png") to glob pattern (e.g. "frame_*.png")
+    # We use a simple regex to replace any {...} placeholder with *
+    glob_pattern = re.sub(r"\{.*?\}", "*", frame_pattern)
+    existing_files = list(output_path.glob(glob_pattern))
+    if existing_files:
+        logger.info(f"Cleaning up {len(existing_files)} existing files in {output_path}")
+        for f in existing_files:
+            try:
+                f.unlink()
+            except OSError as e:
+                logger.warning(f"Failed to delete {f}: {e}")
 
     # 1. Set up SensorDataManager
     logger.info(f"Setting up SensorDataManager with {len(sensor_configs)} sensors...")

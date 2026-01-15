@@ -171,7 +171,9 @@ def show_plugin_cmd(ctx, plugin_name: str, yaml_only: bool):
     console.print("[bold]YAML Template:[/bold]")
     console.print()
     yaml_template = PluginFormatter.generate_yaml_template(info)
-    console.print(Panel(yaml_template, border_style="dim"))
+    from rich.syntax import Syntax
+    syntax = Syntax(yaml_template, "yaml", theme="monokai", line_numbers=False)
+    console.print(syntax)
     console.print()
 
     # Quick Start

@@ -13,7 +13,7 @@ case_info:
 defaults:
   time_section:
       start_time: "2025-10-27 08:30:10"
-      end_time: "2025-10-27 08:30:30"
+      end_time: "2025-10-27 08:30:20"
 
   timestamps_path: "temp/timeline.csv"
   # Base Textbox configuration to share common styling for all renderers.

@@ -3,7 +3,7 @@
 import json
 import logging
 import heapq
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -60,12 +60,10 @@ class SensorStream:
 
     def _find_forward(self, aligned_time_ms: float) -> Optional[int]:
         """Finds the index of the latest data point at or before the given time."""
-        i = bisect_left(self._timestamps, aligned_time_ms)
-        if i == 0 and self._timestamps[0] > aligned_time_ms:
-            return None
-        if i > 0 and self._timestamps[i - 1] < aligned_time_ms and self._timestamps[i] == aligned_time_ms:
-            return i
-        return i - 1
+        i = bisect_right(self._timestamps, aligned_time_ms)
+        if i:
+            return i - 1
+        return None
 
     def _find_backward(self, aligned_time_ms: float) -> Optional[int]:
         """Finds the index of the earliest data point at or after the given time."""
@@ -76,6 +74,9 @@ class SensorStream:
 
     def _find_nearest(self, aligned_time_ms: float) -> Optional[int]:
         """Finds the index of the data point with the timestamp closest to the given time."""
+        if not self._timestamps:
+            return None
+            
         i = bisect_left(self._timestamps, aligned_time_ms)
         if i == 0:
             return 0

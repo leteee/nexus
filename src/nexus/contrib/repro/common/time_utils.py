@@ -380,3 +380,23 @@ def create_timezone(offset_hours: float) -> timezone:
     tz = timezone(timedelta(hours=offset_hours))
     logger.debug(f"Created timezone with offset: UTC{offset_hours:+.1f}")
     return tz
+
+
+def format_timecode(timestamp_ms: float) -> str:
+    """
+    Format timestamp as video timecode (HH:MM:SS.mmm).
+    
+    Args:
+        timestamp_ms: Timestamp in milliseconds
+        
+    Returns:
+        Formatted timecode string (e.g. "01:23:45.678")
+    """
+    total_seconds = int(timestamp_ms / 1000)
+    ms = int(timestamp_ms % 1000)
+    
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{ms:03d}"
