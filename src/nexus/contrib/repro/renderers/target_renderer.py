@@ -84,8 +84,8 @@ class TargetRenderer(DataRenderer):
             return None
 
         # These angles define the 3D bounding box corners relative to the sensor
-        angle_left = math.radians(target["angle_left"])
-        angle_right = math.radians(target["angle_right"])
+        angle_left = -math.radians(target["angle_left"])
+        angle_right = -math.radians(target["angle_right"])
         angle_top = math.radians(target["angle_top"])
         angle_bottom = math.radians(target["angle_bottom"])
 
@@ -111,8 +111,8 @@ class TargetRenderer(DataRenderer):
             "corners": corners_2d, 
             "target": target,
             "ads_bounds": {
-                "x_left": x_left,
-                "x_right": x_right,
+                "x_left": -x_left,
+                "x_right": -x_right,
                 "y_top": y_top,
                 "y_bottom": y_bottom,
             }
