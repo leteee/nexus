@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 from .config import (
     create_configuration_context,
     get_plugin_configuration,
-    load_global_configuration,
     load_yaml,
 )
+from .config_processors import ProcessingContext
 from .config_resolver import resolve_config, ConfigResolutionError
 from .context import NexusContext
 from .discovery import PLUGIN_REGISTRY, discover_all_plugins, get_plugin
@@ -29,6 +29,7 @@ class PipelineEngine:
         self.project_root = project_root
         self.case_dir = case_dir
         self.system_config = system_config
+        self.proc_ctx = ProcessingContext(project_root=project_root, case_root=case_dir)
 
         discover_all_plugins(self.project_root, self.system_config)
 
@@ -43,13 +44,11 @@ class PipelineEngine:
         Resolves configuration references (@defaults.xxx) before executing plugins.
         """
         config_overrides = config_overrides or {}
-        global_config = load_global_configuration(self.project_root)
 
-        # Merge defaults from global and case configs
-        defaults = self._merge_defaults(global_config, case_config)
+        # Merge defaults from case config
+        defaults = self._merge_defaults(case_config)
 
         config_context = create_configuration_context(
-            global_config=global_config,
             case_config=case_config,
             cli_overrides=config_overrides,
             plugin_registry=PLUGIN_REGISTRY,
@@ -95,6 +94,7 @@ class PipelineEngine:
                 plugin_spec.config_model,
                 config_context,
                 step_config,
+                defaults,
             )
 
             plugin_ctx = nexus_ctx.create_plugin_context(
@@ -120,15 +120,12 @@ class PipelineEngine:
         Resolves configuration references (@defaults.xxx) before executing.
         """
         config_overrides = config_overrides or {}
-        global_config = load_global_configuration(self.project_root)
-
         case_config = {}
         case_config_path = self.case_dir / "case.yaml"
         if case_config_path.exists():
             case_config = load_yaml(case_config_path)
 
-        # Merge defaults from global and case configs
-        defaults = self._merge_defaults(global_config, case_config)
+        defaults = self._merge_defaults(case_config)
 
         # Resolve configuration references
         try:
@@ -139,7 +136,6 @@ class PipelineEngine:
             ) from e
 
         config_context = create_configuration_context(
-            global_config=global_config,
             case_config=case_config,
             cli_overrides={"plugins": {plugin_name: config_overrides}},
             plugin_registry=PLUGIN_REGISTRY,
@@ -157,6 +153,7 @@ class PipelineEngine:
             plugin_spec.config_model,
             config_context,
             config_overrides,
+            defaults,
         )
 
         plugin_ctx = nexus_ctx.create_plugin_context(
@@ -172,27 +169,13 @@ class PipelineEngine:
 
     def _merge_defaults(
         self,
-        global_config: Dict[str, Any],
         case_config: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Merge defaults from global and case configurations.
-
-        Case defaults override global defaults.
-
-        Args:
-            global_config: Global configuration
-            case_config: Case configuration
-
-        Returns:
-            Merged defaults dictionary
+        Merge defaults from case configuration (optional defaults block).
         """
-        global_defaults = global_config.get("defaults", {})
         case_defaults = case_config.get("defaults", {})
-
-        # Case defaults override global defaults
-        merged = {**global_defaults, **case_defaults}
-        return merged
+        return dict(case_defaults)
 
     def _build_plugin_config(
         self,
@@ -200,6 +183,7 @@ class PipelineEngine:
         config_model: Optional[type],
         config_context: Dict[str, Any],
         step_config: Dict[str, Any],
+        defaults: Dict[str, Any],
     ) -> Optional[Any]:
         if not config_model:
             return None
@@ -209,4 +193,6 @@ class PipelineEngine:
             config_context=config_context,
             step_config=step_config,
             config_model=config_model,
+            proc_ctx=self.proc_ctx,
+            defaults=defaults,
         )

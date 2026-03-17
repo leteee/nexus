@@ -36,11 +36,9 @@ Nexus uses a hierarchical configuration system based on YAML files located in `c
 
 * `config/setting.yaml`: System settings (framework paths, performance, logging).
 * `config/setting-local.yaml`: Machine-specific overrides for system settings (git-ignored).
-* `config/global.yaml`: Business defaults (e.g., plugin default configs).
-
 Precedence:
 - System config: CLI `--config framework.* / logging.*` > `setting-local.yaml` > `setting.yaml`.
-- Business config: CLI `--config plugins.*` > case/template (`case.yaml` or template) > `global.yaml` > plugin model defaults.
+- Business config: CLI `--config plugins.*` > case/template (`case.yaml` or template) > plugin model defaults.
 
 ## Directory Structure
 

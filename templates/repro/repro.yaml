@@ -57,7 +57,7 @@ pipeline:
     # enable: false
     config:
       video_path: "input/*.mp4"
-      output_path: "temp/frames"
+      output_dir: "temp/frames"
       frame_pattern: "frame_{:06d}.png"
 
   - plugin: "Simple Timeline Generator"
@@ -71,7 +71,7 @@ pipeline:
     enable: false
     config:
       timestamps_path: "@defaults.timestamps_path"
-      output_path: "temp/frames"
+      output_dir: "temp/frames"
       width: 1920
       height: 1080
 
@@ -80,18 +80,18 @@ pipeline:
     config:
       _extends: "@defaults.time_section"
       frames_dir: "temp/frames"
-      output_path: "temp/rendered_frames"
+      output_dir: "temp/rendered_frames"
       timestamps_path: "@defaults.timestamps_path"
       frame_pattern: "frame_{:06d}.png"
 
       # Define all sensor data sources to be managed by SensorDataManager
       sensors:
         - name: "vehicle_speed"
-          path: "input/speed.jsonl"
+          data_path: "input/speed.jsonl"
           time_offset_ms: 0
           tolerance_ms: 5000
         - name: "adb_targets"
-          path: "input/adb_targets.jsonl"
+          data_path: "input/adb_targets.jsonl"
           time_offset_ms: 0
           tolerance_ms: 50
 

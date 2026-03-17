@@ -28,7 +28,7 @@ pipeline:
       video_path: "input/synthetic_driving.mp4"    # Video file to analyze
       start_time: "2025-10-27 08:30:00"  # Human-readable time format
       jitter_ms: 2                        # ±2ms random jitter (integer)
-      output_csv: "temp/timeline.csv"
+      output_path: "temp/timeline.csv"
       random_seed: 42                     # For reproducibility
 
   # Step 2: Generate event-driven speed data
@@ -40,7 +40,7 @@ pipeline:
       duration_s: 60.0                    # Generate 60s of speed data (matches video)
       max_interval_s: 5.0                 # Send at least every 5 seconds
       speed_change_threshold: 2.0         # Record if speed changes by 2+ km/h
-      output_jsonl: "input/speed.jsonl"
+      output_path: "input/speed.jsonl"
       random_seed: 42
       use_default_profile: true           # Realistic driving: accelerate, cruise, decelerate
 
@@ -55,7 +55,7 @@ pipeline:
       timing_jitter_ms: 2                 # ±2ms reception timing error (integer)
       num_targets: 3                      # 2-3 concurrent targets
       ego_speed_kmh: 60.0                 # Our vehicle speed
-      output_jsonl: "input/adb_targets.jsonl"
+      output_path: "input/adb_targets.jsonl"
       random_seed: 42
 
 # Configuration Notes:
@@ -128,5 +128,4 @@ pipeline:
 #       "angle_bottom": -0.7
 #     }
 #   ]}
-
 

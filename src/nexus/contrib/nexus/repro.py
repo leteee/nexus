@@ -94,7 +94,7 @@ class VideoSplitterConfig(PluginConfig):
     video_path: str = Field(
         description="Path to input video file (MP4, AVI, MOV supported)"
     )
-    output_path: str = Field(
+    output_dir: str = Field(
         default="frames",
         description="Output directory for extracted frame images"
     )
@@ -174,13 +174,13 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
 
     # Resolve video path with glob pattern support
     video_path = resolve_video_path_with_glob(ctx, config.video_path)
-    output_path = ctx.resolve_path(config.output_path)
+    output_dir = ctx.resolve_path(config.output_dir)
 
     logger.info(f"Extracting frames from {video_path}")
 
     metadata = extract_frames(
         video_path,
-        output_path,
+        output_dir,
         frame_pattern=config.frame_pattern,
     )
 
@@ -190,7 +190,7 @@ def split_video_to_frames(ctx: PluginContext) -> Any:
 
     # Store metadata for downstream plugins
     ctx.remember("video_metadata", metadata)
-    ctx.remember("frames_dir", output_path)
+    ctx.remember("frames_dir", output_dir)
 
     return metadata
 
@@ -316,7 +316,7 @@ class DataRendererConfig(PluginConfig):
         default="frames",
         description="Directory containing extracted video frames"
     )
-    output_path: str = Field(
+    output_dir: str = Field(
         default="rendered_frames",
         description="Output directory for frames with rendered data overlays"
     )
@@ -330,7 +330,7 @@ class DataRendererConfig(PluginConfig):
     )
     sensors: list[dict] = Field(
         default=[],
-        description="List of sensor configurations, each with a 'name', 'path', and optional 'time_offset_ms'."
+        description="List of sensor configurations, each with a 'name', 'data_path', and optional 'time_offset_ms'."
     )
     renderers: list[dict] = Field(
         description="List of renderer configurations with 'class' (full qualified class name) and 'kwargs'"
@@ -379,7 +379,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
 
     Config:
         frames_dir: Directory containing extracted frames
-        output_path: Directory for rendered frames
+        output_dir: Directory for rendered frames
         frame_pattern: Frame filename pattern
         timestamps_path: Optional custom timestamps CSV path
         renderers: List of renderer configurations (use "class" for full qualified class names)
@@ -398,7 +398,7 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
 
     # Resolve top-level paths
     frames_dir = ctx.resolve_path(config.frames_dir)
-    output_path = ctx.resolve_path(config.output_path)
+    output_dir = ctx.resolve_path(config.output_dir)
 
     if config.timestamps_path:
         timestamps_path = ctx.resolve_path(config.timestamps_path)
@@ -439,12 +439,12 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     resolved_sensor_configs = []
     for sensor_conf in config.sensors:
         resolved_conf = dict(sensor_conf)
-        if 'path' in resolved_conf:
-            resolved_conf['path'] = ctx.resolve_path(resolved_conf['path'])
+        if "data_path" in resolved_conf:
+            resolved_conf["data_path"] = ctx.resolve_path(resolved_conf["data_path"])
         resolved_sensor_configs.append(resolved_conf)
     output_path = render_all_frames(
         frames_dir=frames_dir,
-        output_path=output_path,
+        output_path=output_dir,
         timestamps_path=timestamps_path,
         sensor_configs=resolved_sensor_configs,
         renderer_configs=renderer_configs,
@@ -496,7 +496,7 @@ class TimelineGeneratorConfig(PluginConfig):
         le=100,
         description="Maximum random timing jitter in milliseconds (±jitter_ms)"
     )
-    output_csv: str = Field(
+    output_path: str = Field(
         default="output/timeline.csv",
         description="Output CSV file path for frame timestamps"
     )
@@ -527,7 +527,7 @@ def generate_timeline(ctx: PluginContext) -> Any:
         total_frames: Number of frames to generate (required if video_path not provided)
         start_time: Starting time in format "YYYY-MM-DD HH:MM:SS"
         jitter_ms: Maximum jitter to add (±jitter_ms)
-        output_csv: Output CSV file path
+        output_path: Output CSV file path
         random_seed: Random seed for reproducibility
 
     Output CSV format:
@@ -571,7 +571,7 @@ def generate_timeline(ctx: PluginContext) -> Any:
         random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(config.output_csv)
+    output_path = ctx.resolve_path(config.output_path)
     save_timeline_csv(timeline, output_path)
 
     logger.info(f"Timeline saved to {output_path}")
@@ -614,7 +614,7 @@ class SpeedDataGeneratorConfig(PluginConfig):
         ge=0.0,
         description="Minimum speed change in km/h to trigger event"
     )
-    output_jsonl: str = Field(
+    output_path: str = Field(
         default="output/speed.jsonl",
         description="Output JSONL file path for speed data"
     )
@@ -656,7 +656,7 @@ def generate_speed_data(ctx: PluginContext) -> Any:
         duration_s: Data generation duration (required if video_path not provided)
         max_interval_s: Maximum interval without sending data (default 5s)
         speed_change_threshold: Minimum speed change to trigger event (km/h)
-        output_jsonl: Output JSONL file path
+        output_path: Output JSONL file path
         random_seed: Random seed for reproducibility
         use_default_profile: Use default realistic driving profile
         custom_profiles: Custom speed profiles (if use_default_profile=False)
@@ -707,7 +707,7 @@ def generate_speed_data(ctx: PluginContext) -> Any:
         random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(config.output_jsonl)
+    output_path = ctx.resolve_path(config.output_path)
     save_jsonl(speed_data, output_path)
 
     logger.info(f"Generated {len(speed_data)} speed events")
@@ -760,7 +760,7 @@ class ADBTargetGeneratorConfig(PluginConfig):
         le=200.0,
         description="Ego vehicle speed in km/h"
     )
-    output_jsonl: str = Field(
+    output_path: str = Field(
         default="output/targets.jsonl",
         description="Output JSONL file path for target data"
     )
@@ -798,7 +798,7 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
         timing_jitter_ms: Random timing error in reception (±ms)
         num_targets: Number of concurrent targets (2-3 typical)
         ego_speed_kmh: Speed of ego vehicle (km/h)
-        output_jsonl: Output JSONL file path
+        output_path: Output JSONL file path
         random_seed: Random seed for reproducibility
 
     Output JSONL format:
@@ -859,7 +859,7 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
         random_seed=config.random_seed,
     )
 
-    output_path = ctx.resolve_path(config.output_jsonl)
+    output_path = ctx.resolve_path(config.output_path)
     save_jsonl(target_data, output_path)
 
     logger.info(f"Generated {len(target_data)} target frames")
@@ -1072,7 +1072,7 @@ class BlankFrameGeneratorConfig(PluginConfig):
     timestamps_path: str = Field(
         description="Path to timeline CSV file."
     )
-    output_path: str = Field(
+    output_dir: str = Field(
         default="frames",
         description="Output directory for generated blank frames"
     )
@@ -1112,8 +1112,8 @@ def generate_blank_frames(ctx: PluginContext) -> Any:
     if not timestamps_path.exists():
         raise FileNotFoundError(f"Timeline file not found: {timestamps_path}")
 
-    output_path = ctx.resolve_path(config.output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_dir = ctx.resolve_path(config.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Reading timeline from {timestamps_path}")
     timeline_df = pd.read_csv(timestamps_path)
@@ -1121,7 +1121,7 @@ def generate_blank_frames(ctx: PluginContext) -> Any:
 
     logger.info(
         f"Generating {total_frames} blank frames ({config.width}x{config.height}) "
-        f"into {output_path}"
+        f"into {output_dir}"
     )
 
     # Create a blank image template
@@ -1130,11 +1130,10 @@ def generate_blank_frames(ctx: PluginContext) -> Any:
     with tqdm(total=total_frames, desc="Generating blank frames", unit="frame") as pbar:
         for _, row in timeline_df.iterrows():
             frame_idx = int(row["frame_index"])
-            frame_file = output_path / config.frame_pattern.format(frame_idx)
+            frame_file = output_dir / config.frame_pattern.format(frame_idx)
             cv2.imwrite(str(frame_file), blank_image)
             pbar.update(1)
 
     logger.info("Blank frame generation complete.")
 
-    return output_path
-
+    return output_dir
