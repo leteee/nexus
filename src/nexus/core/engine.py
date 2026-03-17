@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 class PipelineEngine:
     """Simple plugin orchestrator."""
 
-    def __init__(self, project_root: Path, case_dir: Path):
+    def __init__(self, project_root: Path, case_dir: Path, system_config: Dict[str, Any]):
         self.project_root = project_root
         self.case_dir = case_dir
+        self.system_config = system_config
 
-        discover_all_plugins(self.project_root)
+        discover_all_plugins(self.project_root, self.system_config)
 
     def run_pipeline(
         self,

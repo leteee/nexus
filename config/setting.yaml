@@ -1,0 +1,22 @@
+# Nexus Framework - System Settings
+# Precedence for system settings: CLI overrides > setting-local.yaml > setting.yaml
+
+framework:
+  name: "nexus"
+  version: "1.0.0"
+
+  # Cases root directories (searched in priority order)
+  cases_roots:
+    - "cases"
+
+  # Template root directories (searched in priority order)
+  templates_roots:
+    - "templates"
+
+  # Plugin discovery paths (framework-level, not business defaults)
+  packages:
+    - "src/nexus/contrib"
+
+logging:
+  level: INFO  # Default console level; CLI -v overrides to DEBUG
+  config_path: "config/logging.yaml"

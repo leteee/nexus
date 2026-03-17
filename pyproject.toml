@@ -25,7 +25,7 @@ dev = [
 ]
 
 [project.scripts]
-nexus = "nexus.cli:main"
+nexus = "nexus.cli.main:main"
 
 # Tool configurations
 
@@ -49,4 +49,3 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-

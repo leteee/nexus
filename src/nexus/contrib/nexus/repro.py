@@ -16,7 +16,7 @@ from nexus.core.types import PluginConfig
 
 from nexus.contrib.repro.video import extract_frames, compose_video, render_all_frames
 from nexus.contrib.repro.common.io import save_jsonl
-from nexus.contrib.repro.common.time_utils import parse_time_string, parse_time_value
+from nexus.contrib.repro.common.time_utils import parse_timestamp
 from nexus.contrib.repro.common.utils import get_video_metadata
 from nexus.contrib.repro.datagen import (
     generate_timeline_with_jitter,
@@ -242,8 +242,8 @@ def compose_frames_to_video(ctx: PluginContext) -> Any:
         frame_times = pd.read_csv(timestamps_path)
 
         # Parse time values
-        start_time_ms = parse_time_value(config.start_time)
-        end_time_ms = parse_time_value(config.end_time)
+        start_time_ms = parse_timestamp(config.start_time)
+        end_time_ms = parse_timestamp(config.end_time)
 
         # Convert time range to frame indices
         if start_time_ms is not None:
@@ -427,8 +427,8 @@ def render_data_on_frames(ctx: PluginContext) -> Any:
     logger.info(f"Rendering frames from {frames_dir}")
 
     # Parse time range
-    start_time_ms = parse_time_value(config.start_time)
-    end_time_ms = parse_time_value(config.end_time)
+    start_time_ms = parse_timestamp(config.start_time)
+    end_time_ms = parse_timestamp(config.end_time)
 
     if start_time_ms is not None:
         logger.info(f"Start time: {start_time_ms} ms")
@@ -538,7 +538,7 @@ def generate_timeline(ctx: PluginContext) -> Any:
     """
     config: TimelineGeneratorConfig = ctx.config  # type: ignore
     # Parse start time to timestamp
-    start_timestamp_ms = parse_time_string(config.start_time)
+    start_timestamp_ms = parse_timestamp(config.start_time)
     logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
 
     # Get FPS and total_frames from video or config
@@ -669,7 +669,7 @@ def generate_speed_data(ctx: PluginContext) -> Any:
     config: SpeedDataGeneratorConfig = ctx.config  # type: ignore
     # Get start timestamp from config or context
     if config.start_time:
-        start_timestamp_ms = parse_time_string(config.start_time)
+        start_timestamp_ms = parse_timestamp(config.start_time)
         logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
@@ -821,7 +821,7 @@ def generate_adb_targets(ctx: PluginContext) -> Any:
     config: ADBTargetGeneratorConfig = ctx.config  # type: ignore
     # Get start timestamp from config or context
     if config.start_time:
-        start_timestamp_ms = parse_time_string(config.start_time)
+        start_timestamp_ms = parse_timestamp(config.start_time)
         logger.info(f"Start time: {config.start_time} -> {start_timestamp_ms} ms")
     elif hasattr(ctx, 'recall') and ctx.recall("start_timestamp_ms"):
         start_timestamp_ms = ctx.recall("start_timestamp_ms")
@@ -1037,8 +1037,8 @@ def generate_simple_timeline(ctx: PluginContext) -> Any:
     """
     config: SimpleTimelineGeneratorConfig = ctx.config  # type: ignore
 
-    start_timestamp_ms = parse_time_string(config.start_time)
-    end_timestamp_ms = parse_time_string(config.end_time)
+    start_timestamp_ms = parse_timestamp(config.start_time)
+    end_timestamp_ms = parse_timestamp(config.end_time)
 
     if start_timestamp_ms >= end_timestamp_ms:
         raise ValueError("start_time must be before end_time")

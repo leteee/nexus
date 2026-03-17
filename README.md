@@ -1,4 +1,4 @@
-# Nexus
+﻿# Nexus
 
 Nexus is a modern, extensible, file-based data processing framework designed for creating, managing, and executing complex data pipelines. It is built in Python and emphasizes a modular, plugin-driven architecture, and a streamlined command-line interface (CLI).
 
@@ -17,34 +17,40 @@ Nexus is built around a few core concepts:
 
 2.  **Installation:** Clone the repository and install the project in editable mode with development dependencies:
 
-    ```bash
-    git clone <repository-url>
-    cd nexus
-    pip install -e .[dev]
     ```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
+```
 
 ## Configuration
 
-Nexus uses a hierarchical configuration system based on YAML files. Configuration files are located in the `config` directory:
+Nexus uses a hierarchical configuration system based on YAML files located in `config`:
 
-*   `config/global.yaml`: The main configuration file for the project. It defines global settings such as plugin discovery paths and default configurations.
-*   `config/local.yaml`: For local overrides. This file is not tracked by Git. You can create it by copying `config/local.yaml.example`.
+* `config/setting.yaml`: System settings (framework paths, performance, logging).
+* `config/setting-local.yaml`: Machine-specific overrides for system settings (git-ignored).
+* `config/global.yaml`: Business defaults (e.g., plugin default configs).
 
-The configuration is loaded in the following order, with later files overriding earlier ones:
-1.  `config/global.yaml`
-2.  `config/local.yaml`
-3.  Case-specific configuration (`case.yaml`)
-4.  Command-line overrides
+Precedence:
+- System config: CLI `--config framework.* / logging.*` > `setting-local.yaml` > `setting.yaml`.
+- Business config: CLI `--config plugins.*` > case/template (`case.yaml` or template) > `global.yaml` > plugin model defaults.
 
 ## Directory Structure
 
 ```
 nexus/
-├── cases/                # Contains pipeline execution cases
-├── config/               # Global and local configuration
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
 ├── src/
 │   └── nexus/            # Main source code
-│       ├── core/         # Core framework components (engine, config, etc.)
+│       ├── core/         # Core framework components (engine, etc.)
 │       ├── contrib/      # Built-in plugins
 │       └── cli.py        # Command-line interface definition
 ├── templates/            # Reusable pipeline templates
@@ -59,63 +65,85 @@ Nexus provides a powerful command-line interface, `nexus`, for interacting with 
 
 The `run` command executes a pipeline for a specific case.
 
-```bash
-# Run the 'my_case' pipeline
-nexus run --case my_case
-
-# Run with a specific template
-nexus run --case my_case --template data_analysis
-
-# Override configuration values
-nexus run --case my_case -C plugins.my_plugin.threshold=0.75
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ### Executing a Single Plugin
 
 The `exec` command allows you to run a single plugin in the context of a case.
 
-```bash
-# Execute the 'my-plugin' in the context of 'my_case'
-nexus exec my-plugin --case my_case
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ### Managing Plugins
 
 The `plugins` command group provides tools for managing and inspecting plugins.
 
-```bash
-# List all available plugins
-nexus plugins list
-
-# Show detailed information about a plugin, including its configuration
-nexus plugins show my-plugin
-
-# Search for plugins by keyword
-nexus plugins search video
-
-# List all plugin tags
-nexus plugins tags
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ### Managing Cases and Templates
 
 Nexus also provides commands for listing and inspecting cases and templates.
 
-```bash
-# List all available cases
-nexus cases list
-
-# List all available templates
-nexus templates list
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ### Generating Documentation
 
 The `doc` command generates markdown documentation for all registered plugins.
 
-```bash
-# Generate plugin documentation in the 'docs/api' directory
-nexus doc --output docs/api
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ## Creating a Plugin
@@ -129,32 +157,33 @@ Creating a plugin in Nexus is straightforward:
 
 **Example:**
 
-```python
-# In my_plugins/my_plugin.py
-from pydantic import BaseModel, Field
-from nexus.core.discovery import plugin
-from nexus.core.context import Context
-
-class MyPluginConfig(BaseModel):
-    my_parameter: str = Field("default_value", description="An example parameter.")
-
-@plugin(
-    name="my-plugin",
-    config=MyPluginConfig,
-    description="A simple example plugin."
-)
-def my_plugin(ctx: Context, config: MyPluginConfig):
-    """
-    This is my first Nexus plugin.
-    """
-    ctx.log.info(f"Running my-plugin with parameter: {config.my_parameter}")
-    # ... plugin logic ...
+```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
 ```
 
 ## Running Tests
 
 Tests are written using `pytest`. To run the test suite:
 
-```bash
-pytest
 ```
+nexus/
+├── cases/                # Pipeline execution cases
+├── config/               # System (setting*) and business (global) configuration
+├── src/
+│   └── nexus/            # Main source code
+│       ├── core/         # Core framework components (engine, etc.)
+│       ├── contrib/      # Built-in plugins
+│       └── cli.py        # Command-line interface definition
+├── templates/            # Reusable pipeline templates
+└── pyproject.toml        # Project metadata and dependencies
+```
+

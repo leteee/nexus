@@ -2,7 +2,7 @@
 Entry point for running nexus as a module: python -m nexus
 """
 
-from .cli import main
+from .cli.main import main
 
 if __name__ == "__main__":
     main()

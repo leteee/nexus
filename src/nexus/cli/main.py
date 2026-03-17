@@ -7,151 +7,25 @@ DataSource/handler features.
 
 from __future__ import annotations
 
-import builtins
-import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import click
 
-from .core.case_manager import CaseManager
-from .core.config import load_global_configuration
-from .core.discovery import discover_all_plugins, list_plugins
-from .core.engine import PipelineEngine
-from .cli_plugins import plugins_cmd
-from .cli_cases import cases_cmd
-from .cli_templates import templates_cmd
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-
-
-def find_project_root(start_path: Path) -> Path:
-    current = start_path
-    while current != current.parent:
-        if (current / "pyproject.toml").exists():
-            return current
-        current = current.parent
-    return start_path
-
-
-def setup_logging(level: str = "INFO", project_root: Optional[Path] = None) -> None:
-    """
-    Setup logging configuration.
-
-    Tries to load from config/logging.yaml, falls back to basic config if not found.
-
-    Args:
-        level: Default logging level if yaml config not found
-        project_root: Project root directory (auto-detected if None)
-    """
-    import logging.config
-
-    if project_root is None:
-        project_root = find_project_root(Path.cwd())
-
-    logging_config_path = project_root / "config" / "logging.yaml"
-
-    if logging_config_path.exists():
-        try:
-            import yaml
-            with open(logging_config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-
-            # Ensure log directory exists
-            logs_dir = project_root / "logs"
-            logs_dir.mkdir(parents=True, exist_ok=True)
-
-            # Update file handler path to be absolute
-            if 'handlers' in config and 'file' in config['handlers']:
-                file_handler = config['handlers']['file']
-                if 'filename' in file_handler:
-                    file_handler['filename'] = str(project_root / file_handler['filename'])
-
-            logging.config.dictConfig(config)
-            logging.info(f"Loaded logging configuration from {logging_config_path}")
-        except Exception as e:
-            # Fall back to basic config if yaml loading fails
-            logging.basicConfig(
-                level=getattr(logging, level.upper()),
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            )
-            logging.warning(f"Failed to load logging config from {logging_config_path}: {e}")
-            logging.warning("Using basic logging configuration")
-    else:
-        # Use basic config if yaml file doesn't exist
-        logging.basicConfig(
-            level=getattr(logging, level.upper()),
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-        logging.info("No logging.yaml found, using basic configuration")
-
-
-def _load_case_manager(project_root: Path) -> CaseManager:
-    global_config = load_global_configuration(project_root)
-    framework_cfg = global_config.get("framework", {})
-
-    cases_roots = framework_cfg.get("cases_roots", ["cases"])
-    cases_roots = [cases_roots] if isinstance(cases_roots, str) else builtins.list(cases_roots)
-
-    templates_roots = framework_cfg.get("templates_roots", ["templates"])
-    templates_roots = [templates_roots] if isinstance(templates_roots, str) else builtins.list(templates_roots)
-
-    return CaseManager(project_root, cases_roots=cases_roots, templates_roots=templates_roots)
-
-
-def _discover(project_root: Path) -> None:
-    discover_all_plugins(project_root)
-
-
-def parse_config_overrides(config_list: tuple[str, ...]) -> Dict[str, Any]:
-    import json
-
-    config: Dict[str, Any] = {}
-    valid_namespaces = {"framework", "plugins"}
-
-    for item in config_list:
-        if "=" not in item:
-            click.echo(f"Invalid config format: {item}. Use key=value format.")
-            continue
-
-        key, value = item.split("=", 1)
-        keys = key.split(".")
-        if len(keys) > 1 and keys[0] not in valid_namespaces:
-            click.echo(
-                f"Warning: Invalid namespace '{keys[0]}' in {key}. "
-                f"Valid namespaces: {', '.join(sorted(valid_namespaces))}"
-            )
-            continue
-
-        current = config
-        for part in keys[:-1]:
-            current = current.setdefault(part, {})
-
-        lower = value.lower()
-        if value.startswith("{") or value.startswith("["):
-            try:
-                current[keys[-1]] = json.loads(value)
-                continue
-            except json.JSONDecodeError:
-                pass
-        if lower in {"true", "false"}:
-            current[keys[-1]] = lower == "true"
-        elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
-            current[keys[-1]] = int(value)
-        else:
-            try:
-                current[keys[-1]] = float(value)
-            except ValueError:
-                current[keys[-1]] = value.strip('"')
-
-    return config
-
-
-# ---------------------------------------------------------------------------
-# CLI group
+from ..core.config import load_system_configuration
+from ..core.discovery import list_plugins
+from ..core.engine import PipelineEngine
+from .cases import cases_cmd
+from .plugins import plugins_cmd
+from .templates import templates_cmd
+from .utils import (
+    discover_plugins,
+    find_project_root,
+    load_case_manager,
+    parse_config_overrides,
+    setup_logging,
+)
 
 
 @click.group(invoke_without_command=True, help="Nexus - A modern data processing framework")
@@ -159,7 +33,7 @@ def parse_config_overrides(config_list: tuple[str, ...]) -> Dict[str, Any]:
 @click.pass_context
 def cli(ctx: click.Context, version: bool) -> None:
     if version:
-        from . import __version__
+        from .. import __version__
 
         click.echo(f"Nexus {__version__}")
         return
@@ -175,9 +49,6 @@ cli.add_command(plugins_cmd)
 cli.add_command(cases_cmd)
 cli.add_command(templates_cmd)
 
-# ---------------------------------------------------------------------------
-# Commands
-
 
 @cli.command()
 @click.option("--case", "-c", required=True, help="Case directory (relative or absolute)")
@@ -186,9 +57,13 @@ cli.add_command(templates_cmd)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bool) -> None:
     project_root = find_project_root(Path.cwd())
-    setup_logging("DEBUG" if verbose else "INFO", project_root)
+    system_overrides, business_overrides = parse_config_overrides(config)
+    system_config = load_system_configuration(project_root, system_overrides)
+    log_level = "DEBUG" if verbose else system_config.get("logging", {}).get("level", "INFO")
+    log_config_path = system_config.get("logging", {}).get("config_path")
+    setup_logging(log_level, project_root, log_config_path)
 
-    manager = _load_case_manager(project_root)
+    manager = load_case_manager(project_root, system_config)
 
     try:
         _config_path, case_config = manager.get_case_config(case, template)
@@ -196,10 +71,9 @@ def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bo
         click.echo(f"ERROR: {exc}", err=True)
         sys.exit(1)
 
-    engine = PipelineEngine(project_root, manager.resolve_case_path(case))
-    overrides = parse_config_overrides(config)
+    engine = PipelineEngine(project_root, manager.resolve_case_path(case), system_config)
     try:
-        engine.run_pipeline(case_config, overrides)
+        engine.run_pipeline(case_config, business_overrides)
         click.echo(f"SUCCESS: Pipeline completed for case '{case}'")
     except Exception as exc:  # pylint: disable=broad-except
         click.echo(f"ERROR: {exc}", err=True)
@@ -216,14 +90,17 @@ def run(case: str, template: Optional[str], config: tuple[str, ...], verbose: bo
 def exec_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool) -> None:
     """Execute a single plugin."""
     project_root = find_project_root(Path.cwd())
-    setup_logging("DEBUG" if verbose else "INFO", project_root)
+    system_overrides, business_overrides = parse_config_overrides(config)
+    system_config = load_system_configuration(project_root, system_overrides)
+    log_level = "DEBUG" if verbose else system_config.get("logging", {}).get("level", "INFO")
+    log_config_path = system_config.get("logging", {}).get("config_path")
+    setup_logging(log_level, project_root, log_config_path)
 
-    manager = _load_case_manager(project_root)
-    engine = PipelineEngine(project_root, manager.resolve_case_path(case))
+    manager = load_case_manager(project_root, system_config)
+    engine = PipelineEngine(project_root, manager.resolve_case_path(case), system_config)
 
-    overrides = parse_config_overrides(config)
     try:
-        result = engine.run_single_plugin(plugin_name, overrides)
+        result = engine.run_single_plugin(plugin_name, business_overrides)
     except Exception as exc:  # pylint: disable=broad-except
         click.echo(f"ERROR: {exc}", err=True)
         if verbose:
@@ -240,7 +117,8 @@ def exec_cmd(plugin_name: str, case: str, config: tuple[str, ...], verbose: bool
 @click.option("--force", "-f", is_flag=True, help="Force overwrite without confirmation")
 def doc_cmd(output: str, force: bool) -> None:
     project_root = find_project_root(Path.cwd())
-    _discover(project_root)
+    system_config = load_system_configuration(project_root)
+    discover_plugins(project_root, system_config)
 
     plugins = list_plugins()
     if not plugins:
@@ -265,70 +143,48 @@ def doc_cmd(output: str, force: bool) -> None:
     click.echo(f"Documentation written to {output_path}")
 
 
-# ---------------------------------------------------------------------------
-# Documentation helpers
-
-
+# Documentation helpers (unchanged)
 def _generate_yaml_value_from_schema(schema: dict, indent: int = 0) -> list[str]:
-    """
-    Generate YAML representation from JSON schema recursively.
+    from typing import Any as _Any  # keep import local
 
-    Args:
-        schema: JSON schema dict from Pydantic
-        indent: Current indentation level
-
-    Returns:
-        List of YAML lines
-    """
     lines = []
     schema_type = schema.get("type")
 
-    # Handle arrays
     if schema_type == "array":
         items_schema = schema.get("items", {})
         items_type = items_schema.get("type")
 
         if items_type == "object":
-            # Array of objects - show example structure
             lines.append("")
             properties = items_schema.get("properties", {})
             if properties:
-                # Has defined properties - show full structure
                 indent_str = "  " * (indent + 1)
                 lines.append(f"{indent_str}- # Example item")
                 for prop_name, prop_schema in properties.items():
                     prop_lines = _generate_yaml_value_from_schema(prop_schema, indent + 2)
                     if len(prop_lines) == 1 and not prop_lines[0].startswith("\n"):
-                        # Simple value
                         lines.append(f"{indent_str}  {prop_name}: {prop_lines[0]}")
                     else:
-                        # Complex value
                         lines.append(f"{indent_str}  {prop_name}:{prop_lines[0]}")
                         lines.extend(prop_lines[1:])
             else:
-                # No properties defined - generic dict
-                # Show a more useful example with common keys
                 indent_str = "  " * (indent + 1)
                 lines.append(f"{indent_str}- # Example item (dict)")
                 lines.append(f"{indent_str}  key1: \"value1\"")
                 lines.append(f"{indent_str}  key2: \"value2\"")
         elif items_type == "string":
-            # Array of strings
             lines.append("")
             indent_str = "  " * (indent + 1)
             lines.append(f"{indent_str}- \"item1\"")
             lines.append(f"{indent_str}- \"item2\"")
-        elif items_type == "number" or items_type == "integer":
-            # Array of numbers
+        elif items_type in {"number", "integer"}:
             lines.append("")
             indent_str = "  " * (indent + 1)
             lines.append(f"{indent_str}- 1")
             lines.append(f"{indent_str}- 2")
         else:
-            # Array of primitives or unknown
             lines.append(" []")
 
-    # Handle objects
     elif schema_type == "object":
         properties = schema.get("properties", {})
         if properties:
@@ -337,70 +193,48 @@ def _generate_yaml_value_from_schema(schema: dict, indent: int = 0) -> list[str]
             for prop_name, prop_schema in properties.items():
                 prop_lines = _generate_yaml_value_from_schema(prop_schema, indent + 1)
                 if len(prop_lines) == 1 and not prop_lines[0].startswith("\n"):
-                    # Simple value
                     lines.append(f"{indent_str}{prop_name}: {prop_lines[0]}")
                 else:
-                    # Complex value
                     lines.append(f"{indent_str}{prop_name}:{prop_lines[0]}")
                     lines.extend(prop_lines[1:])
         else:
             lines.append(" {}")
 
-    # Handle primitives
     elif schema_type == "string":
         default = schema.get("default")
-        if default:
-            lines.append(f'"{default}"')
-        else:
-            lines.append('"value"')
+        lines.append(f'"{default}"' if default else '"value"')
 
-    elif schema_type == "number" or schema_type == "integer":
+    elif schema_type in {"number", "integer"}:
         default = schema.get("default")
-        if default is not None:
-            lines.append(str(default))
-        else:
-            lines.append("0")
+        lines.append(str(default) if default is not None else "0")
 
     elif schema_type == "boolean":
         default = schema.get("default")
-        if default is not None:
-            lines.append(str(default).lower())
-        else:
-            lines.append("false")
+        lines.append(str(default).lower() if default is not None else "false")
 
     elif schema_type == "null":
         lines.append("null")
-
     else:
-        # Unknown type or anyOf/oneOf
-        if "anyOf" in schema or "oneOf" in schema:
-            lines.append('"value"')
-        else:
-            lines.append('""')
+        lines.append('"value"')
 
     return lines
 
 
 def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
-    """Generate markdown documentation for a plugin with enhanced formatting."""
     from pydantic_core import PydanticUndefined
 
     lines = [f"# {plugin_name}", ""]
 
-    # Overview section
     if plugin_spec.description:
         lines.extend(["## Overview", "", plugin_spec.description.strip(), ""])
 
-    # Configuration section
     lines.append("## Configuration")
     lines.append("")
 
     if plugin_spec.config_model:
-        # Get JSON schema for the model
         json_schema = plugin_spec.config_model.model_json_schema()
         properties = json_schema.get("properties", {})
 
-        # YAML example
         lines.append("### Example Configuration")
         lines.append("")
         lines.append("```yaml")
@@ -409,15 +243,10 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
         lines.append("    config:")
 
         for field_name, field_info in plugin_spec.config_model.model_fields.items():
-            # Get field schema
             field_schema = properties.get(field_name, {})
-
-            # Get default value
             default = field_info.default
 
-            # Generate YAML value using schema
             if default is PydanticUndefined:
-                # Required field - generate example from schema
                 yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
             elif default is None:
                 yaml_lines = ["null"]
@@ -427,50 +256,32 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
                 yaml_lines = [str(default).lower()]
             elif isinstance(default, (int, float)):
                 yaml_lines = [str(default)]
-            elif isinstance(default, list):
-                # Use schema to generate example list
-                yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
-            elif isinstance(default, dict):
-                # Use schema to generate example dict
+            elif isinstance(default, (list, dict)):
                 yaml_lines = _generate_yaml_value_from_schema(field_schema, indent=2)
             else:
                 yaml_lines = [str(default)]
 
-            # Get field type for comment
-            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-            field_type = field_type.replace("typing.", "")
-
-            # Get description
+            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation)).replace("typing.", "")
             description = field_info.description or ""
+            comment = f"  # {field_type}: {description}" if description else f"  # {field_type}"
 
-            # Build inline comment for first line
-            if description:
-                comment = f"  # {field_type}: {description}"
-            else:
-                comment = f"  # {field_type}"
-
-            # Output YAML lines
             if len(yaml_lines) == 1 and not yaml_lines[0].startswith("\n"):
-                # Simple single-line value
                 lines.append(f"      {field_name}: {yaml_lines[0]}{comment}")
             else:
-                # Multi-line value (nested structure)
                 lines.append(f"      {field_name}:{comment}")
                 for yaml_line in yaml_lines:
-                    if yaml_line:  # Skip empty strings
+                    if yaml_line:
                         lines.append(f"    {yaml_line}")
 
         lines.append("```")
         lines.append("")
 
-        # Field reference table
         lines.append("### Field Reference")
         lines.append("")
         lines.append("| Field | Type | Default | Description |")
         lines.append("|-------|------|---------|-------------|")
 
         for field_name, field_info in plugin_spec.config_model.model_fields.items():
-            # Get default value for table
             default = field_info.default
             if default is PydanticUndefined:
                 default_str = "*required*"
@@ -483,11 +294,7 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
             else:
                 default_str = f"`{default}`"
 
-            # Get field type
-            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation))
-            field_type = field_type.replace("typing.", "")
-
-            # Get description
+            field_type = getattr(field_info.annotation, "__name__", str(field_info.annotation)).replace("typing.", "")
             description = field_info.description or ""
 
             lines.append(f"| `{field_name}` | `{field_type}` | {default_str} | {description} |")
@@ -497,7 +304,6 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
         lines.append("This plugin has no configuration options.")
         lines.append("")
 
-    # CLI Usage section
     lines.append("## CLI Usage")
     lines.append("")
     lines.append("```bash")
@@ -509,10 +315,7 @@ def _generate_plugin_markdown_doc(plugin_name: str, plugin_spec: Any) -> str:
         lines.append(f'nexus plugin "{plugin_name}" --case mycase \\')
         example_fields = list(plugin_spec.config_model.model_fields.keys())[:2]
         for i, field in enumerate(example_fields):
-            if i < len(example_fields) - 1:
-                lines.append(f"  -C {field}=value \\")
-            else:
-                lines.append(f"  -C {field}=value")
+            lines.append(f"  -C {field}=value" + (" \\" if i < len(example_fields) - 1 else ""))
     lines.append("```")
     lines.append("")
 
@@ -529,16 +332,9 @@ def _generate_plugin_index_markdown(plugins: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint
-
-
 def main() -> None:
-    """Console script entrypoint."""
     cli()
 
 
 if __name__ == "__main__":
     main()
-
-

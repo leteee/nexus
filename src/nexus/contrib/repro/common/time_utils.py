@@ -1,402 +1,245 @@
 """
 Time utilities for repro module.
 
-Provides time parsing, formatting, and timezone handling with UTC+8 as default timezone.
-All timestamps are in milliseconds for consistency.
+Design goals:
+- 明确的时区与单位语义（默认 Asia/Shanghai，单位默认为毫秒）。
+- 支持数字/字符串/ISO8601 日期时间的解析，自动或显式单位。
+- 无兼容旧 API；仅导出新的、窄接口。
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Union
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal, Optional, Union
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# Constants
-# =============================================================================
-
-# Default timezone: UTC+8 (China Standard Time / Beijing Time)
-DEFAULT_TIMEZONE = timezone(timedelta(hours=8))
+# Default timezone: Asia/Shanghai
+DEFAULT_TZ = ZoneInfo("Asia/Shanghai")
 
 
-# =============================================================================
-# Time Parsing
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+Unit = Literal["s", "ms", "us"]
+AssumeUnit = Literal["auto", "s", "ms", "us"]
 
 
-def parse_time_value(
-    time_value: Union[str, float, int, None],
-    unit: str = "ms"
-) -> Optional[float]:
+def _to_datetime_aware(dt: datetime, tz: ZoneInfo) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=tz)
+    return dt.astimezone(tz)
+
+
+def _detect_unit_from_number(value: float) -> Unit:
     """
-    Parse time value to Unix timestamp in specified unit.
-
-    Automatically detects input format and converts to target unit with precision.
-
-    Supported input formats:
-        1. None → None (no time constraint)
-        2. Integer/Float → Inferred by magnitude:
-           - >= 1e14: microseconds (us)
-           - >= 1e11: milliseconds (ms)
-           - < 1e11: seconds (s)
-        3. Numeric String → Inferred by digit length:
-           - >= 15 digits: microseconds (us)
-           - 12-14 digits: milliseconds (ms)
-           - < 12 digits: seconds (s)
-        4. Date/Time String → Parsed with millisecond precision
-
-    Args:
-        time_value: Time value in any supported format
-        unit: Output unit - "us" (microseconds), "ms" (milliseconds), or "s" (seconds)
-
-    Returns:
-        Unix timestamp in specified unit (float), or None if input is None
-
-    Raises:
-        ValueError: If string format is not recognized or unit is unsupported
-        TypeError: If input type is not supported
-
-    Examples:
-        >>> parse_time_value("2025-10-27 08:00:00")
-        1730001600000.0
-
-        >>> parse_time_value(1730001600000)
-        1730001600000.0
-
-        >>> parse_time_value(1730001600, unit="s")
-        1730001600.0
+    粗略按数量级推断：>=1e15 微秒、>=1e12 毫秒，否则秒。
     """
-    if time_value is None:
-        logger.debug("Time value is None, returning None")
-        return None
+    if value >= 1e15:
+        return "us"
+    if value >= 1e12:
+        return "ms"
+    return "s"
 
-    timestamp_ms: float
 
-    if isinstance(time_value, (int, float)):
-        # Infer unit from magnitude
-        numeric_value = float(time_value)
-        if numeric_value >= 1e14:  # Microseconds
-            logger.debug(f"Parsing numeric value as us: {numeric_value}")
-            timestamp_ms = numeric_value / 1000
-        elif numeric_value >= 1e11:  # Milliseconds
-            logger.debug(f"Parsing numeric value as ms: {numeric_value}")
-            timestamp_ms = numeric_value
-        else:  # Seconds
-            logger.debug(f"Parsing numeric value as s: {numeric_value}")
-            timestamp_ms = numeric_value * 1000
+def _detect_unit_from_digits(digits: int) -> Unit:
+    if digits >= 15:
+        return "us"
+    if digits >= 13:
+        return "ms"
+    return "s"
 
-    elif isinstance(time_value, str):
-        time_str = time_value.strip()
-        if time_str.isdigit():
-            # Infer unit from digit count
-            numeric_value = int(time_str)
-            num_digits = len(time_str)
-            if num_digits >= 15:  # Microseconds
-                logger.debug(f"Parsing numeric string as us: '{time_str}'")
-                timestamp_ms = numeric_value / 1000
-            elif num_digits >= 12:  # Milliseconds
-                logger.debug(f"Parsing numeric string as ms: '{time_str}'")
-                timestamp_ms = float(numeric_value)
-            else:  # Seconds
-                logger.debug(f"Parsing numeric string as s: '{time_str}'")
-                timestamp_ms = float(numeric_value * 1000)
-        else:
-            # Parse as date/time string
-            logger.debug(f"Parsing date/time string: '{time_str}'")
-            timestamp_ms = parse_time_string(time_str)
+
+def _convert_unit(value: float, from_unit: Unit, to_unit: Unit) -> float:
+    # Convert via seconds
+    if from_unit == "us":
+        seconds = value / 1_000_000.0
+    elif from_unit == "ms":
+        seconds = value / 1000.0
     else:
-        raise TypeError(f"Unsupported input type for time_value: {type(time_value)}")
+        seconds = value
 
-    # Convert to target unit
-    if unit == "us":
-        return timestamp_ms * 1000
-    elif unit == "ms":
-        return timestamp_ms
-    elif unit == "s":
-        return timestamp_ms / 1000
-    else:
-        raise ValueError(
-            f"Unsupported time unit: '{unit}'. Supported units are 'us', 'ms', 's'."
-        )
+    if to_unit == "us":
+        return seconds * 1_000_000.0
+    if to_unit == "ms":
+        return seconds * 1000.0
+    return seconds
 
 
-def parse_time_string(
-    time_str: str,
-    default_tz: Optional[timezone] = None
+# ---------------------------------------------------------------------------
+# Public parsing/formatting
+# ---------------------------------------------------------------------------
+
+def make_tz(offset_hours: Union[float, str]) -> timezone:
+    """
+    Create timezone from IANA name or numeric offset.
+    """
+    if isinstance(offset_hours, str):
+        try:
+            return ZoneInfo(offset_hours)
+        except Exception as exc:  # pylint: disable=broad-except
+            raise ValueError(f"Invalid timezone name: {offset_hours}") from exc
+    return timezone(timedelta(hours=offset_hours))
+
+
+def parse_timestamp(
+    value: Union[str, int, float, datetime],
+    *,
+    target_unit: Unit = "ms",
+    assume_unit: AssumeUnit = "auto",
+    default_tz: Optional[ZoneInfo] = None,
 ) -> float:
     """
-    Parse time string to Unix timestamp in milliseconds.
+    Parse numeric / string / datetime into Unix timestamp.
 
-    Supported formats:
-        - ISO 8601 with timezone: "2025-10-27T08:00:00+08:00"
-        - ISO 8601 UTC: "2025-10-27T00:00:00Z"
-        - ISO 8601 without timezone: "2025-10-27T00:00:00" (assumes default_tz)
-        - Space-separated: "2025-10-27 08:00:00" (assumes default_tz)
-        - Date only: "2025-10-27" (assumes 00:00:00 in default_tz)
-        - With milliseconds: "2025-10-27T00:00:00.123+08:00"
-        - With microseconds: "2025-10-27T00:00:00.123456+08:00"
-
-    Args:
-        time_str: Time string in various formats
-        default_tz: Default timezone if not specified in string (default: UTC+8)
-
-    Returns:
-        Unix timestamp in milliseconds (float)
-
-    Raises:
-        ValueError: If time string format is not recognized
-
-    Examples:
-        >>> parse_time_string("2025-10-27 08:00:00")
-        1730001600000.0
-
-        >>> parse_time_string("2025-10-27T08:00:00+08:00")
-        1730001600000.0
+    Supports:
+    - datetime (aware or naive). Naive is assumed in default_tz (default Asia/Shanghai).
+    - ISO8601 / date / datetime strings (datetime.fromisoformat 兼容格式)。
+    - 纯数字（int/float或数字字符串），可自动推断精度（auto）或显式 assume_unit。
     """
-    if default_tz is None:
-        default_tz = DEFAULT_TIMEZONE
+    tz = default_tz or DEFAULT_TZ
 
-    time_str = time_str.strip()
+    # datetime path
+    if isinstance(value, datetime):
+        aware = _to_datetime_aware(value, tz)
+        return _convert_unit(aware.timestamp(), "s", target_unit)
 
-    # Try parsing as ISO 8601
-    try:
-        dt = datetime.fromisoformat(time_str)
-    except ValueError:
-        # Try space-separated format
-        if " " in time_str and "T" not in time_str:
-            try:
-                iso_str = time_str.replace(" ", "T", 1)
-                dt = datetime.fromisoformat(iso_str)
-            except ValueError:
-                dt = None
-        else:
-            dt = None
+    # numeric path
+    if isinstance(value, (int, float)):
+        unit = _detect_unit_from_number(float(value)) if assume_unit == "auto" else assume_unit
+        return _convert_unit(float(value), unit, target_unit)
 
-        if dt is None:
-            logger.error(f"Failed to parse time string: '{time_str}'")
-            raise ValueError(
-                f"Unable to parse time string: '{time_str}'\n"
-                f"Supported formats:\n"
-                f"  ISO 8601 with timezone:  '2025-10-27T08:00:00+08:00'\n"
-                f"  ISO 8601 UTC:            '2025-10-27T00:00:00Z'\n"
-                f"  ISO 8601 (assumes {default_tz}): '2025-10-27T00:00:00'\n"
-                f"  Space-separated:         '2025-10-27 08:00:00'\n"
-                f"  Date only:               '2025-10-27'\n"
-                f"\n"
-                f"Or use direct Unix timestamp in milliseconds"
-            )
+    # string path
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit() or (stripped.startswith("-") and stripped[1:].isdigit()):
+            numeric = float(stripped)
+            digits = len(stripped.lstrip("-"))
+            unit = _detect_unit_from_digits(digits) if assume_unit == "auto" else assume_unit
+            return _convert_unit(numeric, unit, target_unit)
 
-    # Apply default timezone if naive datetime
-    if dt.tzinfo is None:
-        logger.debug(
-            f"Time string '{time_str}' has no timezone, "
-            f"assuming default timezone {default_tz}"
-        )
-        dt = dt.replace(tzinfo=default_tz)
-    else:
-        logger.debug(f"Parsed time string '{time_str}' with timezone: {dt.tzinfo}")
+        # ISO/date/time
+        try:
+            dt = datetime.fromisoformat(stripped.replace(" ", "T", 1))
+        except ValueError as exc:
+            raise ValueError(f"Unsupported time string: '{value}'") from exc
 
-    # Convert to Unix timestamp in milliseconds
-    timestamp_ms = dt.timestamp() * 1000
-    logger.debug(f"Converted '{time_str}' to timestamp: {timestamp_ms} ms")
+        aware = _to_datetime_aware(dt, tz)
+        return _convert_unit(aware.timestamp(), "s", target_unit)
 
-    return timestamp_ms
+    raise TypeError(f"Unsupported value type for timestamp parsing: {type(value)}")
 
 
-# =============================================================================
-# Time Formatting
-# =============================================================================
-
-
-def timestamp_to_datetime(
-    timestamp_ms: float,
-    tz: Optional[timezone] = None
-) -> datetime:
-    """
-    Convert Unix timestamp in milliseconds to datetime object.
-
-    Args:
-        timestamp_ms: Unix timestamp in milliseconds
-        tz: Target timezone (default: UTC+8)
-
-    Returns:
-        datetime object in specified timezone
-
-    Examples:
-        >>> dt = timestamp_to_datetime(1730001600000.0)
-        >>> print(dt)
-        2025-10-27 08:00:00+08:00
-    """
-    if tz is None:
-        tz = DEFAULT_TIMEZONE
-
-    # Convert milliseconds to seconds
-    timestamp_s = timestamp_ms / 1000.0
-
-    # Create datetime in UTC first
-    dt_utc = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
-
-    # Convert to target timezone
-    dt = dt_utc.astimezone(tz)
-
-    logger.debug(
-        f"Converted timestamp {timestamp_ms} ms to datetime: {dt.isoformat()} "
-        f"(timezone: {tz})"
-    )
-
-    return dt
-
-
-def timestamp_to_string(
-    timestamp_ms: float,
-    fmt: str = "iso",
-    tz: Optional[timezone] = None
+def format_timestamp(
+    value: Union[int, float, datetime, str],
+    *,
+    fmt: Literal["iso", "datetime", "date", "time"] | str = "iso",
+    assume_unit: AssumeUnit = "auto",
+    tz: Optional[ZoneInfo] = None,
+    value_unit: Unit = "ms",
 ) -> str:
     """
-    Convert Unix timestamp in milliseconds to formatted string.
-
-    Args:
-        timestamp_ms: Unix timestamp in milliseconds
-        fmt: Output format - "iso", "datetime", "date", "time", or custom strftime format
-        tz: Target timezone (default: UTC+8)
-
-    Returns:
-        Formatted time string
-
-    Examples:
-        >>> timestamp_to_string(1730001600000.0)
-        '2025-10-27T08:00:00+08:00'
-
-        >>> timestamp_to_string(1730001600000.0, fmt="datetime")
-        '2025-10-27 08:00:00'
-
-        >>> timestamp_to_string(1730001600000.0, fmt="%Y年%m月%d日")
-        '2025年10月27日'
+    Format a timestamp (or datetime/ISO string) into string with desired format.
     """
-    dt = timestamp_to_datetime(timestamp_ms, tz=tz)
+    tz = tz or DEFAULT_TZ
+
+    if isinstance(value, datetime):
+        dt = _to_datetime_aware(value, tz)
+    else:
+        ts_ms = parse_timestamp(value, target_unit="ms", assume_unit=assume_unit, default_tz=tz)
+        dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=tz)
 
     if fmt == "iso":
-        result = dt.isoformat()
-    elif fmt == "datetime":
-        result = dt.strftime("%Y-%m-%d %H:%M:%S")
-    elif fmt == "date":
-        result = dt.strftime("%Y-%m-%d")
-    elif fmt == "time":
-        result = dt.strftime("%H:%M:%S")
-    else:
-        # Custom strftime format
-        result = dt.strftime(fmt)
-
-    logger.debug(f"Formatted timestamp {timestamp_ms} ms as '{result}' (format: {fmt})")
-
-    return result
+        return dt.isoformat()
+    if fmt == "datetime":
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    if fmt == "date":
+        return dt.strftime("%Y-%m-%d")
+    if fmt == "time":
+        return dt.strftime("%H:%M:%S")
+    return dt.strftime(fmt)
 
 
-def format_duration_ms(duration_ms: float) -> str:
+def format_duration(duration_ms: Union[int, float]) -> str:
     """
-    Format duration in milliseconds to human-readable string.
-
-    Args:
-        duration_ms: Duration in milliseconds
-
-    Returns:
-        Formatted duration string (e.g., "1h 23m 45s", "5.0s", "123ms")
-
-    Examples:
-        >>> format_duration_ms(5000)
-        '5.0s'
-
-        >>> format_duration_ms(125000)
-        '2m 5s'
-
-        >>> format_duration_ms(5023456)
-        '1h 23m 43s'
-
-        >>> format_duration_ms(500)
-        '500ms'
+    Human-readable duration; keeps millisecond precision for <1s.
     """
-    if duration_ms < 1000:
-        return f"{duration_ms:.0f}ms"
+    ms = float(duration_ms)
+    if ms < 1000:
+        return f"{ms:.0f}ms"
 
-    seconds = duration_ms / 1000.0
+    seconds_total = int(ms / 1000)
+    if seconds_total < 60:
+        return f"{ms/1000:.1f}s"
 
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-
-    minutes = int(seconds // 60)
-    seconds = int(seconds % 60)
-
+    minutes = seconds_total // 60
+    seconds = seconds_total % 60
     if minutes < 60:
         return f"{minutes}m {seconds}s"
 
     hours = minutes // 60
     minutes = minutes % 60
-
     return f"{hours}h {minutes}m {seconds}s"
 
 
-# =============================================================================
-# Utility Functions
-# =============================================================================
-
-
-def get_current_timestamp_ms() -> float:
+def format_timecode(timestamp_ms: Union[int, float], fps: Optional[int] = None) -> str:
     """
-    Get current Unix timestamp in milliseconds.
-
-    Returns:
-        Current Unix timestamp in milliseconds (float)
-
-    Example:
-        >>> now = get_current_timestamp_ms()
-        >>> print(f"Current time: {now}")
+    Format timestamp as video timecode.
+    - Default: HH:MM:SS.mmm
+    - With fps: HH:MM:SS:ff (frame rounded to nearest)
     """
-    timestamp_ms = datetime.now(tz=timezone.utc).timestamp() * 1000
-    logger.debug(f"Current timestamp: {timestamp_ms} ms")
-    return timestamp_ms
+    total_ms = float(timestamp_ms)
+    total_seconds = int(total_ms // 1000)
+    ms = int(total_ms % 1000)
 
-
-def create_timezone(offset_hours: float) -> timezone:
-    """
-    Create timezone from UTC offset in hours.
-
-    Args:
-        offset_hours: UTC offset in hours (e.g., 8 for UTC+8, -5 for UTC-5)
-
-    Returns:
-        timezone object
-
-    Examples:
-        >>> beijing_tz = create_timezone(8)
-        >>> print(beijing_tz)
-        UTC+08:00
-
-        >>> ny_tz = create_timezone(-5)
-        >>> print(ny_tz)
-        UTC-05:00
-    """
-    tz = timezone(timedelta(hours=offset_hours))
-    logger.debug(f"Created timezone with offset: UTC{offset_hours:+.1f}")
-    return tz
-
-
-def format_timecode(timestamp_ms: float) -> str:
-    """
-    Format timestamp as video timecode (HH:MM:SS.mmm).
-    
-    Args:
-        timestamp_ms: Timestamp in milliseconds
-        
-    Returns:
-        Formatted timecode string (e.g. "01:23:45.678")
-    """
-    total_seconds = int(timestamp_ms / 1000)
-    ms = int(timestamp_ms % 1000)
-    
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
-    
+
+    if fps:
+        frame = round((total_ms / 1000 - total_seconds) * fps)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{frame:02d}"
+
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{ms:03d}"
+
+
+# ---------------------------------------------------------------------------
+# Time provider
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class TimeProvider:
+    tz: ZoneInfo = DEFAULT_TZ
+
+    def now(self) -> datetime:
+        return datetime.now(tz=self.tz)
+
+    def unix_ms(self) -> int:
+        return int(self.now().timestamp() * 1000)
+
+    def to_datetime(self, value: Union[str, int, float, datetime], unit: Unit = "ms") -> datetime:
+        ts = parse_timestamp(value, target_unit=unit, default_tz=self.tz)
+        return datetime.fromtimestamp(_convert_unit(ts, unit, "s"), tz=self.tz)
+
+    def to_timestamp(self, value: Union[str, int, float, datetime], target_unit: Unit = "ms") -> float:
+        return parse_timestamp(value, target_unit=target_unit, default_tz=self.tz)
+
+    def format(self, value: Union[str, int, float, datetime], fmt: str = "iso", assume_unit: AssumeUnit = "auto") -> str:
+        return format_timestamp(value, fmt=fmt, assume_unit=assume_unit, tz=self.tz)
+
+
+__all__ = [
+    "DEFAULT_TZ",
+    "Unit",
+    "AssumeUnit",
+    "make_tz",
+    "parse_timestamp",
+    "format_timestamp",
+    "format_duration",
+    "format_timecode",
+    "TimeProvider",
+]

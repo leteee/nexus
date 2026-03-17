@@ -1,0 +1,6 @@
+# Local system overrides. Safe examples:
+# framework:
+#   cases_roots:
+#     - "cases"
+# logging:
+#   level: DEBUG

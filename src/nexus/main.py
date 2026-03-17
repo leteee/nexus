@@ -8,15 +8,15 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .core.case_manager import CaseManager
-from .core.config import load_global_configuration
+from .core.config import load_system_configuration
 from .core.engine import PipelineEngine
 
 
 def _build_case_manager(project_root: Path) -> tuple[CaseManager, Dict[str, Any]]:
-    """Construct CaseManager using merged global/local configuration."""
+    """Construct CaseManager using system configuration."""
 
-    global_config = load_global_configuration(project_root)
-    framework_cfg = global_config.get("framework", {})
+    system_config = load_system_configuration(project_root)
+    framework_cfg = system_config.get("framework", {})
 
     cases_roots = framework_cfg.get("cases_roots", ["cases"])
     if isinstance(cases_roots, str):
@@ -32,7 +32,7 @@ def _build_case_manager(project_root: Path) -> tuple[CaseManager, Dict[str, Any]
         templates_roots=templates_roots,
     )
 
-    return manager, global_config
+    return manager, system_config
 
 
 
@@ -60,10 +60,10 @@ def create_engine(
             project_root = Path.cwd()
 
     # Load merged configuration and resolve case path
-    case_manager, _ = _build_case_manager(project_root)
+    case_manager, system_config = _build_case_manager(project_root)
     case_dir = case_manager.resolve_case_path(case_path)
 
-    return PipelineEngine(project_root, case_dir)
+    return PipelineEngine(project_root, case_dir, system_config)
 
 
 def run_pipeline(
@@ -95,14 +95,14 @@ def run_pipeline(
             project_root = Path.cwd()
 
     # Load merged configuration and access pipeline data
-    case_manager, _ = _build_case_manager(project_root)
+    case_manager, system_config = _build_case_manager(project_root)
     config_path, case_config = case_manager.get_case_config(
         case_path, template_name
     )
     case_dir = case_manager.resolve_case_path(case_path)
 
     # Create and run pipeline
-    engine = PipelineEngine(project_root, case_dir)
+    engine = PipelineEngine(project_root, case_dir, system_config)
     return engine.run_pipeline(case_config, config_overrides)
 
 
@@ -135,10 +135,9 @@ def run_plugin(
             project_root = Path.cwd()
 
     # Load merged configuration and resolve case path
-    case_manager, _ = _build_case_manager(project_root)
+    case_manager, system_config = _build_case_manager(project_root)
     case_dir = case_manager.resolve_case_path(case_path)
 
     # Create and run plugin
-    engine = PipelineEngine(project_root, case_dir)
+    engine = PipelineEngine(project_root, case_dir, system_config)
     return engine.run_single_plugin(plugin_name, config_overrides)
-

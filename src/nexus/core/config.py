@@ -52,25 +52,28 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_CONFIG_FILES = ("global.yaml", "local.yaml")
+GLOBAL_CONFIG_FILES = ("global.yaml",)
+SYSTEM_CONFIG_FILES = ("setting.yaml", "setting-local.yaml")
+
+# Keys allowed in system-level configuration to keep separation strict
+SYSTEM_ALLOWED_TOP_LEVEL = {"framework", "logging"}
 
 
-def _iter_global_config_layers(project_root: Path) -> Any:
-    """Yield global-level configuration layers in precedence order."""
+def _iter_config_layers(project_root: Path, file_names: tuple[str, ...]) -> Any:
+    """Yield configuration layers (higher precedence last)."""
 
     config_dir = project_root / "config"
-    for file_name in GLOBAL_CONFIG_FILES:
+    for file_name in file_names:
         config_path = config_dir / file_name
         if not config_path.exists():
-            if file_name == "global.yaml":
-                logger.debug("Global config file missing: %s", config_path)
+            logger.debug("Config file missing: %s", config_path)
             continue
 
         layer = load_yaml(config_path)
         if not layer:
             continue
 
-        logger.debug("Loaded global config layer: %s", config_path)
+        logger.debug("Loaded config layer: %s", config_path)
         yield layer
 
 
@@ -304,21 +307,51 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
 
 
 def load_global_configuration(project_root: Path) -> Dict[str, Any]:
-    """Load global configuration merged with all global-level overrides."""
+    """Load business configuration from config/global.yaml only."""
 
     merged: Dict[str, Any] = {}
 
     # Iterate through layers, giving higher precedence to later files
-    # (e.g., local.yaml overrides global.yaml).
-    for layer in _iter_global_config_layers(project_root):
-        # By passing the existing `merged` config as the override, we ensure
-        # that values from previously loaded files (lower precedence)
-        # override the new layer (higher precedence).
-        # For lists, this means new layer's list comes first.
-        merged = deep_merge(layer, merged)
+    for layer in _iter_config_layers(project_root, GLOBAL_CONFIG_FILES):
+        merged = deep_merge(merged, layer)
 
     if not merged:
         logger.debug("No global configuration layers found under %s", project_root)
+
+    return merged
+
+
+def _filter_system_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only allowed system keys, drop everything else."""
+
+    filtered = {k: v for k, v in config.items() if k in SYSTEM_ALLOWED_TOP_LEVEL}
+    extra_keys = set(config.keys()) - SYSTEM_ALLOWED_TOP_LEVEL
+    if extra_keys:
+        logger.warning("Ignoring non-system keys in setting files: %s", sorted(extra_keys))
+    return filtered
+
+
+def load_system_configuration(
+    project_root: Path, cli_overrides: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Load system-level configuration (framework/logging) with precedence.
+
+    Precedence (highest last): setting.yaml < setting-local.yaml < CLI overrides.
+    Only framework/logging namespaces are retained; others are ignored.
+    """
+
+    merged: Dict[str, Any] = {}
+
+    for layer in _iter_config_layers(project_root, SYSTEM_CONFIG_FILES):
+        merged = deep_merge(merged, layer)
+
+    merged = _filter_system_config(merged)
+
+    if cli_overrides:
+        merged = deep_merge(merged, _filter_system_config(cli_overrides))
+
+    if not merged:
+        logger.debug("No system configuration layers found under %s", project_root)
 
     return merged
 

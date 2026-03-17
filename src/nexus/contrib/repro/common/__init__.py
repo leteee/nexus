@@ -8,14 +8,13 @@ from .sensor_manager import SensorDataManager, SensorStream
 from .io import load_frame_timestamps, load_jsonl, save_jsonl
 from .utils import get_video_metadata
 from .time_utils import (
-    DEFAULT_TIMEZONE,
-    parse_time_string,
-    parse_time_value,
-    timestamp_to_datetime,
-    timestamp_to_string,
-    format_duration_ms,
-    get_current_timestamp_ms,
-    create_timezone,
+    DEFAULT_TZ,
+    TimeProvider,
+    make_tz,
+    parse_timestamp,
+    format_timestamp,
+    format_duration,
+    format_timecode,
 )
 from .text_renderer import (
     draw_textbox,
@@ -36,14 +35,13 @@ __all__ = [
     "load_jsonl",
     "save_jsonl",
     # time_utils
-    "DEFAULT_TIMEZONE",
-    "parse_time_string",
-    "parse_time_value",
-    "timestamp_to_datetime",
-    "timestamp_to_string",
-    "format_duration_ms",
-    "get_current_timestamp_ms",
-    "create_timezone",
+    "DEFAULT_TZ",
+    "TimeProvider",
+    "make_tz",
+    "parse_timestamp",
+    "format_timestamp",
+    "format_duration",
+    "format_timecode",
     # utils
     "get_video_metadata",
     # text_renderer

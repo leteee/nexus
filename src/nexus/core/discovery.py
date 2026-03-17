@@ -1,7 +1,7 @@
 """
 Plugin discovery utilities.
 
-Responsible for loading plugin packages configured in global/local settings
+Responsible for loading plugin packages configured in system settings
 and registering callables decorated with ``@plugin``.
 """
 
@@ -9,9 +9,9 @@ import importlib
 import logging
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-from .config import load_global_configuration
+from .config import load_system_configuration
 from .types import PluginConfig, PluginSpec
 
 logger = logging.getLogger(__name__)
@@ -126,11 +126,12 @@ def resolve_path(path_str: str, project_root: Path) -> Path:
     return expanded.resolve()
 
 
-def discover_all_plugins(project_root: Path) -> None:
+def discover_all_plugins(project_root: Path, system_config: Optional[Dict[str, Any]] = None) -> None:
     clear_registry()
-    global_config = load_global_configuration(project_root)
+    if system_config is None:
+        system_config = load_system_configuration(project_root)
 
-    packages: List[str] = list(dict.fromkeys(global_config.get("framework", {}).get("packages", [])))
+    packages: List[str] = list(dict.fromkeys(system_config.get("framework", {}).get("packages", [])))
     if not packages:
         logger.info("No discovery packages configured")
         return
