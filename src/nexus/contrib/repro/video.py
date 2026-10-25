@@ -1,352 +1,231 @@
-"""
-Video processing utilities for frame extraction and composition.
-
-Provides functions to split videos into frames and compose frames back into video.
-"""
+"""Video probing, frame extraction, blank-frame generation and composition."""
 
 from __future__ import annotations
 
-import logging
+import os
+import shutil
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, List, Any, Callable, Dict
 
 import cv2
 import numpy as np
-import pandas as pd
-import re
 from tqdm import tqdm
 
-from .types import VideoMetadata
-from .common.io import load_frame_timestamps
+from .errors import OutputExistsError, VideoError
+from .models import ComposeResult, ExtractResult, FrameSetResult, VideoProbe
+from .timeline import FramePattern, FrameTimeline
 
-logger = logging.getLogger(__name__)
+
+def probe_video(path: Path | str) -> VideoProbe:
+    """Read basic metadata from a video file."""
+
+    path = Path(path)
+    if not path.exists():
+        raise VideoError(f"video not found: {path}")
+    capture = cv2.VideoCapture(str(path))
+    if not capture.isOpened():
+        raise VideoError(f"cannot open video: {path}")
+    try:
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    finally:
+        capture.release()
+    if fps <= 0 or total_frames <= 0 or width <= 0 or height <= 0:
+        raise VideoError(
+            f"video has invalid metadata: fps={fps}, frames={total_frames}, size={width}x{height}"
+        )
+    return VideoProbe(
+        total_frames=total_frames,
+        fps=fps,
+        width=width,
+        height=height,
+        duration_s=total_frames / fps,
+        source=path,
+    )
+
+
+@contextmanager
+def atomic_output_dir(output_dir: Path | str, *, overwrite: bool) -> Iterator[Path]:
+    """Yield an output directory and promote it atomically on success.
+
+    Existing output is never modified unless ``overwrite=True``; in that case a
+    temporary sibling is populated first and swapped into place at the end.
+    """
+
+    output_dir = Path(output_dir)
+    if output_dir.exists():
+        if not overwrite:
+            raise OutputExistsError(f"output directory already exists: {output_dir}")
+        if not output_dir.is_dir():
+            raise OutputExistsError(f"output path is not a directory: {output_dir}")
+        temporary = output_dir.with_name(f".{output_dir.name}.tmp-{uuid.uuid4().hex[:8]}")
+        temporary.mkdir(parents=True)
+        try:
+            yield temporary
+            if output_dir.exists():
+                shutil.rmtree(output_dir)
+            temporary.rename(output_dir)
+        finally:
+            if temporary.exists():
+                shutil.rmtree(temporary, ignore_errors=True)
+        return
+
+    output_dir.mkdir(parents=True)
+    try:
+        yield output_dir
+    except Exception:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise
 
 
 def extract_frames(
-    video_path: Path,
-    output_path: Path,
+    video_path: Path | str,
+    output_dir: Path | str,
     *,
     frame_pattern: str = "frame_{:06d}.png",
-) -> VideoMetadata:
-    """
-    Extract all frames from video and save as images.
+    overwrite: bool = False,
+    progress: bool = True,
+) -> ExtractResult:
+    """Extract every video frame as an image."""
 
-    Args:
-        video_path: Path to input video file
-        output_path: Directory to save extracted frames
-        frame_pattern: Filename pattern for frames (must contain one format spec)
-
-    Returns:
-        VideoMetadata with extraction info
-
-    Example:
-        >>> metadata = extract_frames(
-        ...     Path("input.mp4"),
-        ...     Path("frames/"),
-        ...     frame_pattern="frame_{:06d}.png"
-        ... )
-        >>> print(f"Extracted {metadata.total_frames} frames at {metadata.fps} FPS")
-    """
     video_path = Path(video_path)
-    output_path = Path(output_path)
-
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video not found: {video_path}")
-
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Open video
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Failed to open video: {video_path}")
+    pattern = FramePattern(frame_pattern)
+    probe = probe_video(video_path)
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        raise VideoError(f"cannot open video: {video_path}")
 
     try:
-        # Get video properties
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        logger.info(
-            f"Video: {total_frames} frames, {fps:.2f} FPS, {width}x{height}"
+        with atomic_output_dir(output_dir, overwrite=overwrite) as target:
+            frame_index = 0
+            with tqdm(total=probe.total_frames, desc="Extracting frames", unit="frame", disable=not progress) as bar:
+                while True:
+                    ok, frame = capture.read()
+                    if not ok:
+                        break
+                    path = pattern.path_for(target, frame_index)
+                    if not cv2.imwrite(str(path), frame):
+                        raise VideoError(f"failed to write frame {frame_index} to {path}")
+                    frame_index += 1
+                    bar.update(1)
+            if frame_index == 0:
+                raise VideoError(f"video contains no readable frames: {video_path}")
+            result = ExtractResult(output_dir=target, probe=probe, frame_count=frame_index)
+        return ExtractResult(
+            output_dir=Path(output_dir),
+            probe=probe,
+            frame_count=result.frame_count,
         )
-
-        frame_idx = 0
-
-        with tqdm(total=total_frames, desc="Extracting frames", unit="frame") as pbar:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                # Save frame
-                frame_path = output_path / frame_pattern.format(frame_idx)
-                cv2.imwrite(str(frame_path), frame)
-
-                frame_idx += 1
-                pbar.update(1)
-
-        logger.info(f"Completed: extracted {frame_idx} frames to {output_path}")
-
-        return VideoMetadata(
-            total_frames=frame_idx,
-            fps=fps,
-            width=width,
-            height=height,
-            output_path=output_path,
-        )
-
     finally:
-        cap.release()
+        capture.release()
+
+
+def blank_frames(
+    timeline: FrameTimeline,
+    output_dir: Path | str,
+    *,
+    width: int,
+    height: int,
+    color: tuple[int, int, int] = (0, 0, 0),
+    frame_pattern: str = "frame_{:06d}.png",
+    overwrite: bool = False,
+    progress: bool = True,
+) -> FrameSetResult:
+    """Generate a solid-color frame for every timeline entry."""
+
+    pattern = FramePattern(frame_pattern)
+    if width <= 0 or height <= 0:
+        raise VideoError("frame width and height must be positive")
+    blank = np.full((height, width, 3), color, dtype=np.uint8)
+    with (
+        atomic_output_dir(output_dir, overwrite=overwrite) as target,
+        tqdm(total=len(timeline), desc="Generating blank frames", unit="frame", disable=not progress) as bar,
+    ):
+        for frame_index, _timestamp in timeline:
+            path = pattern.path_for(target, frame_index)
+            if not cv2.imwrite(str(path), blank):
+                raise VideoError(f"failed to write blank frame {frame_index} to {path}")
+            bar.update(1)
+    return FrameSetResult(
+        output_dir=Path(output_dir),
+        frame_count=len(timeline),
+        width=width,
+        height=height,
+    )
 
 
 def compose_video(
-    frames_dir: Path,
-    output_path: Path,
+    frames_dir: Path | str,
+    output_path: Path | str,
     *,
-    fps: float = 30.0,
+    fps: float,
     frame_pattern: str = "frame_{:06d}.png",
     codec: str = "mp4v",
-    start_frame: int = 0,
-    end_frame: Optional[int] = None,
-) -> Path:
-    """
-    Compose video from sequence of frame images.
+    start_frame: int | None = None,
+    end_frame: int | None = None,
+    overwrite: bool = False,
+    progress: bool = True,
+) -> ComposeResult:
+    """Compose frames into a video, ordered by parsed frame index."""
 
-    Args:
-        frames_dir: Directory containing frame images
-        output_path: Path for output video file
-        fps: Frames per second for output video
-        frame_pattern: Filename pattern for frames
-        codec: FourCC codec code (e.g., 'mp4v', 'XVID', 'H264')
-        start_frame: First frame index to include
-        end_frame: Last frame index (None = all frames)
-
-    Returns:
-        Path to created video file
-
-    Example:
-        >>> compose_video(
-        ...     Path("frames/"),
-        ...     Path("output.mp4"),
-        ...     fps=30.0,
-        ...     frame_pattern="frame_{:06d}.png"
-        ... )
-    """
     frames_dir = Path(frames_dir)
     output_path = Path(output_path)
-
-    if not frames_dir.exists():
-        raise FileNotFoundError(f"Frames directory not found: {frames_dir}")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Find all frames
-    frame_files = sorted(frames_dir.glob(frame_pattern.replace("{:06d}", "*")))
-    if not frame_files:
-        raise FileNotFoundError(f"No frames found in {frames_dir}")
-
-    # Filter by frame range
+    if fps <= 0:
+        raise VideoError("fps must be positive")
+    if output_path.exists() and not overwrite:
+        raise OutputExistsError(f"output video already exists: {output_path}")
+    pattern = FramePattern(frame_pattern)
+    frames = pattern.discover(frames_dir)
+    if start_frame is not None:
+        frames = [(index, path) for index, path in frames if index >= start_frame]
     if end_frame is not None:
-        frame_files = frame_files[start_frame : end_frame + 1]
-    else:
-        frame_files = frame_files[start_frame:]
+        frames = [(index, path) for index, path in frames if index <= end_frame]
+    if not frames:
+        raise VideoError(f"no frames selected in {frames_dir} with pattern {frame_pattern!r}")
 
-    if not frame_files:
-        raise ValueError(f"No frames in range {start_frame}-{end_frame}")
-
-    logger.info(f"Composing video from {len(frame_files)} frames at {fps} FPS")
-
-    # Read first frame to get dimensions
-    first_frame = cv2.imread(str(frame_files[0]))
-    if first_frame is None:
-        raise RuntimeError(f"Failed to read frame: {frame_files[0]}")
-
-    height, width = first_frame.shape[:2]
-
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*codec)
-    writer = cv2.VideoWriter(
-        str(output_path),
-        fourcc,
-        fps,
-        (width, height),
-    )
-
+    first = cv2.imread(str(frames[0][1]))
+    if first is None:
+        raise VideoError(f"cannot read first frame: {frames[0][1]}")
+    height, width = first.shape[:2]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(f".{output_path.stem}.tmp-{uuid.uuid4().hex[:8]}{output_path.suffix}")
+    fourcc = cv2.VideoWriter_fourcc(*codec)  # type: ignore[attr-defined]
+    writer = cv2.VideoWriter(str(temporary), fourcc, fps, (width, height))
     if not writer.isOpened():
-        raise RuntimeError(f"Failed to create video writer: {output_path}")
-
+        temporary.unlink(missing_ok=True)
+        raise VideoError(f"cannot create video writer: {temporary}")
+    written = 0
     try:
-        with tqdm(total=len(frame_files), desc="Composing video", unit="frame") as pbar:
-            for idx, frame_path in enumerate(frame_files):
-                frame = cv2.imread(str(frame_path))
-                if frame is None:
-                    logger.warning(f"Failed to read frame: {frame_path}, skipping")
-                    continue
-
-                writer.write(frame)
-                pbar.update(1)
-
-        logger.info(f"Completed: created video at {output_path}")
-        return output_path
-
-    finally:
-        writer.release()
-
-
-from .common.sensor_manager import SensorDataManager
-
-def render_all_frames(
-    frames_dir: Path,
-    output_path: Path,
-    timestamps_path: Path,
-    sensor_configs: List[Dict[str, Any]],
-    renderer_configs: List[Dict[str, Any]],
-    *,
-    frame_pattern: str = "frame_{:06d}.png",
-    start_time_ms: Optional[float] = None,
-    end_time_ms: Optional[float] = None,
-    ctx: Any,
-) -> Path:
-    """
-    Apply multiple data renderers to all video frames using the SensorDataManager.
-
-    This function orchestrates the entire rendering process:
-    1. Sets up a SensorDataManager with all sensor sources.
-    2. Instantiates all configured renderers.
-    3. For each frame, gets the required data from the manager and "pushes" it to the renderer.
-    """
-    import importlib
-
-    frames_dir = Path(frames_dir)
-    output_path = Path(output_path)
-    timestamps_path = Path(timestamps_path)
-
-    # Validate inputs
-    if not frames_dir.exists():
-        raise FileNotFoundError(f"Frames directory not found: {frames_dir}")
-    if not timestamps_path.exists():
-        raise FileNotFoundError(f"Timestamps file not found: {timestamps_path}")
-
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Clean up existing frames in output_path to avoid mixing old and new
-    # Convert format pattern (e.g. "frame_{:06d}.png") to glob pattern (e.g. "frame_*.png")
-    # We use a simple regex to replace any {...} placeholder with *
-    # Convert format pattern (e.g. "frame_{:06d}.png") to glob pattern (e.g. "frame_*.png")
-    # We use a simple regex to replace any {...} placeholder with *
-    glob_pattern = re.sub(r"\{.*?\}", "*", frame_pattern)
-    existing_files = list(output_path.glob(glob_pattern))
-    if existing_files:
-        logger.info(f"Cleaning up {len(existing_files)} existing files in {output_path}")
-        for f in existing_files:
-            try:
-                f.unlink()
-            except OSError as e:
-                logger.warning(f"Failed to delete {f}: {e}")
-
-    # 1. Set up SensorDataManager
-    logger.info(f"Setting up SensorDataManager with {len(sensor_configs)} sensors...")
-    sensor_manager = SensorDataManager()
-    for sensor_conf in sensor_configs:
-        sensor_manager.register_sensor(
-            name=sensor_conf["name"],
-            data_path=sensor_conf["path"],
-            time_offset_ms=sensor_conf.get("time_offset_ms", 0),
-            tolerance_ms=sensor_conf.get("tolerance_ms", float('inf')),
-        )
-
-    # 2. Instantiate all renderers
-    logger.info(f"Preparing {len(renderer_configs)} renderers...")
-    renderers: List[Dict[str, Any]] = []
-    for i, renderer_conf in enumerate(renderer_configs):
-        class_path = renderer_conf.get("class")
-        if not class_path:
-            raise ValueError(f"Renderer config missing 'class' key: {renderer_conf}")
-
         try:
-            module_path, class_name = class_path.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-            renderer_class = getattr(module, class_name)
-        except (ValueError, ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to import renderer class '{class_path}': {e}")
-
-        renderer_kwargs = renderer_conf.get("kwargs", {})
-        renderer_instance = renderer_class(ctx, **renderer_kwargs)
-
-        renderers.append({
-            "instance": renderer_instance,
-            "sensor": renderer_conf.get("sensor"),  # Can be None
-            "strategy": renderer_conf.get("match_strategy", "forward"),  # Default to 'forward'
-        })
-        logger.info(f"  [{i+1}] {class_path} -> links to sensor '{renderers[-1]['sensor']}'")
-
-    # 3. Load and filter frame timestamps
-    logger.info(f"Loading frame timestamps from {timestamps_path}")
-    frame_times = load_frame_timestamps(timestamps_path)
-
-    if start_time_ms is not None:
-        frame_times = frame_times[frame_times["timestamp_ms"] >= start_time_ms]
-    if end_time_ms is not None:
-        frame_times = frame_times[frame_times["timestamp_ms"] <= end_time_ms]
-
-    if len(frame_times) == 0:
-        logger.warning("No frames in specified time range")
-        return output_path
-
-    # 4. Render all frames
-    logger.info(f"Rendering {len(frame_times)} frames...")
-    rendered_count = 0
-    total_frames = len(frame_times)
-
-    # Performance optimization: Use values instead of iterrows (3-5x faster)
-    frame_indices = frame_times["frame_index"].values
-    timestamps_ms = frame_times["timestamp_ms"].values
-
-    with tqdm(total=total_frames, desc="Rendering frames", unit="frame") as pbar:
-        for i in range(total_frames):
-            frame_idx = int(frame_indices[i])
-            timestamp_ms = float(timestamps_ms[i])
-
-            frame_path = frames_dir / frame_pattern.format(frame_idx)
-            if not frame_path.exists():
-                logger.warning(f"Frame not found: {frame_path}, skipping")
-                continue
-
-            frame = cv2.imread(str(frame_path))
-            if frame is None:
-                logger.warning(f"Failed to read frame: {frame_path}")
-                continue
-
-            ctx.remember("current_frame_idx", frame_idx)
-
-            # Apply all renderers sequentially using the new data-push model
-            for renderer_info in renderers:
-                renderer_instance = renderer_info["instance"]
-                sensor_name = renderer_info["sensor"]
-                strategy = renderer_info["strategy"]
-                
-                data_to_render = None
-                if sensor_name:
-                    # This is a data-driven renderer
-                    if sensor_name in sensor_manager.sensors:
-                        stream = sensor_manager.sensors[sensor_name]
-                        data_to_render = stream.get_value_at(timestamp_ms, strategy=strategy)
-                    else:
-                        logger.warning(f"Sensor '{sensor_name}' not found in SensorDataManager.")
-                else:
-                    # This is a context-driven renderer like FrameInfoRenderer
-                    data_to_render = {'snapshot_time_ms': timestamp_ms}
-                
-                frame = renderer_instance.render(frame, data_to_render)
-
-            # Save rendered frame
-            output_file = output_path / frame_pattern.format(frame_idx)
-            cv2.imwrite(str(output_file), frame)
-
-            rendered_count += 1            
-            pbar.update(1)
-
-    logger.info(f"Completed: rendered {rendered_count} frames to {output_path}")
-    return output_path
-
+            with tqdm(total=len(frames), desc="Composing video", unit="frame", disable=not progress) as bar:
+                for index, path in frames:
+                    frame = cv2.imread(str(path))
+                    if frame is None:
+                        raise VideoError(f"cannot read frame {index}: {path}")
+                    if frame.shape[:2] != (height, width):
+                        raise VideoError(
+                            f"frame {index} has size {frame.shape[1]}x{frame.shape[0]}, "
+                            f"expected {width}x{height}"
+                        )
+                    writer.write(frame)
+                    written += 1
+                    bar.update(1)
+        finally:
+            writer.release()
+        os.replace(temporary, output_path)
+    except OSError as exc:
+        raise VideoError(f"cannot promote video output {output_path}: {exc}") from exc
+    finally:
+        if temporary.exists():
+            temporary.unlink(missing_ok=True)
+    return ComposeResult(
+        output_path=output_path,
+        frame_count=written,
+        fps=fps,
+        width=width,
+        height=height,
+    )

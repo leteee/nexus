@@ -1,123 +1,158 @@
-"""
-Context definitions for the Nexus framework.
-
-Provides lightweight immutable contexts used during pipeline execution.
-"""
+"""Runtime context passed to nodes."""
 
 from __future__ import annotations
 
+import logging
+import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Union
+from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel
+from .config import EngineSettings
+from .models import RunEvent, StepResult
+from .utils import utc_now
 
-from .path_resolver import auto_resolve_paths
+if TYPE_CHECKING:  # pragma: no cover
+    from .engine import Engine
+    from .models import RunResult
 
 
-@dataclass(frozen=True)
-class NexusContext:
+class StepView(dict[str, Any]):
+    """Read-only-ish view of a completed step exposed to expressions.
+
+    Output keys are available both directly (``steps.load.data``) and through
+    the ``outputs`` mapping (``steps.load.outputs.data``).  Metadata keys win
+    over same-named outputs so ``status``/``error`` are always reliable.
     """
-    Global execution context shared across plugins.
 
-    Provides project-level configuration and paths. Does not include logger
-    as per Python best practices - use module-level loggers instead.
-    """
+    def __init__(self, result: StepResult) -> None:
+        outputs = dict(result.outputs)
+        metadata = {
+            "id": result.id,
+            "status": result.status.value,
+            "error": result.error,
+            "attempts": result.attempts,
+            "duration_ms": result.duration_ms,
+            "outputs": outputs,
+        }
+        super().__init__({**outputs, **metadata})
+        self._result = result
 
-    project_root: Path
-    case_path: Path
-    run_config: Dict[str, Any] = field(default_factory=dict)
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
 
-    def create_plugin_context(
-        self,
-        *,
-        config: Optional[BaseModel] = None,
-        shared_state: Dict[str, Any],
-    ) -> "PluginContext":
-        """Produce a PluginContext for a plugin invocation."""
-        return PluginContext(
-            project_root=self.project_root,
-            case_path=self.case_path,
-            config=config,
-            shared_state=shared_state,
-        )
+    @property
+    def ok(self) -> bool:
+        return self._result.ok
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"StepView(id={self['id']!r}, status={self['status']!r}, keys={sorted(self['outputs'])})"
+
+
+EventListener = Callable[[RunEvent], None]
 
 
 @dataclass
-class PluginContext:
-    """
-    Context passed to plugins during execution.
+class NodeContext:
+    """Execution context for a single node invocation."""
 
-    Provides utilities for path resolution and state management.
-    Does not include logger - plugins should use module-level loggers
-    following Python logging best practices.
-
-    Automatically resolves path parameters following the '*_path' convention.
-    """
-
+    run_id: str
+    flow_name: str
+    flow_path: Path
+    step_id: str
+    attempt: int
     project_root: Path
-    case_path: Path
-    config: Optional[BaseModel] = None
-    shared_state: Dict[str, Any] = field(default_factory=dict)
+    workdir: Path
+    settings: EngineSettings
+    scope: Mapping[str, Any]
+    engine: Engine
+    logger: logging.Logger
+    subflow_stack: tuple[str, ...] = ()
+    event_listener: EventListener | None = field(default=None, repr=False)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def resolve_path(self, value: Union[str, Path]) -> Path:
-        """
-        Resolve a path relative to the case directory.
+    # -- convenience accessors -------------------------------------------
 
-        Args:
-            value: Path string or Path object
+    @property
+    def vars(self) -> Mapping[str, Any]:
+        value = self.scope.get("vars", {})
+        return value if isinstance(value, Mapping) else {}
 
-        Returns:
-            Absolute path
+    @property
+    def steps(self) -> Mapping[str, Any]:
+        value = self.scope.get("steps", {})
+        return value if isinstance(value, Mapping) else {}
 
-        Example:
-            >>> ctx.resolve_path("input/data.json")
-            Path("/abs/case/path/input/data.json")
-        """
-        path = Path(value)
+    @property
+    def config(self) -> Mapping[str, Any]:
+        value = self.scope.get("config", {})
+        return value if isinstance(value, Mapping) else {}
+
+    @property
+    def env(self) -> Mapping[str, Any]:
+        value = self.scope.get("env", {})
+        return value if isinstance(value, Mapping) else {}
+
+    # -- paths ------------------------------------------------------------
+
+    def path(self, value: str | Path, *, base: Path | None = None) -> Path:
+        """Resolve *value* relative to the run working directory by default."""
+
+        path = Path(os.path.expandvars(os.path.expanduser(str(value))))
         if path.is_absolute():
-            return path
-        return self.case_path / path
+            return path.resolve()
+        return ((base or self.workdir) / path).resolve()
 
-    def auto_resolve_paths(
+    def project_path(self, value: str | Path) -> Path:
+        return self.path(value, base=self.project_root)
+
+    def ensure_dir(self, value: str | Path, *, base: Path | None = None) -> Path:
+        path = self.path(value, base=base)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    # -- observability ----------------------------------------------------
+
+    def emit(self, event_type: str, **data: Any) -> None:
+        if self.event_listener is None:
+            return
+        self.event_listener(
+            RunEvent(
+                type=event_type,
+                timestamp=utc_now(),
+                run_id=self.run_id,
+                flow=self.flow_name,
+                step=self.step_id,
+                data=data,
+            )
+        )
+
+    def log(self, level: int, message: str, *args: Any, **kwargs: Any) -> None:
+        self.logger.log(level, message, *args, **kwargs)
+
+    # -- composition ------------------------------------------------------
+
+    def run_flow(
         self,
-        config: Union[Dict[str, Any], BaseModel],
-        skip_keys: Optional[Set[str]] = None,
-    ) -> Union[Dict[str, Any], BaseModel]:
-        """
-        Automatically resolve all parameters ending with '_path'.
+        flow: str | Path,
+        *,
+        workdir: str | Path | None = None,
+        variables: Mapping[str, Any] | None = None,
+        inputs: Mapping[str, Any] | None = None,
+        inherit_vars: bool = False,
+    ) -> RunResult:
+        """Execute a child flow using the current engine and registry."""
 
-        Convention:
-            Any parameter named '*_path' will be resolved to an absolute path
-            relative to the case directory.
-
-        Args:
-            config: Configuration dict or Pydantic model
-            skip_keys: Optional set of keys to skip resolution
-
-        Returns:
-            Configuration with all *_path parameters resolved
-
-        Example:
-            >>> params = {
-            ...     "data_path": "input/data.json",
-            ...     "output_path": "output/results.csv",
-            ...     "threshold": 0.5
-            ... }
-            >>> resolved = ctx.auto_resolve_paths(params)
-            >>> # data_path and output_path are now absolute paths
-
-            >>> # With Pydantic model
-            >>> config = MyConfig(data_path="input/data.json")
-            >>> ctx.auto_resolve_paths(config)
-            >>> # config.data_path is now absolute path
-        """
-        return auto_resolve_paths(config, self.resolve_path, skip_keys)
-
-    def remember(self, key: str, value: Any) -> None:
-        """Store a value in the shared state for subsequent plugins."""
-        self.shared_state[key] = value
-
-    def recall(self, key: str, default: Any = None) -> Any:
-        """Retrieve a value stored by a previous plugin."""
-        return self.shared_state.get(key, default)
+        child_workdir = self.path(workdir) if workdir is not None else self.workdir
+        return self.engine.run_subflow(
+            flow,
+            parent=self,
+            workdir=child_workdir,
+            variables=dict(variables or {}),
+            inputs=dict(inputs or {}),
+            inherit_vars=inherit_vars,
+        )

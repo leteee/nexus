@@ -1,0 +1,19 @@
+# on_error: continue lets the run continue and keeps the failure visible.
+#
+#   nexus run features/on_error -w runs/on-error
+version: "2.0"
+name: on-error-demo
+description: Continue after a failing step.
+steps:
+  - id: failing
+    use: core.fail
+    on_error: continue
+    with:
+      message: "expected failure"
+  - id: still_runs
+    needs: [failing]
+    use: core.echo
+    with:
+      value: "the run continued"
+outputs:
+  failure: "${steps.failing.error}"

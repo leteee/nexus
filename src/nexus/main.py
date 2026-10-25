@@ -1,143 +1,55 @@
-"""
-Simplified main entry point for Nexus framework.
+"""Programmatic convenience API for Nexus 2.0.
 
-Provides clean programmatic access to the core functionality.
+The CLI is a thin wrapper around :class:`nexus.Engine`; applications can use the
+helpers below or instantiate the engine directly.
 """
 
+from __future__ import annotations
+
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from .core.case_manager import CaseManager
-from .core.config import load_system_configuration
-from .core.engine import PipelineEngine
-
-
-def _build_case_manager(project_root: Path) -> tuple[CaseManager, Dict[str, Any]]:
-    """Construct CaseManager using system configuration."""
-
-    system_config = load_system_configuration(project_root)
-    framework_cfg = system_config.get("framework", {})
-
-    cases_roots = framework_cfg.get("cases_roots", ["cases"])
-    if isinstance(cases_roots, str):
-        cases_roots = [cases_roots]
-
-    templates_roots = framework_cfg.get("templates_roots", ["templates"])
-    if isinstance(templates_roots, str):
-        templates_roots = [templates_roots]
-
-    manager = CaseManager(
-        project_root,
-        cases_roots=cases_roots,
-        templates_roots=templates_roots,
-    )
-
-    return manager, system_config
-
+from .core.config import EngineSettings, load_settings
+from .core.engine import Engine
+from .core.models import FlowSpec, RunResult
 
 
 def create_engine(
-    case_path: str, project_root: Optional[Path] = None
-) -> PipelineEngine:
-    """
-    Create a PipelineEngine instance for a specific case.
+    project_root: Path | str | None = None,
+    *,
+    settings: EngineSettings | None = None,
+    overrides: Mapping[str, Any] | None = None,
+) -> Engine:
+    """Create an engine for a project."""
 
-    Args:
-        case_path: Case identifier or absolute path
-        project_root: Path to project root (auto-detected if None)
-
-    Returns:
-        Configured PipelineEngine instance
-    """
-    if project_root is None:
-        current = Path.cwd()
-        while current != current.parent:
-            if (current / "pyproject.toml").exists():
-                project_root = current
-                break
-            current = current.parent
-        else:
-            project_root = Path.cwd()
-
-    # Load merged configuration and resolve case path
-    case_manager, system_config = _build_case_manager(project_root)
-    case_dir = case_manager.resolve_case_path(case_path)
-
-    return PipelineEngine(project_root, case_dir, system_config)
+    if settings is None:
+        settings = load_settings(project_root, overrides=overrides)
+    return Engine(settings=settings)
 
 
-def run_pipeline(
-    case_path: str,
-    template_name: Optional[str] = None,
-    config_overrides: Optional[Dict[str, Any]] = None,
-    project_root: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """
-    Run a complete pipeline in the specified case.
+def run_flow(
+    flow: FlowSpec | str | Path,
+    *,
+    workdir: Path | str | None = None,
+    variables: Mapping[str, Any] | None = None,
+    inputs: Mapping[str, Any] | None = None,
+    project_root: Path | str | None = None,
+    settings: EngineSettings | None = None,
+) -> RunResult:
+    """Run a flow with a fresh engine."""
 
-    Args:
-        case_path: Case identifier or absolute path
-        template_name: Template to use (optional)
-        config_overrides: Configuration overrides
-        project_root: Path to project root (auto-detected if None)
-
-    Returns:
-        Dictionary of all pipeline outputs
-    """
-    if project_root is None:
-        current = Path.cwd()
-        while current != current.parent:
-            if (current / "pyproject.toml").exists():
-                project_root = current
-                break
-            current = current.parent
-        else:
-            project_root = Path.cwd()
-
-    # Load merged configuration and access pipeline data
-    case_manager, system_config = _build_case_manager(project_root)
-    config_path, case_config = case_manager.get_case_config(
-        case_path, template_name
-    )
-    case_dir = case_manager.resolve_case_path(case_path)
-
-    # Create and run pipeline
-    engine = PipelineEngine(project_root, case_dir, system_config)
-    return engine.run_pipeline(case_config, config_overrides)
+    engine = create_engine(project_root, settings=settings)
+    return engine.run(flow, workdir=workdir, variables=variables, inputs=inputs)
 
 
-def run_plugin(
-    plugin_name: str,
-    case_path: str,
-    config_overrides: Optional[Dict[str, Any]] = None,
-    project_root: Optional[Path] = None,
-) -> Any:
-    """
-    Run a single plugin in the specified case.
+def validate_flow(
+    flow: FlowSpec | str | Path,
+    *,
+    project_root: Path | str | None = None,
+    settings: EngineSettings | None = None,
+) -> list[str]:
+    """Return validation errors for a flow (empty means valid)."""
 
-    Args:
-        plugin_name: Name of plugin to execute
-        case_path: Case identifier or absolute path
-        config_overrides: Configuration overrides
-        project_root: Path to project root (auto-detected if None)
-
-    Returns:
-        Plugin execution result
-    """
-    if project_root is None:
-        current = Path.cwd()
-        while current != current.parent:
-            if (current / "pyproject.toml").exists():
-                project_root = current
-                break
-            current = current.parent
-        else:
-            project_root = Path.cwd()
-
-    # Load merged configuration and resolve case path
-    case_manager, system_config = _build_case_manager(project_root)
-    case_dir = case_manager.resolve_case_path(case_path)
-
-    # Create and run plugin
-    engine = PipelineEngine(project_root, case_dir, system_config)
-    return engine.run_single_plugin(plugin_name, config_overrides)
+    engine = create_engine(project_root, settings=settings)
+    return engine.validate(flow)

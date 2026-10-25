@@ -1,0 +1,15 @@
+{
+  "_format": "OpenCV-compatible camera calibration format",
+  "_description": "Explicit 320x240 calibration for the small repro test video. Do not rely on automatic intrinsic scaling.",
+  "camera_name": "test_320x240",
+  "image_width": 320,
+  "image_height": 240,
+  "camera_matrix": [
+    [192.0, 0.0, 160.0],
+    [0.0, 192.0, 120.0],
+    [0.0, 0.0, 1.0]
+  ],
+  "distortion_coefficients": [0.0, 0.0, 0.0, 0.0, 0.0],
+  "rotation_vector": [-0.17453293, 0.0, 0.0],
+  "translation_vector": [2.5, 0.0, 1.8]
+}

@@ -1,128 +1,142 @@
-"""
-Data replay visualization module for Nexus.
+"""Repro: video data replay and temporal sensor visualization (Nexus 2.0).
 
-Provides utilities for replaying time-series data synchronized with video:
-- Video frame extraction and composition
-- Time-based data matching
-- Abstract rendering interface for data visualization
-- Modular renderers for different data types
-- High-performance parallel processing (3-8x speedup)
-
-Main components:
-    - types: DataRenderer base class, data structures, utility functions
-    - video: extract_frames(), compose_video(), render_all_frames()
-    - video_parallel: render_all_frames_parallel() - High-performance parallel version
-    - video_benchmark: Performance profiling and comparison tools
-    - datagen: Timeline/speed/ADB data generators
-    - renderers: SpeedRenderer, TargetRenderer, FrameInfoRenderer
-
-Performance:
-    - Sequential (optimized): 2.5-3x faster than original
-    - Parallel processing: 3-8x faster than sequential (depending on CPU cores)
-    - See performance_optimization.md for detailed guide
-
-Example (Sequential):
-    >>> from nexus.contrib.repro import render_all_frames
-    >>> from nexus.contrib.repro.renderers import SpeedRenderer, TargetRenderer
-    >>>
-    >>> # Use renderer classes directly
-    >>> renderer_configs = [
-    ...     {"class": "nexus.contrib.repro.renderers.SpeedRenderer",
-    ...      "sensor": "speed_sensor", "kwargs": {...}},
-    ...     {"class": "nexus.contrib.repro.renderers.TargetRenderer",
-    ...      "sensor": "target_sensor", "kwargs": {...}}
-    ... ]
-    >>> render_all_frames("frames/", "output/", "timestamps.csv",
-    ...                   sensor_configs, renderer_configs, ctx=ctx)
-
-Example (Parallel - Recommended for >100 frames):
-    >>> from nexus.contrib.repro.video_parallel import render_all_frames_parallel
-    >>>
-    >>> # Drop-in replacement with 3-8x speedup
-    >>> render_all_frames_parallel(
-    ...     "frames/", "output/", "timestamps.csv",
-    ...     sensor_configs, renderer_configs, ctx=ctx,
-    ...     num_workers=8  # Use 8 CPU cores (default: all cores)
-    ... )
-
-Example (Benchmarking):
-    >>> from nexus.contrib.repro.video_benchmark import compare_render_methods
-    >>>
-    >>> results = compare_render_methods(
-    ...     frames_dir, output_base, timestamps_path,
-    ...     sensor_configs, renderer_configs, ctx,
-    ...     methods=["sequential", "parallel"],
-    ...     num_workers=8
-    ... )
-    >>> print(results)
+This pack is optional.  Install ``nexus[repro]`` for pandas-free video and
+sensor tooling; the Nexus core does not import anything from this package.
 """
 
 from __future__ import annotations
 
-# Core types
-from .types import (
-    DataRenderer,
-    VideoMetadata,
-)
-
-# I/O utilities
-from .common.io import (
-    load_frame_timestamps,
-    load_jsonl,
-    save_jsonl,
-)
-
-# Video processing
-from .video import extract_frames, compose_video, render_all_frames
-
-# Video utilities
-from .common.utils import get_video_metadata
-
-# Standard video processing
-from .video import (
-    extract_frames,
-    compose_video,
-    render_all_frames,
-)
-
-# Data generation utilities
+from .camera import DEFAULT_CAMERA_PATH, CameraModel, ProjectedTarget
 from .datagen import (
-    generate_timeline_with_jitter,
-    generate_speed_data_event_driven,
-    generate_adb_target_data,
-    save_timeline_csv,
+    DEFAULT_PROFILES,
+    MAX_ANGLE_H,
+    MAX_ANGLE_V,
+    TARGET_DIMS,
     SpeedProfile,
+    TargetType,
+    calculate_edge_angles,
+    generate_adb_targets,
+    generate_driving_video,
+    generate_speed,
+    generate_timeline,
+    generate_timeline_from_range,
+    save_timeline_csv,
 )
-
-# Import renderers
+from .errors import (
+    CameraError,
+    MissingFrameError,
+    OutputExistsError,
+    RendererError,
+    ReproError,
+    SensorDataError,
+    TimelineError,
+    VideoError,
+)
+from .io import load_jsonl, save_jsonl
+from .models import (
+    ComposeResult,
+    ExtractResult,
+    FrameSetResult,
+    RendererSpec,
+    RenderRequest,
+    RenderResult,
+    SensorMatch,
+    SensorSpec,
+    VideoProbe,
+)
+from .render import ReplayPipeline
 from .renderers import (
+    FrameInfoRenderer,
+    RenderContext,
+    Renderer,
+    RendererRegistry,
     SpeedRenderer,
     TargetRenderer,
-    FrameInfoRenderer,
+    default_renderer_registry,
+    register_renderer,
+)
+from .sensors import SensorReader, SensorStore
+from .text import TextboxStyle, draw_textbox
+from .time import (
+    DEFAULT_TZ,
+    TimeProvider,
+    format_duration,
+    format_timecode,
+    format_timestamp,
+    parse_timestamp,
+)
+from .timeline import FramePattern, FrameTimeline
+from .video import (
+    atomic_output_dir,
+    blank_frames,
+    compose_video,
+    extract_frames,
+    probe_video,
 )
 
+__version__ = "2.0.0"
+
 __all__ = [
-    # Types
-    "DataRenderer",
-    "VideoMetadata",
-    # I/O utilities
-    "load_frame_timestamps",
+    "CameraModel",
+    "ProjectedTarget",
+    "DEFAULT_CAMERA_PATH",
+    "DEFAULT_PROFILES",
+    "MAX_ANGLE_H",
+    "MAX_ANGLE_V",
+    "TARGET_DIMS",
+    "SpeedProfile",
+    "TargetType",
+    "calculate_edge_angles",
+    "generate_adb_targets",
+    "generate_driving_video",
+    "generate_speed",
+    "generate_timeline",
+    "generate_timeline_from_range",
+    "save_timeline_csv",
+    "CameraError",
+    "MissingFrameError",
+    "OutputExistsError",
+    "RendererError",
+    "ReproError",
+    "SensorDataError",
+    "TimelineError",
+    "VideoError",
     "load_jsonl",
     "save_jsonl",
-    # Video processing
-    "extract_frames",
-    "compose_video",
-    "render_all_frames",
-    # Video metadata
-    "get_video_metadata",
-    # Data generation
-    "generate_timeline_with_jitter",
-    "generate_speed_data_event_driven",
-    "generate_adb_target_data",
-    "save_timeline_csv",
-    "SpeedProfile",
-    # Renderers
+    "ComposeResult",
+    "ExtractResult",
+    "FrameSetResult",
+    "RendererSpec",
+    "RenderRequest",
+    "RenderResult",
+    "SensorMatch",
+    "SensorSpec",
+    "VideoProbe",
+    "ReplayPipeline",
+    "FrameInfoRenderer",
+    "RenderContext",
+    "Renderer",
+    "RendererRegistry",
     "SpeedRenderer",
     "TargetRenderer",
-    "FrameInfoRenderer",
+    "default_renderer_registry",
+    "register_renderer",
+    "SensorReader",
+    "SensorStore",
+    "TextboxStyle",
+    "draw_textbox",
+    "DEFAULT_TZ",
+    "TimeProvider",
+    "format_duration",
+    "format_timecode",
+    "format_timestamp",
+    "parse_timestamp",
+    "FramePattern",
+    "FrameTimeline",
+    "atomic_output_dir",
+    "blank_frames",
+    "compose_video",
+    "extract_frames",
+    "probe_video",
+    "__version__",
 ]

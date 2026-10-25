@@ -1,0 +1,12 @@
+version: "2.0"
+name: child
+description: Child flow used by the subflow demo.
+inputs:
+  name: world
+steps:
+  - id: greet
+    use: core.echo
+    with:
+      value: "hello ${inputs.name}"
+outputs:
+  greeting: "${steps.greet.value}"

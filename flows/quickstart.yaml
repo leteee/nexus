@@ -1,0 +1,58 @@
+# Nexus 2.0 quickstart
+#
+#   nexus run quickstart -w runs/quickstart
+#
+# A core-only flow: seed JSON, load it, derive a value with core.python,
+# validate it, then write a report. No domain pack required.
+version: "2.0"
+name: quickstart
+description: A minimal core-only flow demonstrating data flow, Python logic and assertions.
+
+vars:
+  dataset_path: "data/people.json"
+  report_path: "data/report.json"
+
+steps:
+  - id: seed
+    use: io.write_json
+    with:
+      path: "${vars.dataset_path}"
+      data:
+        - {name: Alice, score: 91}
+        - {name: Bob, score: 78}
+        - {name: Carol, score: 85}
+
+  - id: load
+    needs: [seed]
+    use: io.read_json
+    with:
+      path: "${vars.dataset_path}"
+
+  - id: count
+    needs: [load]
+    use: core.python
+    with:
+      target: builtins.len
+      args:
+        - "${steps.load.data}"
+
+  - id: check
+    needs: [count]
+    use: core.assert
+    with:
+      condition: "${steps.count.result >= 3}"
+      message: "expected at least three records"
+
+  - id: report
+    needs: [check, load]
+    use: io.write_json
+    with:
+      path: "${vars.report_path}"
+      data:
+        rows: "${steps.load.data}"
+        count: "${steps.count.result}"
+        source: "${vars.dataset_path}"
+
+outputs:
+  report: "${steps.report.path}"
+  count: "${steps.count.result}"

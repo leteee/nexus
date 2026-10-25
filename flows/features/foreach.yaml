@@ -1,0 +1,35 @@
+# foreach + when + retry.
+#
+#   nexus run features/foreach -w runs/foreach
+version: "2.0"
+name: foreach-demo
+description: Expand a step over a list with bounded concurrency.
+vars:
+  numbers: [1, 2, 3, 4, 5]
+steps:
+  - id: double
+    use: core.echo
+    foreach:
+      items: "${vars.numbers}"
+      as: n
+      index: i
+      concurrency: 3
+    with:
+      value: "${n * 2 + i}"
+
+  - id: only_even
+    needs: [double]
+    when: "${vars.numbers[0] % 2 == 0}"
+    use: core.echo
+    with:
+      value: "runs when the first number is even"
+
+  - id: save
+    needs: [double]
+    use: io.write_json
+    with:
+      path: "doubled.json"
+      data: "${steps.double.items}"
+outputs:
+  values: "${steps.double.items}"
+  count: "${steps.double.count}"

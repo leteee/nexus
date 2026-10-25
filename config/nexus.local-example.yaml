@@ -1,0 +1,6 @@
+# Copy to config/nexus.local.yaml for machine-specific overrides.
+execution:
+  strategy: dag
+  max_workers: 4
+logging:
+  level: DEBUG
