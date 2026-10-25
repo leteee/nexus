@@ -1,146 +1,256 @@
-"""
-Configuration management for Nexus framework (business config only).
+"""Engine configuration loading and layering.
 
-Precedence (business): plugin defaults < case/template < CLI overrides.
-System settings are handled separately via setting*.yaml.
-Typical usage:
-    case_cfg = load_yaml(Path("cases/demo/case.yaml"))
-    cli = {"plugins": {"MyPlugin": {"foo": 1}}}
-    ctx = create_configuration_context(case_cfg, cli, PLUGIN_REGISTRY)
+Configuration precedence (lowest to highest):
+
+1. built-in defaults from :class:`EngineSettings`
+2. ``<project>/config/nexus.yaml``
+3. ``<project>/config/nexus.local.yaml``
+4. an optional extra config file (``NEXUS_CONFIG`` or ``--config-file``)
+5. ``NEXUS__*`` environment variables (``__`` separates nested keys)
+6. programmatic/CLI overrides
+
+Flow-level ``vars`` and ``config`` are resolved later by the engine and are not
+part of engine settings.
 """
 
 from __future__ import annotations
 
-import logging
-from functools import lru_cache
+import os
+from collections.abc import Mapping
+from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
+from pydantic import Field, field_validator
 
-from .config_processors import ProcessingContext, process_plugin_config
+from .errors import ConfigError
+from .models import ExecutionSettings, NexusModel
+from .utils import deep_merge
 
-logger = logging.getLogger(__name__)
-
-SYSTEM_CONFIG_FILES = ("setting.yaml", "setting-local.yaml")
-SYSTEM_ALLOWED_TOP_LEVEL = {"framework", "logging"}
-
-
-# YAML loading ----------------------------------------------------------------
+ENV_PREFIX = "NEXUS__"
+DEFAULT_CONFIG_FILES = ("config/nexus.yaml", "config/nexus.local.yaml")
+PROJECT_MARKERS = ("pyproject.toml", "config/nexus.yaml", ".git")
 
 
-@lru_cache(maxsize=128)
-def _load_yaml_cached(file_path_str: str) -> Dict[str, Any]:
+class LoggingSettings(NexusModel):
+    level: str = Field(default="INFO", description="Root log level for Nexus loggers.")
+    file: str | None = Field(default=None, description="Optional log file, relative to the project root.")
+    rich: bool = Field(default=True, description="Use rich-formatted console logging when available.")
+
+
+class EngineSettings(NexusModel):
+    """Resolved engine configuration."""
+
+    version: str | int = Field(default=2, description="Settings schema version.")
+    project_root: Path = Field(default_factory=Path.cwd, description="Project root used for discovery.")
+    workdir: Path | None = Field(default=None, description="Default working directory for runs.")
+    flow_paths: list[str] = Field(
+        default_factory=lambda: ["flows"],
+        description="Directories searched when a flow is referenced by name.",
+    )
+    node_modules: list[str] = Field(
+        default_factory=list,
+        description="Additional Python modules imported to register nodes.",
+    )
+    load_entry_points: bool = Field(default=True, description="Load node packs from 'nexus.nodes' entry points.")
+    execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    max_subflow_depth: int = Field(default=8, ge=1, le=64)
+
+    @field_validator("project_root", mode="before")
+    @classmethod
+    def _absolute_root(cls, value: Any) -> Any:
+        path = Path(value).expanduser()
+        return path.resolve() if path.is_absolute() else path
+
+    def scope(self) -> dict[str, Any]:
+        """Return the settings as a JSON-ish mapping for expressions."""
+
+        return self.model_dump(mode="json")
+
+
+def detect_project_root(start: Path | None = None) -> Path:
+    """Find the nearest directory containing a project marker."""
+
+    current = (start or Path.cwd()).resolve()
+    if current.is_file():
+        current = current.parent
+    for candidate in (current, *current.parents):
+        if any((candidate / marker).exists() for marker in PROJECT_MARKERS):
+            return candidate
+    return current
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:
     try:
-        with open(file_path_str, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
-    except yaml.YAMLError as e:
-        raise ValueError(f"Invalid YAML in {file_path_str}: {e}")
+        with path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except OSError as exc:
+        raise ConfigError(f"cannot read config file {path}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"invalid YAML in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"config file {path} must contain a mapping at the top level")
+    return data
 
 
-def load_yaml(file_path: Path) -> Dict[str, Any]:
-    return _load_yaml_cached(str(file_path))
-
-
-# System config ---------------------------------------------------------------
-
-
-def _iter_config_layers(project_root: Path, file_names: tuple[str, ...]):
-    config_dir = project_root / "config"
-    for file_name in file_names:
-        path = config_dir / file_name
-        if not path.exists():
+def _env_overrides(environ: Mapping[str, str]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    for key, raw in environ.items():
+        if not key.startswith(ENV_PREFIX):
             continue
-        layer = load_yaml(path)
-        if layer:
-            yield layer
+        path = key[len(ENV_PREFIX) :].lower().split("__")
+        if not all(path):
+            continue
+        try:
+            value = _plain_value(yaml.safe_load(raw))
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"invalid value for environment variable {key}: {exc}") from exc
+        cursor = overrides
+        for part in path[:-1]:
+            cursor = cursor.setdefault(part, {})
+            if not isinstance(cursor, dict):
+                raise ConfigError(f"environment variable {key} conflicts with another override")
+        cursor[path[-1]] = value
+    return overrides
 
 
-def _filter_system_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    filtered = {k: v for k, v in config.items() if k in SYSTEM_ALLOWED_TOP_LEVEL}
-    return filtered
+def _coerce_root_paths(layer: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Resolve path-valued settings against the project root."""
 
-
-def load_system_configuration(project_root: Path, cli_overrides: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    merged: Dict[str, Any] = {}
-    for layer in _iter_config_layers(project_root, SYSTEM_CONFIG_FILES):
-        merged = deep_merge(merged, layer)
-    merged = _filter_system_config(merged)
-    if cli_overrides:
-        merged = deep_merge(merged, _filter_system_config(cli_overrides))
-    return merged
-
-
-# Deep merge ------------------------------------------------------------------
-
-
-def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    result = base.copy()
-    for k, v in override.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = deep_merge(result[k], v)
-        else:
-            result[k] = v
+    result = dict(layer)
+    if "project_root" in result and result["project_root"] is not None:
+        project = Path(result["project_root"]).expanduser()
+        result["project_root"] = str(project if project.is_absolute() else (root / project))
+    if "workdir" in result and result["workdir"] is not None:
+        workdir = Path(result["workdir"]).expanduser()
+        result["workdir"] = str(workdir if workdir.is_absolute() else (root / workdir))
     return result
 
 
-# Plugin defaults -------------------------------------------------------------
+def load_settings(
+    project_root: Path | str | None = None,
+    *,
+    config_files: list[Path | str] | None = None,
+    overrides: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> EngineSettings:
+    """Load merged :class:`EngineSettings` for *project_root*."""
+
+    root = Path(project_root).expanduser().resolve() if project_root else detect_project_root()
+    environ = os.environ if environ is None else environ
+    merged: dict[str, Any] = {}
+
+    for relative in DEFAULT_CONFIG_FILES:
+        path = root / relative
+        if path.exists():
+            merged = deep_merge(merged, _read_yaml(path))
+
+    extra_files: list[Path] = [Path(item).expanduser() for item in (config_files or [])]
+    env_config = environ.get("NEXUS_CONFIG")
+    if env_config and not extra_files:
+        extra_files.append(Path(env_config).expanduser())
+    for path in extra_files:
+        if not path.is_absolute():
+            path = root / path
+        if not path.exists():
+            raise ConfigError(f"config file not found: {path}")
+        merged = deep_merge(merged, _read_yaml(path))
+
+    merged = deep_merge(merged, _env_overrides(environ))
+    if overrides:
+        merged = deep_merge(merged, dict(overrides))
+
+    merged = _coerce_root_paths(merged, root)
+    merged.setdefault("project_root", str(root))
+    try:
+        return EngineSettings.model_validate(merged)
+    except Exception as exc:
+        raise ConfigError(f"invalid engine configuration: {exc}") from exc
 
 
-def extract_plugin_defaults(plugin_registry: Dict[str, Any]) -> Dict[str, Dict]:
-    defaults_map = {}
-    for name, spec in plugin_registry.items():
+def _plain_value(value: Any) -> Any:
+    """Keep CLI overrides JSON/YAML friendly (PyYAML parses timestamps)."""
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _plain_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_plain_value(item) for item in value]
+    return value
+
+
+def parse_cli_set(items: tuple[str, ...] | list[str]) -> dict[str, Any]:
+    """Parse ``key.path=value`` CLI overrides into a nested mapping."""
+
+    result: dict[str, Any] = {}
+    for item in items:
+        if "=" not in item:
+            raise ConfigError(f"invalid override '{item}'; expected key=value")
+        key, raw = item.split("=", 1)
+        if not key:
+            raise ConfigError(f"invalid override '{item}'; empty key")
         try:
-            if hasattr(spec, "config_model") and spec.config_model:
-                model_instance = spec.config_model()
-                defaults_map[name] = model_instance.model_dump()
-            else:
-                defaults_map[name] = {}
-        except Exception:
-            defaults_map[name] = {}
-    return defaults_map
+            value = _plain_value(yaml.safe_load(raw))
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"invalid value for '{key}': {exc}") from exc
+        cursor = result
+        parts = key.split(".")
+        for part in parts[:-1]:
+            cursor = cursor.setdefault(part, {})
+            if not isinstance(cursor, dict):
+                raise ConfigError(f"override '{key}' conflicts with another override")
+        cursor[parts[-1]] = value
+    return result
 
 
-# Business configuration ------------------------------------------------------
+def resolve_flow_path(settings: EngineSettings, reference: str | Path) -> Path:
+    """Resolve a flow path or a bare flow name from configured search paths."""
 
+    candidate = Path(reference).expanduser()
+    if candidate.is_file():
+        return candidate.resolve()
+    if candidate.suffix in {".yaml", ".yml"} and not candidate.is_absolute():
+        local = (Path.cwd() / candidate).resolve()
+        if local.is_file():
+            return local
 
-def create_configuration_context(
-    case_config: Dict[str, Any],
-    cli_overrides: Dict[str, Any],
-    plugin_registry: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Business configuration precedence: plugin defaults < case/template < CLI."""
-    context: Dict[str, Any] = {"plugins": extract_plugin_defaults(plugin_registry)}
-    context = deep_merge(context, case_config)
-    context = deep_merge(context, cli_overrides)
-    return context
-
-
-def get_plugin_configuration(
-    plugin_name: str,
-    config_context: Dict[str, Any],
-    step_config: Dict[str, Any],
-    config_model: type | None = None,
-    proc_ctx: ProcessingContext | None = None,
-    defaults: Dict[str, Any] | None = None,
-) -> Any:
-    # Defaults from model
-    plugin_defaults = {}
-    if config_model:
+    relative = candidate
+    if relative.is_absolute():
         try:
-            plugin_defaults = config_model().model_dump()
-        except Exception:
-            plugin_defaults = {}
+            relative = relative.relative_to(settings.project_root)
+        except ValueError:
+            relative = Path(relative.name)
+    names = (
+        [relative]
+        if relative.suffix
+        else [relative.with_suffix(".yaml"), relative.with_suffix(".yml")]
+    )
 
-    global_plugin_config = config_context.get("plugins", {}).get(plugin_name, {})
-    merged_config = deep_merge(plugin_defaults, global_plugin_config)
-    merged_config = deep_merge(merged_config, step_config)
+    searched: list[Path] = []
+    for root_name in settings.flow_paths:
+        root = Path(os.path.expandvars(os.path.expanduser(root_name)))
+        if not root.is_absolute():
+            root = settings.project_root / root
+        if not root.exists():
+            continue
+        searched.append(root)
+        for name in names:
+            direct = root / name
+            if direct.is_file():
+                return direct.resolve()
+            for match in sorted(root.rglob(str(name))):
+                if match.is_file():
+                    return match.resolve()
 
-    if proc_ctx:
-        merged_config = process_plugin_config(merged_config, defaults or {}, None, proc_ctx)
-
-    if config_model:
-        return config_model(**merged_config)
-    return merged_config
+    available: list[str] = []
+    for root in searched:
+        for path in sorted(root.rglob("*.y*ml")):
+            try:
+                available.append(str(path.relative_to(root)))
+            except ValueError:
+                continue
+    suffix = f" Available flows: {', '.join(available[:20])}" if available else ""
+    raise ConfigError(f"flow '{reference}' not found in {', '.join(str(path) for path in searched) or 'search paths'}.{suffix}")

@@ -1,0 +1,19 @@
+# Retry with a marker file: the first attempt fails, the second succeeds.
+#
+#   nexus run features/retry -w runs/retry
+version: "2.0"
+name: retry-demo
+description: Demonstrate retry and failure handling.
+execution:
+  strategy: sequential
+steps:
+  - id: flaky_once
+    use: core.shell
+    with:
+      command: "test -f retry.marker || (touch retry.marker; exit 1)"
+      shell: true
+    retry:
+      max_attempts: 2
+      delay_s: 0.05
+outputs:
+  attempts: "${steps.flaky_once.attempts}"

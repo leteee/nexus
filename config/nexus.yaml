@@ -1,0 +1,24 @@
+# Nexus 2.0 engine configuration (settings schema 2)
+# Precedence: defaults < config/nexus.yaml < config/nexus.local.yaml
+#             < --config-file / NEXUS_CONFIG < NEXUS__* env < CLI overrides
+version: 2
+
+project_root: "."
+flow_paths:
+  - "flows"
+
+# Additional node packs imported at engine startup.  repro is discovered through
+# its entry point when "nexus[repro]" is installed.  Add project packs here:
+# node_modules:
+#   - "myapp.nodes"
+
+load_entry_points: true
+
+execution:
+  strategy: sequential
+  max_workers: 1
+  fail_fast: true
+
+logging:
+  level: INFO
+  rich: true

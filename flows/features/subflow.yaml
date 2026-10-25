@@ -1,0 +1,22 @@
+# Subflow composition.
+#
+#   nexus run features/subflow -w runs/subflow
+version: "2.0"
+name: subflow-demo
+description: Call a child flow and consume its outputs.
+steps:
+  - id: child
+    use: flow.call
+    with:
+      flow: "features/child.yaml"
+      inputs:
+        name: "nexus"
+  - id: save
+    needs: [child]
+    use: io.write_json
+    with:
+      path: "greeting.json"
+      data:
+        greeting: "${steps.child.child.outputs.greeting}"
+outputs:
+  greeting: "${steps.child.child.outputs.greeting}"

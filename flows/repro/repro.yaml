@@ -1,0 +1,106 @@
+# Video data replay using the repro pipeline (Nexus 2.0).
+#
+#   nexus run repro/repro -w runs/repro
+#
+# Expects input/*.mp4 plus temp/timeline.csv, input/speed.jsonl and
+# input/adb_targets.jsonl (produced by repro/repro_datagen).
+# Requires: pip install "nexus[repro]"
+version: "2.0"
+name: repro
+description: Extract frames, render typed sensor overlays and compose the final video.
+
+vars:
+  start_time: "2025-10-27 08:30:10"
+  end_time: "2025-10-27 08:30:20"
+  timestamps_path: "temp/timeline.csv"
+  workers: 1
+  # auto -> package default (1920x1080), used by the demo. Set an explicit
+  # calibration only when the video resolution differs (e.g. the 320x240 test clip).
+  camera: auto
+  textbox_base:
+    text_color: [0, 255, 255]
+    outline_color: [0, 0, 0]
+    outline_thickness: 3
+    position:
+      x: "width - 10"
+      y: 30
+      anchor: top_right
+
+steps:
+  - id: split
+    use: repro.video.split
+    with:
+      video_path: "input/*.mp4"
+      output_dir: "temp/frames"
+      frame_pattern: "frame_{:06d}.png"
+      overwrite: true
+
+  - id: render
+    needs: [split]
+    use: repro.render.frames
+    with:
+      frames_dir: "${steps.split.frames_dir}"
+      timeline: "${vars.timestamps_path}"
+      output_dir: "temp/rendered_frames"
+      frame_pattern: "frame_{:06d}.png"
+      start_time: "${vars.start_time}"
+      end_time: "${vars.end_time}"
+      workers: "${vars.workers}"
+      overwrite: true
+      sensors:
+        vehicle_speed:
+          path: "input/speed.jsonl"
+          offset_ms: 0
+          tolerance_ms: 5000
+          strategy: forward
+        adb_targets:
+          path: "input/adb_targets.jsonl"
+          offset_ms: 0
+          tolerance_ms: 50
+          strategy: nearest
+      renderers:
+        - type: frame_info
+          config:
+            format: datetime
+            style: "${vars.textbox_base}"
+
+        - type: speed
+          sensors:
+            speed: vehicle_speed
+          config:
+            show_timestamp: true
+            style: "${merge(vars.textbox_base, {'text_color': [0, 255, 0], 'position': {'x': 'width - 30', 'y': 60, 'anchor': 'top_right'}})}"
+
+        - type: target
+          sensors:
+            targets: adb_targets
+          config:
+            camera: "${vars.camera}"
+            display: angle
+            box_color: [0, 255, 0]
+            box_thickness: 2
+            show_box_label: true
+            show_timestamp: true
+            style: "${merge(vars.textbox_base, {'text_color': [0, 255, 255], 'position': {'x': 'width - 10', 'y': 'height - 10', 'anchor': 'bottom_right'}, 'font': {'scale': 0.8}, 'panel': {'enabled': true}})}"
+
+  - id: compose
+    needs: [render]
+    use: repro.video.compose
+    with:
+      frames_dir: "${steps.render.output_dir}"
+      output_path: "output/repro.mp4"
+      fps: "${steps.split.fps}"
+      frame_pattern: "frame_{:06d}.png"
+      codec: mp4v
+      overwrite: true
+
+outputs:
+  start_time: "${vars.start_time}"
+  end_time: "${vars.end_time}"
+  video: "${steps.compose.output_path}"
+  frames: "${steps.split.frames_dir}"
+  rendered_frames: "${steps.render.output_dir}"
+  frame_count: "${steps.compose.frame_count}"
+  fps: "${steps.compose.fps}"
+  width: "${steps.compose.width}"
+  height: "${steps.compose.height}"

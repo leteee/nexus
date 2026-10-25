@@ -1,0 +1,35 @@
+# Parallel DAG: three roots run concurrently, then merge.
+#
+#   nexus run features/dag -w runs/dag
+version: "2.0"
+name: dag-demo
+description: Run independent steps in parallel and join them.
+execution:
+  strategy: dag
+  max_workers: 3
+
+steps:
+  - id: fetch_users
+    use: core.sleep
+    with: {seconds: 0.2}
+
+  - id: fetch_orders
+    use: core.sleep
+    with: {seconds: 0.2}
+
+  - id: fetch_products
+    use: core.sleep
+    with: {seconds: 0.2}
+
+  - id: join
+    needs: [fetch_users, fetch_orders, fetch_products]
+    use: io.write_json
+    with:
+      path: "joined.json"
+      data:
+        users: "${steps.fetch_users.status}"
+        orders: "${steps.fetch_orders.status}"
+        products: "${steps.fetch_products.status}"
+
+outputs:
+  joined: "${steps.join.path}"

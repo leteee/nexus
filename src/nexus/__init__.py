@@ -1,30 +1,78 @@
-"""
-Nexus - A modern data processing framework.
+"""Nexus 2.0 public API."""
 
-Simplified architecture with clear concepts:
-- Case = Complete workspace (data + configuration)
-- Template = Reusable pipeline definition
-- Clean copy/reference semantics
-"""
+from __future__ import annotations
 
-from .core.case_manager import CaseManager
-from .core.context import NexusContext, PluginContext
-from .core.discovery import get_plugin, list_plugins, plugin
-from .core.engine import PipelineEngine
-from .core.types import PluginConfig
-from .main import create_engine, run_pipeline, run_plugin
+from .core.config import EngineSettings, load_settings
+from .core.context import NodeContext
+from .core.engine import Engine
+from .core.errors import (
+    ConfigError,
+    ExecutionError,
+    ExpressionError,
+    FlowError,
+    FlowValidationError,
+    NexusError,
+    NodeLoadError,
+    NodeNotFoundError,
+    StepExecutionError,
+    SubflowError,
+)
+from .core.expr import ExpressionResolver, evaluate_expression, resolve_value
+from .core.graph import FlowGraph
+from .core.loader import load_flow_dict, load_flow_file, load_flow_text
+from .core.models import (
+    ExecutionSettings,
+    FlowSpec,
+    ForeachSpec,
+    RetryPolicy,
+    RunEvent,
+    RunResult,
+    RunStatus,
+    StepResult,
+    StepSpec,
+    StepStatus,
+)
+from .core.registry import NodeInput, NodeRegistry, NodeSpec, node
+from .core.utils import jsonable
 
-__version__ = "0.3.0"
+__version__ = "2.0.0"
+
 __all__ = [
-    "NexusContext",
-    "PluginContext",
-    "PipelineEngine",
-    "CaseManager",
-    "plugin",
-    "get_plugin",
-    "list_plugins",
-    "PluginConfig",
-    "create_engine",
-    "run_pipeline",
-    "run_plugin",
+    "Engine",
+    "EngineSettings",
+    "load_settings",
+    "NodeContext",
+    "NodeInput",
+    "NodeRegistry",
+    "NodeSpec",
+    "node",
+    "FlowSpec",
+    "FlowGraph",
+    "ExecutionSettings",
+    "ForeachSpec",
+    "RetryPolicy",
+    "StepSpec",
+    "StepResult",
+    "StepStatus",
+    "RunResult",
+    "RunEvent",
+    "RunStatus",
+    "load_flow_dict",
+    "load_flow_file",
+    "load_flow_text",
+    "ExpressionResolver",
+    "evaluate_expression",
+    "resolve_value",
+    "jsonable",
+    "NexusError",
+    "ConfigError",
+    "FlowError",
+    "FlowValidationError",
+    "NodeNotFoundError",
+    "NodeLoadError",
+    "StepExecutionError",
+    "SubflowError",
+    "ExecutionError",
+    "ExpressionError",
+    "__version__",
 ]

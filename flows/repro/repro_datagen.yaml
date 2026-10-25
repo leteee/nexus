@@ -1,0 +1,79 @@
+# Synthetic data generation for the repro demo (Nexus 2.0).
+#
+#   nexus run repro/repro_datagen -w runs/repro-data
+#
+# Defaults: 1920x1080 @ 30fps, 20s. Override start_time/end_time for a short clip.
+# Requires: pip install "nexus[repro]"
+version: "2.0"
+name: repro-datagen
+description: Generate a synthetic driving video, timeline, speed and ADB target data.
+
+vars:
+  start_time: "2025-10-27 08:30:00"
+  end_time: "2025-10-27 08:30:20"
+  fps: 30.0
+  width: 1920
+  height: 1080
+  seed: 42
+
+steps:
+  - id: video
+    use: repro.datagen.video
+    with:
+      output_path: "input/synthetic_driving.mp4"
+      start_time: "${vars.start_time}"
+      end_time: "${vars.end_time}"
+      fps: "${vars.fps}"
+      width: "${vars.width}"
+      height: "${vars.height}"
+      speed_kmh: 60.0
+      random_seed: "${vars.seed}"
+      overwrite: true
+
+  - id: timeline
+    needs: [video]
+    use: repro.datagen.timeline
+    with:
+      video_path: "${steps.video.output_path}"
+      start_time: "${vars.start_time}"
+      end_time: "${vars.end_time}"
+      jitter_ms: 2
+      output_path: "temp/timeline.csv"
+      random_seed: "${vars.seed}"
+
+  - id: speed
+    needs: [timeline]
+    use: repro.datagen.speed
+    with:
+      start_time: "${vars.start_time}"
+      end_time: "${vars.end_time}"
+      max_interval_s: 5.0
+      change_threshold: 2.0
+      output_path: "input/speed.jsonl"
+      random_seed: "${vars.seed}"
+      use_default_profile: true
+
+  - id: adb
+    needs: [timeline]
+    use: repro.datagen.adb
+    with:
+      start_time: "${vars.start_time}"
+      end_time: "${vars.end_time}"
+      frequency_hz: 20.0
+      timing_jitter_ms: 2
+      num_targets: 3
+      ego_speed_kmh: 60.0
+      output_path: "input/adb_targets.jsonl"
+      random_seed: "${vars.seed}"
+
+outputs:
+  video: "${steps.video.output_path}"
+  timeline: "${steps.timeline.timestamps_path}"
+  speed: "${steps.speed.output_path}"
+  adb: "${steps.adb.output_path}"
+  start_time: "${vars.start_time}"
+  end_time: "${vars.end_time}"
+  timeline_frames: "${steps.timeline.total_frames}"
+  fps: "${steps.video.fps}"
+  width: "${steps.video.width}"
+  height: "${steps.video.height}"

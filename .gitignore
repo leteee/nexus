@@ -107,6 +107,9 @@ logs/
 *.log
 
 # Runtime data
+.tmp/
+.uv-cache/
+runs/
 pids/
 *.pid
 *.seed
@@ -114,8 +117,7 @@ pids/
 
 # Project-specific
 # Local configuration (user-specific overrides)
-config/local.yaml
-config/setting-local.yaml
+config/nexus.local.yaml
 # Cases: ignore all generated files and user data
 cases/
 workspace/cases/
